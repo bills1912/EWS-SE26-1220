@@ -1,0 +1,114 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── DARK theme (default) ── */
+:root, [data-theme="dark"] {
+  --bg0: #07080d;
+  --bg1: #0c0e16;
+  --bg2: #11131e;
+  --bg3: #181b28;
+  --bg4: #1f2233;
+  --bg5: #262a3e;
+  --border: rgba(255,255,255,0.055);
+  --border2: rgba(255,255,255,0.1);
+  --border3: rgba(255,255,255,0.16);
+  --text1: #eef0f8;
+  --text2: #a0a8c8;
+  --text3: #5a6285;
+  --text4: #363c58;
+  --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+  color-scheme: dark;
+}
+
+/* ── LIGHT theme ── */
+[data-theme="light"] {
+  --bg0: #f0f2f8;
+  --bg1: #ffffff;
+  --bg2: #ffffff;
+  --bg3: #f4f5fb;
+  --bg4: #e8eaf4;
+  --bg5: #dde0f0;
+  --border: rgba(0,0,0,0.07);
+  --border2: rgba(0,0,0,0.12);
+  --border3: rgba(0,0,0,0.18);
+  --text1: #0f1117;
+  --text2: #3d4466;
+  --text3: #6b73a3;
+  --text4: #a0a8c8;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  color-scheme: light;
+}
+
+/* ── Shared accent tokens (same both themes) ── */
+:root, [data-theme="dark"], [data-theme="light"] {
+  --indigo: #6366f1;
+  --indigo2: #818cf8;
+  --indigo3: #a5b4fc;
+  --red: #f43f5e;
+  --red-dim: rgba(244,63,94,0.12);
+  --red-border: rgba(244,63,94,0.22);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,0.1);
+  --amber-border: rgba(245,158,11,0.22);
+  --green: #10b981;
+  --green-dim: rgba(16,185,129,0.1);
+  --green-border: rgba(16,185,129,0.22);
+  --teal: #14b8a6;
+  --purple: #a78bfa;
+  --font: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html, body {
+  background: var(--bg0);
+  color: var(--text1);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text4); }
+
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.85)} }
+@keyframes ripple { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.8);opacity:0} }
+@keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes barGrow { from{width:0 !important} }
+@keyframes slideIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+@keyframes modalIn { from{opacity:0;transform:scale(.96) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+.fade-up   { animation: fadeUp .35s ease both; }
+.fade-up-1 { animation: fadeUp .35s .05s ease both; }
+.fade-up-2 { animation: fadeUp .35s .10s ease both; }
+.bar-animate { animation: barGrow .9s cubic-bezier(.16,1,.3,1) both; }
+
+button { font-family: var(--font); cursor: pointer; border: none; background: none; }
+
+/* ── Modal overlay ── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+[data-theme="light"] .modal-overlay { background: rgba(0,0,0,0.35); }
+
+.modal-box {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  width: 100%; max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: modalIn .25s ease both;
+}
