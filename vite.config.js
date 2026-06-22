@@ -13,7 +13,7 @@ export default defineConfig({
     // Proxy ke API saat dev lokal
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'https://ews-se26-1220-production.up.railway.app/',
         changeOrigin: true,
       }
     }
