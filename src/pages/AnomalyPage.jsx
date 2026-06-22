@@ -68,8 +68,8 @@ function OutlierModal({ outlier, metricLabel, unit, onClose }) {
           <div style={{ background:'rgba(244,63,94,0.08)', border:'1px solid rgba(244,63,94,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:16, textAlign:'center' }}>
             <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>Nilai outlier</div>
             <div style={{ fontSize:26, fontWeight:700, color:'#f87171', fontFamily:'var(--mono)' }}>
-              {typeof outlier.value === 'number' && outlier.value > 240
-                ? `${Math.floor(outlier.value/60)}j ${outlier.value%60}m`
+              {unit === 'menit' && typeof outlier.value === 'number' && outlier.value > 240
+                ? `${Math.floor(outlier.value / 60)}j ${outlier.value % 60}m`
                 : outlier.value}
               {' '}<span style={{ fontSize:13, color:'var(--text3)' }}>{unit}</span>
             </div>

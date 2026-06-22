@@ -1,0 +1,14 @@
+{
+  "name": "ews-se2026-api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "api_server.cjs",
+  "scripts": {
+    "start": "node api_server.cjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0"
+  }
+}

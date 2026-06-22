@@ -1,41 +1,55 @@
 /**
- * api_server.js — EWS SE2026 Backend API
- * =========================================
- * Express server yang menjadi jembatan antara
- * dashboard React dan MongoDB Atlas.
+ * backend/api_server.cjs — EWS SE2026 Backend API
+ * =================================================
+ * Express server untuk Railway deployment.
+ * PORT otomatis dari environment Railway ($PORT).
  *
  * Endpoints:
- *   GET /api/statistik          → semua data agregat (summary, pace, anomali, dll)
- *   GET /api/responden          → list responden (paginated, filterable)
- *   GET /api/responden/:id      → detail satu responden
- *   GET /api/petugas            → list petugas
- *   POST /api/refresh           → trigger rekomputasi statistik
- *
- * Usage:
- *   npm install express mongodb cors dotenv
- *   node api_server.js
- *   # atau: PORT=4000 node api_server.js
+ *   GET /api/statistik
+ *   GET /api/responden
+ *   GET /api/responden/:id
+ *   GET /api/petugas
+ *   GET /api/kecamatan
+ *   GET /api/health
  */
 
-const express = require('express');
-const cors    = require('cors');
+const express   = require('express');
+const cors      = require('cors');
 const { MongoClient } = require('mongodb');
 
-const URI     = process.env.MONGO_URI || 'mongodb+srv://ricardozalukhu1925:kuran1925@cluster0.lhmox.mongodb.net/?appName=Cluster0';
+const URI     = process.env.MONGO_URI || 'YOUR_MONGO_URI_HERE';
 const DB_NAME = process.env.DB_NAME   || 'ews_se2026';
 const PORT    = process.env.PORT      || 3001;
+
+// Izinkan CORS dari domain Railway frontend
+// Tambah ALLOWED_ORIGIN di Railway Variables jika perlu
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 const app    = express();
 let   client = null;
 let   db     = null;
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, cb) => {
+    // Izinkan semua jika ALLOWED_ORIGINS tidak di-set (untuk dev)
+    if (!ALLOWED_ORIGINS.length || !origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.some(o => origin.startsWith(o))) return cb(null, true);
+    cb(new Error(`CORS: origin tidak diizinkan — ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // ── Koneksi MongoDB (singleton) ───────────────────────────────────────────
 async function getDB() {
   if (db) return db;
-  client = new MongoClient(URI);
+  client = new MongoClient(URI, {
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
+  });
   await client.connect();
   db = client.db(DB_NAME);
   console.log(`[MongoDB] Terhubung ke ${DB_NAME}`);
@@ -48,13 +62,13 @@ app.use(async (req, res, next) => {
     await getDB();
     next();
   } catch (err) {
+    console.error('[MongoDB] Koneksi gagal:', err.message);
     res.status(503).json({ error: 'Database tidak dapat dijangkau', detail: err.message });
   }
 });
 
 // ══════════════════════════════════════════════════════════════════════════
 // GET /api/statistik
-// Kembalikan 1 dokumen statistik lengkap (summary, pace, anomali, heatmap, dll)
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/statistik', async (req, res) => {
   try {
@@ -69,12 +83,6 @@ app.get('/api/statistik', async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════
 // GET /api/responden
-// Query params:
-//   page=1, limit=15
-//   kecamatan=Batang Onang
-//   status=SUBMITTED|APPROVED|REJECTED
-//   anomaly=crit|warn    (filter yang ada anomali)
-//   q=kata kunci         (search nama kepala / no KK / usaha / petugas)
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/responden', async (req, res) => {
   try {
@@ -82,7 +90,6 @@ app.get('/api/responden', async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '15')));
     const skip  = (page - 1) * limit;
 
-    // Build filter
     const filter = {};
     if (req.query.kecamatan) filter.kecamatan = req.query.kecamatan;
     if (req.query.desa)      filter.desa      = req.query.desa;
@@ -92,7 +99,6 @@ app.get('/api/responden', async (req, res) => {
     if (req.query.anomaly === 'clean')   filter.anomaly = null;
     if (req.query.kbli)      filter.kbli      = req.query.kbli;
 
-    // Text search
     if (req.query.q) {
       const q = req.query.q;
       filter.$or = [
@@ -105,21 +111,16 @@ app.get('/api/responden', async (req, res) => {
     }
 
     const coll  = db.collection('isian_se2026');
-    const total = await coll.countDocuments(filter);
-    const docs  = await coll
-      .find(filter, { projection: { _id: 0 } })
-      .sort({ no: 1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
+    const [total, docs] = await Promise.all([
+      coll.countDocuments(filter),
+      coll.find(filter, { projection: { _id: 0 } })
+          .sort({ no: 1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray(),
+    ]);
 
-    res.json({
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      data: docs,
-    });
+    res.json({ total, page, limit, totalPages: Math.ceil(total / limit), data: docs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -127,7 +128,6 @@ app.get('/api/responden', async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════
 // GET /api/responden/:id
-// Detail satu record berdasarkan field "id" (bukan MongoDB _id)
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/responden/:id', async (req, res) => {
   try {
@@ -142,7 +142,6 @@ app.get('/api/responden/:id', async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════
 // GET /api/petugas
-// List petugas dengan statistik ringkasan
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/petugas', async (req, res) => {
   try {
@@ -160,7 +159,6 @@ app.get('/api/petugas', async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════
 // GET /api/kecamatan
-// Daftar kecamatan unik yang ada di data
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/kecamatan', async (req, res) => {
   try {
@@ -185,19 +183,11 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ── Start server ─────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[EWS SE2026 API] Berjalan di http://localhost:${PORT}`);
-  console.log(`  Endpoints:`);
-  console.log(`    GET  /api/statistik`);
-  console.log(`    GET  /api/responden?page=1&limit=15&kecamatan=...&status=...&q=...`);
-  console.log(`    GET  /api/responden/:id`);
-  console.log(`    GET  /api/petugas`);
-  console.log(`    GET  /api/kecamatan`);
-  console.log(`    GET  /api/health`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[EWS SE2026 API] http://0.0.0.0:${PORT}`);
+  console.log(`  DB    : ${DB_NAME}`);
+  console.log(`  CORS  : ${ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(', ') : 'semua origin (dev mode)'}`);
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  if (client) await client.close();
-  process.exit(0);
-});
+process.on('SIGINT',  async () => { if (client) await client.close(); process.exit(0); });
+process.on('SIGTERM', async () => { if (client) await client.close(); process.exit(0); });
