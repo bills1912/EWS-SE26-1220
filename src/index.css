@@ -97,8 +97,11 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(0,0,0,0.6);
   backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
+  overflow: hidden;
 }
 [data-theme="light"] .modal-overlay { background: rgba(0,0,0,0.35); }
 
@@ -107,8 +110,19 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   border: 1px solid var(--border2);
   border-radius: 16px;
   width: 100%; max-width: 680px;
-  max-height: 90vh;
-  overflow-y: auto;
+  /* Fill up to 88vh but never more; let content scroll inside */
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;          /* clip corners; inner sections scroll */
   box-shadow: var(--shadow-lg);
   animation: modalIn .25s ease both;
+}
+
+/* The scrollable content area lives inside .modal-box */
+.modal-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
