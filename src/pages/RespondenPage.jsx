@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search, X, AlertTriangle, CheckCircle, Clock,
   User, MapPin, Briefcase, Tag, DollarSign,
@@ -165,119 +166,192 @@ function Page3({ r }) {
   );
 }
 
-/* ── Detail Modal ── */
+/* ══════════════════════════════════════
+   DETAIL MODAL — pakai React Portal
+   agar di-render langsung ke document.body,
+   lepas dari DOM tree yang bisa punya
+   transform/will-change yang merusak
+   position:fixed
+══════════════════════════════════════ */
 function DetailModal({ row, onClose }) {
   const [page, setPage] = useState(0);
   if (!row) return null;
-  const sCfg = STATUS_CFG[row.status]||STATUS_CFG.SUBMITTED;
-  const hasCrit = row.flags?.some(f=>f.sev==='crit');
-  const pages = [<Page0 r={row}/>,<Page1 r={row}/>,<Page2 r={row}/>,<Page3 r={row}/>];
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{ maxWidth:720 }} onClick={e=>e.stopPropagation()}>
+  const sCfg = STATUS_CFG[row.status] || STATUS_CFG.SUBMITTED;
+  const hasCrit = row.flags?.some(f => f.sev === 'crit');
+  const pages = [<Page0 r={row}/>, <Page1 r={row}/>, <Page2 r={row}/>, <Page3 r={row}/>];
 
-        {/* ── STICKY: Header + anomaly strip + tabs ── */}
-        <div style={{ flexShrink:0, background:'var(--bg2)' }}>
+  const modalContent = (
+    /*
+      Overlay: position fixed + inset 0 memastikan
+      overlay menutupi seluruh viewport.
+      Karena di-portal ke body, tidak ada ancestor
+      yang bisa "merusak" fixed positioning.
+    */
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+      }}
+    >
+      {/* Modal box — stopPropagation agar klik dalam modal tidak tutup */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--bg2)',
+          border: '1px solid var(--border2)',
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 720,
+          maxHeight: '88vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+          animation: 'modalIn .25s ease both',
+        }}
+      >
+        {/* ── STICKY HEADER ── */}
+        <div style={{ flexShrink: 0, background: 'var(--bg2)' }}>
           {/* Header */}
           <div style={{ padding:'20px 24px 16px', display:'flex', alignItems:'flex-start', gap:12, borderBottom:'1px solid var(--border)' }}>
             <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:6, flexWrap:'wrap' }}>
                 <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--mono)', fontWeight:600 }}>{row.id}</span>
                 <Badge variant={sCfg.variant}><sCfg.Icon size={10} strokeWidth={2}/> {sCfg.label}</Badge>
-                {row.anomaly && <Badge variant={hasCrit?'crit':'warn'}><AlertTriangle size={9} strokeWidth={2}/> {row.flags?.length} anomali</Badge>}
+                {row.anomaly && (
+                  <Badge variant={hasCrit ? 'crit' : 'warn'}>
+                    <AlertTriangle size={9} strokeWidth={2}/> {row.flags?.length} anomali
+                  </Badge>
+                )}
               </div>
               <h2 style={{ fontSize:18, fontWeight:700, color:'var(--text1)', marginBottom:3, letterSpacing:'-0.01em' }}>{row.namaKepala}</h2>
               <div style={{ fontSize:11, color:'var(--text3)', display:'flex', alignItems:'center', gap:4 }}>
                 <MapPin size={10} strokeWidth={2}/> {row.desa}, {row.kecamatan}
               </div>
             </div>
-            <button onClick={onClose} style={{ padding:7, borderRadius:8, color:'var(--text3)', background:'var(--bg3)', border:'1px solid var(--border)', cursor:'pointer', display:'flex', alignItems:'center', flexShrink:0 }}>
+            <button
+              onClick={onClose}
+              style={{ padding:7, borderRadius:8, color:'var(--text3)', background:'var(--bg3)', border:'1px solid var(--border)', cursor:'pointer', display:'flex', alignItems:'center', flexShrink:0 }}
+            >
               <X size={14} strokeWidth={2}/>
             </button>
           </div>
 
           {/* Anomaly strip */}
-          {row.flags?.length>0 && (
+          {row.flags?.length > 0 && (
             <div style={{ margin:'12px 24px 0', padding:'10px 14px', background:hasCrit?'rgba(244,63,94,0.06)':'rgba(245,158,11,0.06)', border:`1px solid ${hasCrit?'rgba(244,63,94,0.2)':'rgba(245,158,11,0.2)'}`, borderRadius:10 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:7, fontSize:11, fontWeight:600, color:hasCrit?'#f87171':'#fbbf24' }}>
                 <AlertTriangle size={11} strokeWidth={2}/> Anomali terdeteksi
               </div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                {row.flags.map((f,i)=><Badge key={i} variant={f.sev==='crit'?'crit':'warn'}>{f.text}</Badge>)}
+                {row.flags.map((f,i) => <Badge key={i} variant={f.sev==='crit'?'crit':'warn'}>{f.text}</Badge>)}
               </div>
             </div>
           )}
 
           {/* Tab nav */}
           <div style={{ display:'flex', gap:0, padding:'12px 24px 0', borderBottom:'1px solid var(--border)' }}>
-            {MODAL_PAGES.map((label,i)=>(
-              <button key={i} onClick={()=>setPage(i)} style={{ padding:'7px 14px', fontSize:11, fontWeight:page===i?600:400, color:page===i?'var(--indigo3)':'var(--text3)', background:'transparent', border:'none', cursor:'pointer', borderBottom:`2px solid ${page===i?'var(--indigo)':'transparent'}`, marginBottom:-1, transition:'all .15s', whiteSpace:'nowrap' }}>{label}</button>
+            {MODAL_PAGES.map((label, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                style={{ padding:'7px 14px', fontSize:11, fontWeight:page===i?600:400, color:page===i?'var(--indigo3)':'var(--text3)', background:'transparent', border:'none', cursor:'pointer', borderBottom:`2px solid ${page===i?'var(--indigo)':'transparent'}`, marginBottom:-1, transition:'all .15s', whiteSpace:'nowrap' }}
+              >
+                {label}
+              </button>
             ))}
           </div>
         </div>
 
-        {/* ── SCROLLABLE: page content only ── */}
-        <div className="modal-scroll" style={{ padding:'16px 24px' }}>
+        {/* ── SCROLLABLE CONTENT ── */}
+        <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', overscrollBehavior:'contain', padding:'16px 24px' }}>
           {pages[page]}
         </div>
 
-        {/* ── STICKY: Footer nav ── */}
+        {/* ── STICKY FOOTER ── */}
         <div style={{ flexShrink:0, padding:'12px 24px 16px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--bg2)' }}>
-          <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:page===0?'default':'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:page===0?'var(--text4)':'var(--text2)' }}>
+          <button
+            onClick={() => setPage(p => Math.max(0, p-1))}
+            disabled={page === 0}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:page===0?'default':'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:page===0?'var(--text4)':'var(--text2)' }}
+          >
             <ChevronLeft size={13} strokeWidth={2}/> Sebelumnya
           </button>
           <span style={{ fontSize:11, color:'var(--text3)' }}>{page+1} / {MODAL_PAGES.length}</span>
-          {page<MODAL_PAGES.length-1
-            ? <button onClick={()=>setPage(p=>p+1)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'rgba(99,102,241,0.15)', border:'1px solid rgba(99,102,241,0.3)', color:'var(--indigo3)' }}>
+          {page < MODAL_PAGES.length - 1
+            ? <button
+                onClick={() => setPage(p => p+1)}
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'rgba(99,102,241,0.15)', border:'1px solid rgba(99,102,241,0.3)', color:'var(--indigo3)' }}
+              >
                 Berikutnya <ChevronRight size={13} strokeWidth={2}/>
               </button>
-            : <button onClick={onClose} style={{ padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)' }}>Tutup</button>}
+            : <button
+                onClick={onClose}
+                style={{ padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)' }}
+              >
+                Tutup
+              </button>
+          }
         </div>
-
       </div>
     </div>
   );
+
+  // Portal ke document.body — keluar dari DOM tree halaman sepenuhnya
+  return createPortal(modalContent, document.body);
 }
 
 /* ══════════════════════════════════════════
    MAIN PAGE
 ══════════════════════════════════════════ */
 export default function RespondenPage() {
-  const [search, setSearch]         = useState('');
+  const [search, setSearch]             = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAnomaly, setFilterAnomaly] = useState('all');
-  const [filterKec, setFilterKec]   = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selected, setSelected]     = useState(null);
+  const [filterKec, setFilterKec]       = useState('all');
+  const [currentPage, setCurrentPage]   = useState(1);
+  const [selected, setSelected]         = useState(null);
 
-  const kecList = useMemo(()=>[...new Set(RESPONDEN.map(r=>r.kecamatan))].sort(),[]);
+  const kecList = useMemo(() => [...new Set(RESPONDEN.map(r => r.kecamatan))].sort(), []);
 
-  const filtered = useMemo(()=>{
+  const filtered = useMemo(() => {
     setCurrentPage(1);
     const q = search.toLowerCase();
-    return RESPONDEN.filter(r=>{
-      const ms = !q || r.namaKepala.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.kecamatan.toLowerCase().includes(q) || r.petugas.toLowerCase().includes(q) || r.noKK.includes(q) || (r.namaUsaha||'').toLowerCase().includes(q);
-      const mst = filterStatus==='all'||r.status===filterStatus;
-      const man = filterAnomaly==='all'||(filterAnomaly==='anomaly'?!!r.anomaly:!r.anomaly);
-      const mk  = filterKec==='all'||r.kecamatan===filterKec;
-      return ms&&mst&&man&&mk;
+    return RESPONDEN.filter(r => {
+      const ms  = !q || r.namaKepala.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.kecamatan.toLowerCase().includes(q) || r.petugas.toLowerCase().includes(q) || r.noKK.includes(q) || (r.namaUsaha||'').toLowerCase().includes(q);
+      const mst = filterStatus  === 'all' || r.status === filterStatus;
+      const man = filterAnomaly === 'all' || (filterAnomaly === 'anomaly' ? !!r.anomaly : !r.anomaly);
+      const mk  = filterKec     === 'all' || r.kecamatan === filterKec;
+      return ms && mst && man && mk;
     });
-  },[search,filterStatus,filterAnomaly,filterKec]);
+  }, [search, filterStatus, filterAnomaly, filterKec]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length/PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageData   = filtered.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
-  const totals     = useMemo(()=>({ anomaly:RESPONDEN.filter(r=>r.anomaly).length, approved:RESPONDEN.filter(r=>r.status==='APPROVED').length, rejected:RESPONDEN.filter(r=>r.status==='REJECTED').length }),[]);
+  const totals     = useMemo(() => ({
+    anomaly:  RESPONDEN.filter(r => r.anomaly).length,
+    approved: RESPONDEN.filter(r => r.status === 'APPROVED').length,
+    rejected: RESPONDEN.filter(r => r.status === 'REJECTED').length,
+  }), []);
 
-  const goPage = (p) => setCurrentPage(Math.max(1,Math.min(totalPages,p)));
+  const goPage = (p) => setCurrentPage(Math.max(1, Math.min(totalPages, p)));
 
-  /* page numbers to show */
-  const pageNums = useMemo(()=>{
-    if(totalPages<=7) return Array.from({length:totalPages},(_,i)=>i+1);
-    const nums=new Set([1,totalPages,currentPage]);
-    for(let d=-2;d<=2;d++) { const n=currentPage+d; if(n>=1&&n<=totalPages) nums.add(n); }
-    return [...nums].sort((a,b)=>a-b);
-  },[totalPages,currentPage]);
+  const pageNums = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i+1);
+    const nums = new Set([1, totalPages, currentPage]);
+    for (let d = -2; d <= 2; d++) { const n = currentPage+d; if (n >= 1 && n <= totalPages) nums.add(n); }
+    return [...nums].sort((a,b) => a-b);
+  }, [totalPages, currentPage]);
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -285,11 +359,11 @@ export default function RespondenPage() {
       {/* Summary */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
         {[
-          { label:'Sampel ditampilkan', val:RESPONDEN.length, color:'var(--indigo2)', sub:`dari ${TOTAL_RECORDS} total records` },
-          { label:'Dengan anomali',     val:totals.anomaly,   color:'#f87171',        sub:`${Math.round(totals.anomaly/RESPONDEN.length*100)}% dari sampel` },
-          { label:'Approved',           val:totals.approved,  color:'#34d399',        sub:`${Math.round(totals.approved/RESPONDEN.length*100)}% selesai` },
-          { label:'Rejected',           val:totals.rejected,  color:'#f87171',        sub:`${Math.round(totals.rejected/RESPONDEN.length*100)}% perlu perbaikan` },
-        ].map(s=>(
+          { label:'Sampel ditampilkan', val:RESPONDEN.length,  color:'var(--indigo2)', sub:`dari ${TOTAL_RECORDS} total records` },
+          { label:'Dengan anomali',     val:totals.anomaly,    color:'#f87171',        sub:`${Math.round(totals.anomaly/RESPONDEN.length*100)}% dari sampel` },
+          { label:'Approved',           val:totals.approved,   color:'#34d399',        sub:`${Math.round(totals.approved/RESPONDEN.length*100)}% selesai` },
+          { label:'Rejected',           val:totals.rejected,   color:'#f87171',        sub:`${Math.round(totals.rejected/RESPONDEN.length*100)}% perlu perbaikan` },
+        ].map(s => (
           <div key={s.label} style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px' }}>
             <div style={{ fontSize:24, fontWeight:700, color:s.color, fontFamily:'var(--mono)', lineHeight:1, marginBottom:4 }}>{s.val}</div>
             <div style={{ fontSize:11, color:'var(--text2)', fontWeight:500 }}>{s.label}</div>
@@ -307,25 +381,32 @@ export default function RespondenPage() {
         <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
           <div style={{ flex:'1 1 180px', minWidth:160, position:'relative' }}>
             <Search size={12} strokeWidth={2} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'var(--text3)', pointerEvents:'none' }}/>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Nama KK, ID, No.KK, usaha, PCL…"
-              style={{ width:'100%', padding:'7px 10px 7px 29px', fontSize:12, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text1)', outline:'none', fontFamily:'var(--font)' }}/>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Nama KK, ID, No.KK, usaha, PCL…"
+              style={{ width:'100%', padding:'7px 10px 7px 29px', fontSize:12, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text1)', outline:'none', fontFamily:'var(--font)' }}
+            />
           </div>
 
-          <select value={filterKec} onChange={e=>setFilterKec(e.target.value)}
-            style={{ padding:'7px 10px', fontSize:11, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text2)', outline:'none', cursor:'pointer', fontFamily:'var(--font)' }}>
+          <select
+            value={filterKec}
+            onChange={e => setFilterKec(e.target.value)}
+            style={{ padding:'7px 10px', fontSize:11, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text2)', outline:'none', cursor:'pointer', fontFamily:'var(--font)' }}
+          >
             <option value="all">Semua Kecamatan</option>
-            {kecList.map(k=><option key={k} value={k}>{k}</option>)}
+            {kecList.map(k => <option key={k} value={k}>{k}</option>)}
           </select>
 
           <div style={{ display:'flex', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:2, gap:1 }}>
-            {[['all','Semua'],['APPROVED','Approved'],['SUBMITTED','Submitted'],['REJECTED','Rejected']].map(([val,lbl])=>(
-              <button key={val} onClick={()=>setFilterStatus(val)} style={{ padding:'5px 10px', fontSize:11, fontWeight:filterStatus===val?600:400, borderRadius:6, border:'none', cursor:'pointer', background:filterStatus===val?'var(--bg5)':'transparent', color:filterStatus===val?'var(--text1)':'var(--text3)', transition:'all .15s' }}>{lbl}</button>
+            {[['all','Semua'],['APPROVED','Approved'],['SUBMITTED','Submitted'],['REJECTED','Rejected']].map(([val,lbl]) => (
+              <button key={val} onClick={() => setFilterStatus(val)} style={{ padding:'5px 10px', fontSize:11, fontWeight:filterStatus===val?600:400, borderRadius:6, border:'none', cursor:'pointer', background:filterStatus===val?'var(--bg5)':'transparent', color:filterStatus===val?'var(--text1)':'var(--text3)', transition:'all .15s' }}>{lbl}</button>
             ))}
           </div>
 
           <div style={{ display:'flex', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:2, gap:1 }}>
-            {[['all','Semua'],['anomaly','⚠ Anomali'],['clean','Normal']].map(([val,lbl])=>(
-              <button key={val} onClick={()=>setFilterAnomaly(val)} style={{ padding:'5px 10px', fontSize:11, fontWeight:filterAnomaly===val?600:400, borderRadius:6, border:'none', cursor:'pointer', background:filterAnomaly===val?(val==='anomaly'?'rgba(244,63,94,0.2)':'var(--bg5)'):'transparent', color:filterAnomaly===val?(val==='anomaly'?'#f87171':'var(--text1)'):'var(--text3)', transition:'all .15s' }}>{lbl}</button>
+            {[['all','Semua'],['anomaly','⚠ Anomali'],['clean','Normal']].map(([val,lbl]) => (
+              <button key={val} onClick={() => setFilterAnomaly(val)} style={{ padding:'5px 10px', fontSize:11, fontWeight:filterAnomaly===val?600:400, borderRadius:6, border:'none', cursor:'pointer', background:filterAnomaly===val?(val==='anomaly'?'rgba(244,63,94,0.2)':'var(--bg5)'):'transparent', color:filterAnomaly===val?(val==='anomaly'?'#f87171':'var(--text1)'):'var(--text3)', transition:'all .15s' }}>{lbl}</button>
             ))}
           </div>
         </div>
@@ -335,25 +416,28 @@ export default function RespondenPage() {
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['ID','Kepala Keluarga','Kecamatan / Desa','PCL','Nama Usaha','KBLI','Durasi','Status','Flag'].map(h=>(
+                {['ID','Kepala Keluarga','Kecamatan / Desa','PCL','Nama Usaha','KBLI','Durasi','Status','Flag'].map(h => (
                   <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontSize:9, fontWeight:700, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {pageData.map(r=>{
-                const cfg = STATUS_CFG[r.status]||STATUS_CFG.SUBMITTED;
-                const hasCrit = r.flags?.some(f=>f.sev==='crit');
-                const durColor = r.durMenit!==null&&r.durMenit<=2?'#f87171':r.durMenit>480?'#fbbf24':'var(--text2)';
+              {pageData.map(r => {
+                const cfg = STATUS_CFG[r.status] || STATUS_CFG.SUBMITTED;
+                const hasCrit = r.flags?.some(f => f.sev === 'crit');
+                const durColor = r.durMenit !== null && r.durMenit <= 2 ? '#f87171' : r.durMenit > 480 ? '#fbbf24' : 'var(--text2)';
                 return (
-                  <tr key={r.id} onClick={()=>setSelected(r)}
+                  <tr
+                    key={r.id}
+                    onClick={() => setSelected(r)}
                     style={{ borderBottom:'1px solid var(--border)', background:r.anomaly?'rgba(244,63,94,0.02)':'transparent', cursor:'pointer', transition:'background .1s' }}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
-                    onMouseLeave={e=>e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'}>
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                    onMouseLeave={e => e.currentTarget.style.background = r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent'}
+                  >
                     <td style={{ padding:'9px 10px', fontSize:10, color:'var(--text4)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{r.id}</td>
                     <td style={{ padding:'9px 10px', whiteSpace:'nowrap' }}>
                       <div style={{ fontSize:12, fontWeight:600, color:'var(--text1)' }}>{r.namaKepala}</div>
-                      {r.namaPasangan&&<div style={{ fontSize:10, color:'var(--text3)' }}>/ {r.namaPasangan}</div>}
+                      {r.namaPasangan && <div style={{ fontSize:10, color:'var(--text3)' }}>/ {r.namaPasangan}</div>}
                     </td>
                     <td style={{ padding:'9px 10px', whiteSpace:'nowrap' }}>
                       <div style={{ fontSize:11, color:'var(--text2)' }}>{r.kecamatan}</div>
@@ -361,61 +445,73 @@ export default function RespondenPage() {
                     </td>
                     <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.petugas}</td>
                     <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text2)', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {r.namaUsaha!=='—'?r.namaUsaha:<span style={{ color:'var(--text4)', fontStyle:'italic' }}>—</span>}
+                      {r.namaUsaha !== '—' ? r.namaUsaha : <span style={{ color:'var(--text4)', fontStyle:'italic' }}>—</span>}
                     </td>
                     <td style={{ padding:'9px 10px' }}>
-                      {r.kbli?<span style={{ fontFamily:'var(--mono)', fontSize:11, color:'var(--indigo3)' }}>{r.kbli}</span>
-                       :r.namaUsaha!=='—'?<span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>kosong</span>
-                       :<span style={{ color:'var(--text4)' }}>—</span>}
+                      {r.kbli
+                        ? <span style={{ fontFamily:'var(--mono)', fontSize:11, color:'var(--indigo3)' }}>{r.kbli}</span>
+                        : r.namaUsaha !== '—'
+                          ? <span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>kosong</span>
+                          : <span style={{ color:'var(--text4)' }}>—</span>
+                      }
                     </td>
                     <td style={{ padding:'9px 10px', fontSize:11, fontFamily:'var(--mono)', color:durColor, fontWeight:600 }}>{r.durLabel}</td>
                     <td style={{ padding:'9px 10px' }}><Badge variant={cfg.variant}><cfg.Icon size={9} strokeWidth={2}/> {cfg.label}</Badge></td>
                     <td style={{ padding:'9px 10px' }}>
-                      {r.anomaly?<Badge variant={hasCrit?'crit':'warn'}><AlertTriangle size={9} strokeWidth={2}/> {r.flags?.length}</Badge>
-                       :<span style={{ fontSize:10, color:'var(--text4)' }}>—</span>}
+                      {r.anomaly
+                        ? <Badge variant={hasCrit?'crit':'warn'}><AlertTriangle size={9} strokeWidth={2}/> {r.flags?.length}</Badge>
+                        : <span style={{ fontSize:10, color:'var(--text4)' }}>—</span>
+                      }
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {filtered.length===0&&<div style={{ textAlign:'center', padding:'40px 0', color:'var(--text4)', fontSize:13 }}>Tidak ada record yang sesuai filter</div>}
+          {filtered.length === 0 && (
+            <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text4)', fontSize:13 }}>
+              Tidak ada record yang sesuai filter
+            </div>
+          )}
         </div>
 
         {/* Pagination */}
-        {totalPages>1&&(
+        {totalPages > 1 && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:14, paddingTop:12, borderTop:'1px solid var(--border)', flexWrap:'wrap', gap:8 }}>
             <span style={{ fontSize:11, color:'var(--text3)' }}>
               Hal. {currentPage} / {totalPages} &nbsp;·&nbsp; {filtered.length} records &nbsp;·&nbsp; {PAGE_SIZE}/hal
             </span>
 
             <div style={{ display:'flex', gap:3, alignItems:'center' }}>
-              <button onClick={()=>goPage(1)} disabled={currentPage===1} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===1?'var(--text4)':'var(--text2)', cursor:currentPage===1?'default':'pointer' }}>«</button>
-              <button onClick={()=>goPage(currentPage-1)} disabled={currentPage===1} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===1?'var(--text4)':'var(--text2)', cursor:currentPage===1?'default':'pointer', display:'flex', alignItems:'center', gap:2 }}><ChevronLeft size={11} strokeWidth={2}/>Prev</button>
+              <button onClick={() => goPage(1)} disabled={currentPage===1} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===1?'var(--text4)':'var(--text2)', cursor:currentPage===1?'default':'pointer' }}>«</button>
+              <button onClick={() => goPage(currentPage-1)} disabled={currentPage===1} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===1?'var(--text4)':'var(--text2)', cursor:currentPage===1?'default':'pointer', display:'flex', alignItems:'center', gap:2 }}><ChevronLeft size={11} strokeWidth={2}/>Prev</button>
 
-              {pageNums.map((pg,i)=>{
+              {pageNums.map((pg, i) => {
                 const prev = pageNums[i-1];
                 return [
-                  prev && pg-prev>1 ? <span key={`e${pg}`} style={{ fontSize:11, color:'var(--text4)', padding:'0 2px' }}>…</span> : null,
-                  <button key={pg} onClick={()=>goPage(pg)} style={{ width:30, height:30, fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:currentPage===pg?'rgba(99,102,241,0.2)':'var(--bg3)', color:currentPage===pg?'var(--indigo3)':'var(--text2)', cursor:'pointer', fontWeight:currentPage===pg?600:400 }}>{pg}</button>
+                  prev && pg-prev > 1 ? <span key={`e${pg}`} style={{ fontSize:11, color:'var(--text4)', padding:'0 2px' }}>…</span> : null,
+                  <button key={pg} onClick={() => goPage(pg)} style={{ width:30, height:30, fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:currentPage===pg?'rgba(99,102,241,0.2)':'var(--bg3)', color:currentPage===pg?'var(--indigo3)':'var(--text2)', cursor:'pointer', fontWeight:currentPage===pg?600:400 }}>{pg}</button>
                 ];
               })}
 
-              <button onClick={()=>goPage(currentPage+1)} disabled={currentPage===totalPages} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===totalPages?'var(--text4)':'var(--text2)', cursor:currentPage===totalPages?'default':'pointer', display:'flex', alignItems:'center', gap:2 }}>Next<ChevronRight size={11} strokeWidth={2}/></button>
-              <button onClick={()=>goPage(totalPages)} disabled={currentPage===totalPages} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===totalPages?'var(--text4)':'var(--text2)', cursor:currentPage===totalPages?'default':'pointer' }}>»</button>
+              <button onClick={() => goPage(currentPage+1)} disabled={currentPage===totalPages} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===totalPages?'var(--text4)':'var(--text2)', cursor:currentPage===totalPages?'default':'pointer', display:'flex', alignItems:'center', gap:2 }}>Next<ChevronRight size={11} strokeWidth={2}/></button>
+              <button onClick={() => goPage(totalPages)} disabled={currentPage===totalPages} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===totalPages?'var(--text4)':'var(--text2)', cursor:currentPage===totalPages?'default':'pointer' }}>»</button>
             </div>
 
             <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--text3)' }}>
               Ke hal.
-              <input type="number" min={1} max={totalPages}
-                onKeyDown={e=>{if(e.key==='Enter'){const v=parseInt(e.target.value);if(v>=1&&v<=totalPages)goPage(v);e.target.value='';}}}
-                style={{ width:42, padding:'4px 6px', fontSize:11, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--text1)', outline:'none', textAlign:'center', fontFamily:'var(--mono)' }}/>
+              <input
+                type="number" min={1} max={totalPages}
+                onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt(e.target.value); if (v >= 1 && v <= totalPages) goPage(v); e.target.value = ''; }}}
+                style={{ width:42, padding:'4px 6px', fontSize:11, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--text1)', outline:'none', textAlign:'center', fontFamily:'var(--mono)' }}
+              />
             </div>
           </div>
         )}
       </Card>
 
-      {selected&&<DetailModal row={selected} onClose={()=>setSelected(null)}/>}
+      {/* Modal dirender via Portal ke document.body */}
+      {selected && <DetailModal row={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

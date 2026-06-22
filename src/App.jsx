@@ -11,10 +11,10 @@ function Footer() {
       padding:'14px 24px', borderTop:'1px solid var(--border)',
       display:'flex', alignItems:'center', justifyContent:'space-between',
     }}>
-      <span style={{ fontSize:10, color:'var(--text4)' }}>
+      <span style={{ fontSize:10, color:'var(--text3)' }}>
         EWS SE2026 · BPS Kabupaten Padang Lawas Utara · Prototype v0.2 · Data dummy
       </span>
-      <span style={{ fontSize:10, color:'var(--text4)' }}>
+      <span style={{ fontSize:10, color:'var(--text3)' }}>
         Terintegrasi MATA SE26
       </span>
     </div>
@@ -36,8 +36,11 @@ export default function App() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh' }}>
-      <Ticker />
-      <Topbar activeTab={tab} setTab={setTab} />
+      {/* ── Sticky header wrapper: Ticker + Topbar jadi satu unit sticky ── */}
+      <div style={{ position:'sticky', top:0, zIndex:100 }}>
+        <Ticker />
+        <Topbar activeTab={tab} setTab={setTab} />
+      </div>
       <main style={{ flex:1, padding:'20px 24px' }} key={tab} className="fade-up">
         {pages[tab]}
       </main>

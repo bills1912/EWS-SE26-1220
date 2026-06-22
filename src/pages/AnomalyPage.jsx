@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ShieldAlert, Users, MapPin, BarChart2, AlertTriangle,
 } from 'lucide-react';
@@ -8,107 +9,198 @@ import {
 import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { ANOMALI, OUTLIER_DURASI, OUTLIER_PENDAPATAN, OUTLIER_JUMLAK_AK } from '../data/dummy.js';
 
+function OutlierModal({ outlier, metricLabel, unit, onClose }) {
+  if (!outlier) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: '20px 22px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Badge variant="crit"><AlertTriangle size={9} strokeWidth={2} /> Outlier terdeteksi</Badge>
+            <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--mono)', marginLeft: 'auto' }}>{outlier.id}</span>
+          </div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text1)', marginBottom: 4 }}>{outlier.nama}</h3>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{metricLabel}</div>
+        </div>
+
+        <div style={{ padding: '18px 22px' }}>
+          <div style={{
+            background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.25)',
+            borderRadius: 10, padding: '12px 14px', marginBottom: 16, textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Nilai outlier</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#f87171', fontFamily: 'var(--mono)' }}>
+              {outlier.value} <span style={{ fontSize: 13, color: 'var(--text3)' }}>{unit}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '9px 12px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>Kecamatan</div>
+              <div style={{ fontSize: 12, color: 'var(--text1)', fontWeight: 600 }}>{outlier.kec}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '9px 12px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>Desa</div>
+              <div style={{ fontSize: 12, color: 'var(--text1)', fontWeight: 600 }}>{outlier.desa}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '9px 12px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>PCL</div>
+              <div style={{ fontSize: 12, color: 'var(--text1)', fontWeight: 600 }}>{outlier.pcl}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '9px 12px' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>Status</div>
+              <Badge variant={outlier.status === 'APPROVED' ? 'ok' : 'neutral'}>{outlier.status}</Badge>
+            </div>
+            {outlier.usaha && (
+              <div style={{ gridColumn: '1/-1', background: 'var(--bg3)', borderRadius: 8, padding: '9px 12px' }}>
+                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 3 }}>Nama Usaha</div>
+                <div style={{ fontSize: 12, color: 'var(--text1)', fontWeight: 600 }}>{outlier.usaha}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 22px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)' }}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════
    BOX PLOT — pure SVG, no recharts
 ══════════════════════════════════════ */
 function BoxPlot({ data, width = '100%' }) {
-  const W = 500, H = 90;
-  const PAD = 60;
+  const [tooltip, setTooltip] = useState(null);
+  const [hovered, setHovered] = useState(null);
+  const [selectedOutlier, setSelectedOutlier] = useState(null);
+
+  const W = 760, H = 150;
+  const PAD = 70;
   const plotW = W - PAD * 2;
 
-  // Map value → x position
   const logMin = 0;
   const logMax = data.q4;
   const toX = (v) => PAD + ((v - logMin) / (logMax - logMin)) * plotW;
 
-  const q0x  = toX(data.q0);
   const q1x  = toX(data.q1);
   const medx = toX(data.median);
   const q3x  = toX(data.q3);
-  const q4x  = toX(data.q4);
   const loFx = toX(data.fenceLo);
   const hiFx = toX(data.fenceHi);
   const meanx = toX(data.mean);
 
-  // Y coords
-  const CY = 44, BH = 28;
+  const CY = 66, BH = 40;
   const by1 = CY - BH / 2, by2 = CY + BH / 2;
-
   const ticks = [data.q0, data.q1, data.median, data.q3, data.fenceHi, data.q4];
 
+  const showTip = (e, label, value) => {
+    const rect = e.currentTarget.closest('svg').getBoundingClientRect();
+    setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, label, value });
+  };
+  const hideTip = () => { setTooltip(null); setHovered(null); };
+
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: W, height: 'auto', display: 'block' }}>
-        {/* Grid lines */}
+    <div style={{ overflowX: 'auto', position: 'relative' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 1000, height: 'auto', display: 'block', overflow: 'visible' }}>
         {ticks.map((t, i) => (
-          <line key={i} x1={toX(t)} y1={by1 - 4} x2={toX(t)} y2={by2 + 4} stroke="var(--border2)" strokeWidth={1} strokeDasharray="3,3" />
+          <line key={i} x1={toX(t)} y1={by1 - 6} x2={toX(t)} y2={by2 + 6} stroke="var(--border2)" strokeWidth={1} strokeDasharray="3,3" />
         ))}
 
-        {/* IQR fence whiskers */}
-        <line x1={loFx} y1={CY} x2={q1x} y2={CY} stroke="var(--text3)" strokeWidth={1.5} />
-        <line x1={q3x}  y1={CY} x2={hiFx} y2={CY} stroke="var(--text3)" strokeWidth={1.5} />
-        <line x1={loFx} y1={by1 + 6} x2={loFx} y2={by2 - 6} stroke="var(--text3)" strokeWidth={1.5} />
-        <line x1={hiFx} y1={by1 + 6} x2={hiFx} y2={by2 - 6} stroke="var(--text3)" strokeWidth={1.5} />
+        <line x1={loFx} y1={CY} x2={q1x} y2={CY} stroke="var(--text3)" strokeWidth={2} />
+        <line x1={q3x}  y1={CY} x2={hiFx} y2={CY} stroke="var(--text3)" strokeWidth={2} />
 
-        {/* IQR box */}
-        <rect x={q1x} y={by1} width={q3x - q1x} height={BH} fill="rgba(99,102,241,0.18)" stroke="rgba(99,102,241,0.5)" strokeWidth={1.5} rx={3} />
+        <line x1={loFx} y1={by1 + 8} x2={loFx} y2={by2 - 8}
+          stroke="var(--text3)" strokeWidth={hovered === 'fenceLo' ? 4 : 2} style={{ cursor: 'pointer' }}
+          onMouseEnter={(e) => { setHovered('fenceLo'); showTip(e, 'Batas bawah (fence)', data.fenceLo); }}
+          onMouseMove={(e) => showTip(e, 'Batas bawah (fence)', data.fenceLo)}
+          onMouseLeave={hideTip} />
+        <line x1={hiFx} y1={by1 + 8} x2={hiFx} y2={by2 - 8}
+          stroke="var(--text3)" strokeWidth={hovered === 'fenceHi' ? 4 : 2} style={{ cursor: 'pointer' }}
+          onMouseEnter={(e) => { setHovered('fenceHi'); showTip(e, 'Batas atas (fence)', data.fenceHi); }}
+          onMouseMove={(e) => showTip(e, 'Batas atas (fence)', data.fenceHi)}
+          onMouseLeave={hideTip} />
 
-        {/* Median line */}
-        <line x1={medx} y1={by1} x2={medx} y2={by2} stroke="#818cf8" strokeWidth={2.5} />
+        <rect x={q1x} y={by1} width={q3x - q1x} height={BH} rx={5}
+          fill={hovered === 'iqr' ? 'rgba(99,102,241,0.32)' : 'rgba(99,102,241,0.18)'}
+          stroke="rgba(99,102,241,0.5)" strokeWidth={2} style={{ cursor: 'pointer', transition: 'fill .15s' }}
+          onMouseEnter={(e) => { setHovered('iqr'); showTip(e, 'IQR (Q1–Q3)', `${data.q1} – ${data.q3}`); }}
+          onMouseMove={(e) => showTip(e, 'IQR (Q1–Q3)', `${data.q1} – ${data.q3}`)}
+          onMouseLeave={hideTip} />
 
-        {/* Mean diamond */}
+        <line x1={medx} y1={by1} x2={medx} y2={by2}
+          stroke="#818cf8" strokeWidth={hovered === 'median' ? 6 : 3.5} style={{ cursor: 'pointer', transition: 'stroke-width .15s' }}
+          onMouseEnter={(e) => { setHovered('median'); showTip(e, 'Median', data.median); }}
+          onMouseMove={(e) => showTip(e, 'Median', data.median)}
+          onMouseLeave={hideTip} />
+
         <polygon
-          points={`${meanx},${CY - 6} ${meanx + 5},${CY} ${meanx},${CY + 6} ${meanx - 5},${CY}`}
-          fill="#f59e0b" opacity={0.9}
-        />
+          points={`${meanx},${CY - 9} ${meanx + 7},${CY} ${meanx},${CY + 9} ${meanx - 7},${CY}`}
+          fill="#f59e0b" opacity={hovered === 'mean' ? 1 : 0.9}
+          stroke={hovered === 'mean' ? '#fff' : 'none'} strokeWidth={1.5} style={{ cursor: 'pointer' }}
+          onMouseEnter={(e) => { setHovered('mean'); showTip(e, 'Mean', data.mean); }}
+          onMouseMove={(e) => showTip(e, 'Mean', data.mean)}
+          onMouseLeave={hideTip} />
 
-        {/* Outlier dots */}
-        {data.outliers.map((v, i) => (
-          <circle key={i} cx={toX(v)} cy={CY} r={5} fill="rgba(244,63,94,0.8)" stroke="rgba(244,63,94,0.3)" strokeWidth={2} />
+        {data.outliers.map((o, i) => (
+          <circle key={i} cx={toX(o.value)} cy={CY} r={hovered === `out${i}` ? 9.5 : 7}
+            fill="rgba(244,63,94,0.8)" stroke="rgba(244,63,94,0.3)" strokeWidth={2.5}
+            style={{ cursor: 'pointer', transition: 'r .15s' }}
+            onMouseEnter={(e) => { setHovered(`out${i}`); showTip(e, o.nama, o.value); }}
+            onMouseMove={(e) => showTip(e, o.nama, o.value)}
+            onMouseLeave={hideTip}
+            onClick={() => setSelectedOutlier(o)} />
         ))}
 
-        {/* Anomaly threshold lines */}
         {data.anomalyThresholdLo !== undefined && data.anomalyThresholdLo > 0 && (
-          <line x1={toX(data.anomalyThresholdLo)} y1={by1 - 8} x2={toX(data.anomalyThresholdLo)} y2={by2 + 8} stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="4,3" />
+          <line x1={toX(data.anomalyThresholdLo)} y1={by1 - 12} x2={toX(data.anomalyThresholdLo)} y2={by2 + 12} stroke="#f43f5e" strokeWidth={2} strokeDasharray="5,4" />
         )}
         {data.anomalyThresholdHi && (
-          <line x1={toX(data.anomalyThresholdHi)} y1={by1 - 8} x2={toX(data.anomalyThresholdHi)} y2={by2 + 8} stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="4,3" />
+          <line x1={toX(data.anomalyThresholdHi)} y1={by1 - 12} x2={toX(data.anomalyThresholdHi)} y2={by2 + 12} stroke="#f43f5e" strokeWidth={2} strokeDasharray="5,4" />
         )}
 
-        {/* Labels below */}
         {[
-          { x: q1x,   lbl: `Q1\n${data.q1}` },
-          { x: medx,  lbl: `Med\n${data.median}` },
-          { x: q3x,   lbl: `Q3\n${data.q3}` },
-          { x: hiFx,  lbl: `Fence\n${data.fenceHi}` },
+          { x: q1x,  lbl: `Q1\n${data.q1}` },
+          { x: medx, lbl: `Med\n${data.median}` },
+          { x: q3x,  lbl: `Q3\n${data.q3}` },
+          { x: hiFx, lbl: `Fence\n${data.fenceHi}` },
         ].map(({ x, lbl }, i) => {
           const [l1, l2] = lbl.split('\n');
           return (
             <g key={i}>
-              <text x={x} y={by2 + 14} textAnchor="middle" fontSize={7} fill="var(--text4)">{l1}</text>
-              <text x={x} y={by2 + 22} textAnchor="middle" fontSize={7.5} fill="var(--text3)" fontFamily="var(--mono)">{l2}</text>
+              <text x={x} y={by2 + 20} textAnchor="middle" fontSize={9.5} fill="var(--text4)">{l1}</text>
+              <text x={x} y={by2 + 32} textAnchor="middle" fontSize={11} fill="var(--text3)" fontFamily="var(--mono)">{l2}</text>
             </g>
           );
         })}
 
-        {/* Outlier label */}
         {data.outliers.length > 0 && (
-          <text x={toX(data.outliers[data.outliers.length - 1])} y={by1 - 10} textAnchor="middle" fontSize={8} fill="#f87171">
+          <text x={toX(data.outliers[data.outliers.length - 1].value)} y={by1 - 16} textAnchor="middle" fontSize={10.5} fill="#f87171">
             outlier ({data.q4} max)
           </text>
         )}
 
-        {/* Mean label */}
-        <text x={meanx} y={by1 - 10} textAnchor="middle" fontSize={7.5} fill="#f59e0b">mean {data.mean}</text>
+        <text x={meanx} y={by1 - 16} textAnchor="middle" fontSize={10} fill="#f59e0b">mean {data.mean}</text>
 
-        {/* Threshold label */}
         {data.anomalyThresholdLo !== undefined && data.anomalyThresholdLo > 0 && (
-          <text x={toX(data.anomalyThresholdLo)} y={H - 4} textAnchor="middle" fontSize={7} fill="#f43f5e">min {data.anomalyThresholdLo}</text>
+          <text x={toX(data.anomalyThresholdLo)} y={H - 6} textAnchor="middle" fontSize={9.5} fill="#f43f5e">min {data.anomalyThresholdLo}</text>
         )}
       </svg>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+      {tooltip && (
+        <div style={{
+          position: 'absolute', left: tooltip.x, top: tooltip.y - 40, transform: 'translateX(-50%)',
+          background: 'var(--bg5)', border: '1px solid var(--border2)', borderRadius: 8,
+          padding: '7px 12px', fontSize: 12, color: 'var(--text1)', whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 10, boxShadow: 'var(--shadow)',
+        }}>
+          <div style={{ color: 'var(--text3)', fontSize: 10, marginBottom: 2 }}>{tooltip.label}</div>
+          <div style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{tooltip.value} {data.unit}</div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', marginTop: 10 }}>
         {[
           { color: 'rgba(99,102,241,0.6)', label: 'IQR (Q1–Q3)', type: 'rect' },
           { color: '#818cf8',              label: 'Median',        type: 'line' },
@@ -116,16 +208,19 @@ function BoxPlot({ data, width = '100%' }) {
           { color: '#f43f5e',              label: 'Outlier',       type: 'circle' },
           { color: '#f43f5e',              label: 'Batas anomali', type: 'dash' },
         ].map(l => (
-          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'var(--text3)' }}>
-            {l.type === 'rect' && <span style={{ width: 14, height: 8, background: l.color, border: '1px solid rgba(99,102,241,0.5)', borderRadius: 2, display: 'inline-block' }} />}
-            {l.type === 'line' && <span style={{ width: 14, height: 2, background: l.color, display: 'inline-block' }} />}
-            {l.type === 'diamond' && <span style={{ width: 8, height: 8, background: l.color, display: 'inline-block', transform: 'rotate(45deg)' }} />}
-            {l.type === 'circle' && <span style={{ width: 8, height: 8, background: l.color, borderRadius: '50%', display: 'inline-block' }} />}
-            {l.type === 'dash' && <span style={{ width: 14, height: 2, background: 'transparent', borderTop: `2px dashed ${l.color}`, display: 'inline-block' }} />}
+          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text3)' }}>
+            {l.type === 'rect' && <span style={{ width: 16, height: 9, background: l.color, border: '1px solid rgba(99,102,241,0.5)', borderRadius: 2, display: 'inline-block' }} />}
+            {l.type === 'line' && <span style={{ width: 16, height: 2.5, background: l.color, display: 'inline-block' }} />}
+            {l.type === 'diamond' && <span style={{ width: 10, height: 10, background: l.color, display: 'inline-block', transform: 'rotate(45deg)' }} />}
+            {l.type === 'circle' && <span style={{ width: 10, height: 10, background: l.color, borderRadius: '50%', display: 'inline-block' }} />}
+            {l.type === 'dash' && <span style={{ width: 16, height: 2, background: 'transparent', borderTop: `2px dashed ${l.color}`, display: 'inline-block' }} />}
             {l.label}
           </div>
         ))}
+        <span style={{ fontSize: 10, color: 'var(--text4)', marginLeft: 'auto' }}>💡 Klik titik merah untuk lihat detail responden</span>
       </div>
+
+      <OutlierModal outlier={selectedOutlier} metricLabel={data.label} unit={data.unit} onClose={() => setSelectedOutlier(null)} />
     </div>
   );
 }

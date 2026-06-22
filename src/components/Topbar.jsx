@@ -11,7 +11,7 @@ export function Ticker() {
     <div style={{ overflow:'hidden', background:'var(--bg1)', borderBottom:'1px solid var(--border)', padding:'7px 0' }}>
       <div style={{ display:'flex', whiteSpace:'nowrap', animation:'ticker 38s linear infinite' }}>
         {repeated.map((p,i) => (
-          <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:12, padding:'0 36px', fontSize:10, fontWeight:500, color:'var(--text4)', letterSpacing:'0.08em', textTransform:'uppercase' }}>
+          <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:12, padding:'0 36px', fontSize:10, fontWeight:500, color:'var(--text2)', letterSpacing:'0.08em', textTransform:'uppercase' }}>
             {p}
             <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text4)', display:'inline-block' }} />
           </span>
@@ -50,7 +50,8 @@ function ThemeToggle() {
 
 export function Topbar({ activeTab, setTab }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', height:56, padding:'0 24px', gap:0, background:'var(--bg1)', borderBottom:'1px solid var(--border)', position:'sticky', top:32, zIndex:100 }}>
+    /* position sticky & top dihapus — sudah dihandle oleh wrapper di App.jsx */
+    <div style={{ display:'flex', alignItems:'center', height:56, padding:'0 24px', gap:0, background:'var(--bg1)', borderBottom:'1px solid var(--border)' }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginRight:28, flexShrink:0 }}>
         <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 20px rgba(99,102,241,0.35)' }}>
           <Activity size={16} color="#fff" strokeWidth={2.2} />
