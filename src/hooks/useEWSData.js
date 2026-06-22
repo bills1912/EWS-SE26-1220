@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 // ── Fetcher generik ───────────────────────────────────────────────────────
 async function apiFetch(path) {
