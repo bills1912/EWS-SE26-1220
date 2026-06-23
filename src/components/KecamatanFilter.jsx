@@ -30,10 +30,10 @@ export default function KecamatanFilter() {
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '5px 10px 5px 9px',
-          background: isFiltered ? 'rgba(99,102,241,0.12)' : 'var(--bg3)',
-          border: `1px solid ${isFiltered ? 'rgba(99,102,241,0.45)' : 'var(--border)'}`,
+          background: isFiltered ? 'var(--orange-dim2)' : 'var(--bg3)',
+          border: `1px solid ${isFiltered ? 'rgba(232,84,28,0.45)' : 'var(--border)'}`,
           borderRadius: 8, cursor: 'pointer', outline: 'none',
-          color: isFiltered ? 'var(--indigo3)' : 'var(--text3)',
+          color: isFiltered ? 'var(--orange3)' : 'var(--text3)',
           transition: 'all .15s',
         }}
       >
@@ -51,9 +51,9 @@ export default function KecamatanFilter() {
             <span
               onClick={e => { e.stopPropagation(); select('all'); }}
               style={{ display: 'flex', alignItems: 'center', padding: 1,
-                       borderRadius: 99, background: 'rgba(99,102,241,0.25)', cursor: 'pointer' }}
+                       borderRadius: 99, background: 'rgba(232,84,28,0.25)', cursor: 'pointer' }}
             >
-              <X size={9} strokeWidth={3} color="var(--indigo3)" />
+              <X size={9} strokeWidth={3} color="var(--orange3)" />
             </span>
           )
           : (
@@ -80,14 +80,14 @@ export default function KecamatanFilter() {
               padding: '9px 12px', cursor: 'pointer', fontSize: 12,
               color: !isFiltered ? 'var(--indigo3)' : 'var(--text2)',
               fontWeight: !isFiltered ? 600 : 400,
-              background: !isFiltered ? 'rgba(99,102,241,0.08)' : 'transparent',
+              background: !isFiltered ? 'var(--orange-dim2)' : 'transparent',
               borderBottom: '1px solid var(--border)',
             }}
             onMouseEnter={e => { if (isFiltered) e.currentTarget.style.background = 'var(--bg3)'; }}
             onMouseLeave={e => { if (isFiltered) e.currentTarget.style.background = 'transparent'; }}
           >
             <span>Semua Kecamatan</span>
-            {!isFiltered && <Check size={12} strokeWidth={2.5} color="var(--indigo3)" />}
+            {!isFiltered && <Check size={12} strokeWidth={2.5} color="var(--orange3)" />}
           </div>
 
           {/* List */}
@@ -103,17 +103,17 @@ export default function KecamatanFilter() {
                     padding: '8px 12px', cursor: 'pointer', fontSize: 12,
                     color: isActive ? 'var(--indigo3)' : 'var(--text2)',
                     fontWeight: isActive ? 600 : 400,
-                    background: isActive ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    background: isActive ? 'var(--orange-dim2)' : 'transparent',
                     transition: 'background .1s',
                   }}
                   onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg3)'; }}
                   onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <MapPin size={9} strokeWidth={2} color={isActive ? 'var(--indigo3)' : 'var(--text4)'} />
+                    <MapPin size={9} strokeWidth={2} color={isActive ? 'var(--orange3)' : 'var(--text4)'} />
                     <span>{k}</span>
                   </div>
-                  {isActive && <Check size={12} strokeWidth={2.5} color="var(--indigo3)" />}
+                  {isActive && <Check size={12} strokeWidth={2.5} color="var(--orange3)" />}
                 </div>
               );
             })}

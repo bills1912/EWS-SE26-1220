@@ -16,8 +16,8 @@ const ALL_TABS = ['Overview','Anomali','Target','KBLI','Responden','Evaluasi'];
 // Label badge per role
 const ROLE_BADGE = {
   kepala:     { label:'👑 Kepala',    color:'#f59e0b', bg:'rgba(245,158,11,0.12)',  border:'rgba(245,158,11,0.25)' },
-  kasubbag:   { label:'🔑 Kasubbag', color:'#a78bfa', bg:'rgba(167,139,250,0.12)', border:'rgba(167,139,250,0.25)' },
-  statistisi: { label:'📊 Statistisi',color:'var(--indigo3)', bg:'rgba(99,102,241,0.12)', border:'rgba(99,102,241,0.25)' },
+  kasubbag:   { label:'🔑 Kasubbag', color:'var(--blue3)', bg:'rgba(27,63,139,0.12)', border:'rgba(27,63,139,0.25)' },
+  statistisi: { label:'📊 Statistisi',color:'var(--indigo3)', bg:'rgba(232,84,28,0.12)', border:'rgba(232,84,28,0.25)' },
   pengadmin:  { label:'📋 Pengadmin',  color:'var(--text3)', bg:'var(--bg4)',      border:'var(--border)' },
 };
 
@@ -74,7 +74,7 @@ function UserMenu() {
         onClick={() => setOpen(v => !v)}
         style={{ display:'flex', alignItems:'center', gap:7, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:99, padding:'4px 10px 4px 6px', cursor:'pointer', transition:'all .15s' }}
       >
-        <div style={{ width:22, height:22, borderRadius:'50%', background:'linear-gradient(135deg,#4f46e5,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <div style={{ width:22, height:22, borderRadius:'50%', background:'linear-gradient(135deg,var(--orange),#C04010)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
           <User size={11} color="#fff" strokeWidth={2.5}/>
         </div>
         <span style={{ fontSize:11, fontWeight:600, color:'var(--text2)', maxWidth:100, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -139,7 +139,7 @@ export function Topbar({ activeTab, setTab, allowedTabs = ALL_TABS }) {
   return (
     <div style={{ display:'flex', alignItems:'center', height:56, padding:'0 24px', gap:0, background:'var(--bg1)', borderBottom:'1px solid var(--border)' }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginRight:28, flexShrink:0 }}>
-        <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 20px rgba(99,102,241,0.35)' }}>
+        <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,var(--orange) 0%,#C04010 100%)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 20px rgba(232,84,28,0.35)' }}>
           <Activity size={16} color="#fff" strokeWidth={2.2}/>
         </div>
         <div>
@@ -154,7 +154,7 @@ export function Topbar({ activeTab, setTab, allowedTabs = ALL_TABS }) {
         {ALL_TABS.filter(t => allowedTabs.includes(t)).map(t => {
           const active = activeTab === t;
           return (
-            <button key={t} onClick={() => setTab(t)} style={{ padding:'6px 13px', fontSize:12, fontWeight:active?600:400, border:'none', cursor:'pointer', borderRadius:8, transition:'all .15s', whiteSpace:'nowrap', background:active?'rgba(99,102,241,0.15)':'transparent', color:active?'var(--indigo3)':'var(--text3)' }}>
+            <button key={t} onClick={() => setTab(t)} style={{ padding:'6px 13px', fontSize:12, fontWeight:active?600:400, border:'none', cursor:'pointer', borderRadius:8, transition:'all .15s', whiteSpace:'nowrap', background:active?'var(--orange-dim2)':'transparent', color:active?'var(--orange3)':'var(--text3)' }}>
               {t}
             </button>
           );

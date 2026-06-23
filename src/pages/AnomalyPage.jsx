@@ -149,9 +149,9 @@ function BoxPlot({ data }) {
         <line x1={loFx} y1={by1+8} x2={loFx} y2={by2-8} stroke="var(--text3)" strokeWidth={hovered==='fenceLo'?4:2} style={{cursor:'pointer'}} onMouseEnter={e=>{setHovered('fenceLo');showTip(e,'Batas bawah',data.fenceLo);}} onMouseMove={e=>showTip(e,'Batas bawah',data.fenceLo)} onMouseLeave={hideTip}/>
         <line x1={Math.min(hiFx,toX(data.q4))} y1={by1+8} x2={Math.min(hiFx,toX(data.q4))} y2={by2-8} stroke="var(--text3)" strokeWidth={hovered==='fenceHi'?4:2} style={{cursor:'pointer'}} onMouseEnter={e=>{setHovered('fenceHi');showTip(e,'Batas atas (fence)',data.fenceHi);}} onMouseMove={e=>showTip(e,'Batas atas',data.fenceHi)} onMouseLeave={hideTip}/>
         <rect x={q1x} y={by1} width={q3x-q1x} height={BH} rx={5}
-          fill={hovered==='iqr'?'rgba(99,102,241,0.32)':'rgba(99,102,241,0.18)'} stroke="rgba(99,102,241,0.5)" strokeWidth={2} style={{cursor:'pointer',transition:'fill .15s'}}
+          fill={hovered==='iqr'?'rgba(232,84,28,0.32)':'rgba(232,84,28,0.18)'} stroke="rgba(232,84,28,0.5)" strokeWidth={2} style={{cursor:'pointer',transition:'fill .15s'}}
           onMouseEnter={e=>{setHovered('iqr');showTip(e,'IQR (Q1–Q3)',`${data.q1} – ${data.q3}`);}} onMouseMove={e=>showTip(e,'IQR',`${data.q1}–${data.q3}`)} onMouseLeave={hideTip}/>
-        <line x1={medx} y1={by1} x2={medx} y2={by2} stroke="#818cf8" strokeWidth={hovered==='median'?6:3.5} style={{cursor:'pointer',transition:'stroke-width .15s'}} onMouseEnter={e=>{setHovered('median');showTip(e,'Median',data.median);}} onMouseMove={e=>showTip(e,'Median',data.median)} onMouseLeave={hideTip}/>
+        <line x1={medx} y1={by1} x2={medx} y2={by2} stroke="var(--orange3)" strokeWidth={hovered==='median'?6:3.5} style={{cursor:'pointer',transition:'stroke-width .15s'}} onMouseEnter={e=>{setHovered('median');showTip(e,'Median',data.median);}} onMouseMove={e=>showTip(e,'Median',data.median)} onMouseLeave={hideTip}/>
         <polygon points={`${meanx},${CY-9} ${meanx+7},${CY} ${meanx},${CY+9} ${meanx-7},${CY}`} fill="#f59e0b" opacity={hovered==='mean'?1:0.9} style={{cursor:'pointer'}} onMouseEnter={e=>{setHovered('mean');showTip(e,'Mean',data.mean);}} onMouseMove={e=>showTip(e,'Mean',data.mean)} onMouseLeave={hideTip}/>
         {data.outliers.map((o,i) => (
           <circle key={i} cx={Math.min(toX(o.value), W-10)} cy={CY} r={hovered===`out${i}`?9.5:7}
@@ -180,14 +180,14 @@ function BoxPlot({ data }) {
       )}
       <div style={{ display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', marginTop:10 }}>
         {[
-          {color:'rgba(99,102,241,0.6)',label:'IQR (Q1–Q3)',type:'rect'},
-          {color:'#818cf8',label:'Median',type:'line'},
+          {color:'rgba(232,84,28,0.6)',label:'IQR (Q1–Q3)',type:'rect'},
+          {color:'var(--orange3)',label:'Median',type:'line'},
           {color:'#f59e0b',label:'Mean',type:'diamond'},
           {color:'#f43f5e',label:'Outlier',type:'circle'},
           {color:'#f43f5e',label:'Batas anomali',type:'dash'},
         ].map(l => (
           <div key={l.label} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--text3)' }}>
-            {l.type==='rect'    && <span style={{ width:16,height:9,background:l.color,border:'1px solid rgba(99,102,241,0.5)',borderRadius:2,display:'inline-block'}}/>}
+            {l.type==='rect'    && <span style={{ width:16,height:9,background:l.color,border:'1px solid rgba(232,84,28,0.5)',borderRadius:2,display:'inline-block'}}/>}
             {l.type==='line'    && <span style={{ width:16,height:2.5,background:l.color,display:'inline-block'}}/>}
             {l.type==='diamond' && <span style={{ width:10,height:10,background:l.color,display:'inline-block',transform:'rotate(45deg)'}}/>}
             {l.type==='circle'  && <span style={{ width:10,height:10,background:l.color,borderRadius:'50%',display:'inline-block'}}/>}
@@ -209,7 +209,7 @@ function DistChart({ data: distData }) {
     return (
       <div style={{ background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, padding:'8px 12px', fontSize:11 }}>
         <div style={{ color:'var(--text2)', marginBottom:2 }}>{label}</div>
-        <div style={{ color:'var(--indigo3)', fontWeight:600, fontFamily:'var(--mono)' }}>{payload[0].value} records</div>
+        <div style={{ color:'var(--orange3)', fontWeight:600, fontFamily:'var(--mono)' }}>{payload[0].value} records</div>
         {payload[0].payload.anomaly && <div style={{ color:'#f87171', fontSize:10, marginTop:2 }}>⚠ Range anomali</div>}
       </div>
     );
@@ -221,7 +221,7 @@ function DistChart({ data: distData }) {
         <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
         <Tooltip content={<CustomTooltip/>}/>
         <Bar dataKey="n" radius={[3,3,0,0]}>
-          {distData.map((d,i) => <Cell key={i} fill={d.anomaly?'rgba(244,63,94,0.7)':'rgba(99,102,241,0.55)'}/>)}
+          {distData.map((d,i) => <Cell key={i} fill={d.anomaly?'rgba(244,63,94,0.7)':'rgba(232,84,28,0.55)'}/>)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -259,7 +259,7 @@ function AnomalyCard({ item }) {
     ? {dot:'#f43f5e',bg:'rgba(244,63,94,0.05)',border:'rgba(244,63,94,0.16)'}
     : item.sev==='warn'
     ? {dot:'#f59e0b',bg:'rgba(245,158,11,0.05)',border:'rgba(245,158,11,0.16)'}
-    : {dot:'#818cf8',bg:'rgba(99,102,241,0.05)',border:'rgba(99,102,241,0.16)'};
+    : {dot:'var(--orange3)',bg:'rgba(232,84,28,0.05)',border:'rgba(232,84,28,0.16)'};
   return (
     <div style={{ display:'flex', gap:14, padding:'13px 15px', background:c.bg, border:`1px solid ${c.border}`, borderRadius:11 }}>
       <div style={{ paddingTop:2 }}><PulseDot color={c.dot} size={8}/></div>

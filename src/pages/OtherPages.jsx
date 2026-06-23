@@ -22,7 +22,7 @@ function AnomalyCard({ item }) {
     ? { dot:'#f43f5e', bg:'rgba(244,63,94,0.05)', border:'rgba(244,63,94,0.16)' }
     : item.sev==='warn'
     ? { dot:'#f59e0b', bg:'rgba(245,158,11,0.05)', border:'rgba(245,158,11,0.16)' }
-    : { dot:'#818cf8', bg:'rgba(99,102,241,0.05)', border:'rgba(99,102,241,0.16)' };
+    : { dot:'var(--orange3)', bg:'rgba(232,84,28,0.05)', border:'rgba(232,84,28,0.16)' };
   return (
     <div style={{ display:'flex', gap:14, padding:'14px 16px', background:c.bg, border:`1px solid ${c.border}`, borderRadius:12 }}>
       <div style={{ paddingTop:2 }}><PulseDot color={c.dot} size={8}/></div>
@@ -79,10 +79,10 @@ export function KecepatanPage() {
   const cell = v => {
     if (!v) return { bg:'var(--bg4)', color:'var(--text4)' };
     const p = v/max;
-    if (p<0.25) return { bg:'rgba(99,102,241,0.15)', color:'var(--text3)' };
-    if (p<0.5)  return { bg:'rgba(99,102,241,0.32)', color:'var(--text2)' };
-    if (p<0.75) return { bg:'rgba(99,102,241,0.55)', color:'var(--text1)' };
-    return { bg:'#5a5cf8', color:'#fff' };
+    if (p<0.25) return { bg:'rgba(232,84,28,0.15)', color:'var(--text3)' };
+    if (p<0.5)  return { bg:'rgba(232,84,28,0.32)', color:'var(--text2)' };
+    if (p<0.75) return { bg:'rgba(232,84,28,0.55)', color:'var(--text1)' };
+    return { bg:'var(--orange2)', color:'#fff' };
   };
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
@@ -159,7 +159,7 @@ export function TargetPage() {
 }
 
 // ── KBLI PAGE ────────────────────────────────────────────────────────────────
-const CAT_COLOR = { A:'#10b981',G:'#6366f1',I:'#f59e0b',C:'#a78bfa',Q:'#14b8a6',O:'#60a5fa' };
+const CAT_COLOR = { A:'#10b981',G:'var(--orange)',I:'#f59e0b',C:'var(--blue3)',Q:'#14b8a6',O:'#60a5fa' };
 export function KBLIPage() {
   const { data: stat, loading } = useStatistik();
   if (loading) return <div style={{ display:'grid', gridTemplateColumns:'3fr 2fr', gap:14 }}><Card><Skeleton h={400}/></Card><Card><Skeleton h={200}/></Card></div>;
@@ -174,10 +174,10 @@ export function KBLIPage() {
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
           {kbliData.map((k,i) => (
             <div key={k.kode} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'var(--bg3)', borderRadius:10 }}>
-              <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:600, color:CAT_COLOR[k.cat]||'var(--indigo3)', width:44, flexShrink:0 }}>{k.kode}</span>
+              <span style={{ fontFamily:'var(--mono)', fontSize:12, fontWeight:600, color:CAT_COLOR[k.cat]||'var(--orange3)', width:44, flexShrink:0 }}>{k.kode}</span>
               <span style={{ flex:1, fontSize:11, color:'var(--text2)' }}>{k.label}</span>
               <Badge variant="neutral">{k.cat}</Badge>
-              <div style={{ width:72, flexShrink:0 }}><ProgressBar pct={(k.n/maxN)*100} color={CAT_COLOR[k.cat]||'var(--indigo)'} delay={i*60}/></div>
+              <div style={{ width:72, flexShrink:0 }}><ProgressBar pct={(k.n/maxN)*100} color={CAT_COLOR[k.cat]||'var(--orange)'} delay={i*60}/></div>
               <span style={{ fontSize:13, fontWeight:700, color:'var(--text1)', fontFamily:'var(--mono)', width:30, textAlign:'right', flexShrink:0 }}>{k.n}</span>
             </div>
           ))}
@@ -189,7 +189,7 @@ export function KBLIPage() {
             <FileWarning size={16} color="#f43f5e" strokeWidth={1.8}/>
             <span style={{ fontSize:12, fontWeight:600, color:'#f87171' }}>{summary.kbliMissing} usaha tanpa KBLI</span>
           </div>
-          <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7 }}>Usaha dengan nama terisi namun kolom <span style={{ fontFamily:'var(--mono)', color:'var(--indigo3)' }}>kbli_akhir</span> kosong. Tidak bisa diklasifikasi untuk agregasi nasional SE2026.</p>
+          <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7 }}>Usaha dengan nama terisi namun kolom <span style={{ fontFamily:'var(--mono)', color:'var(--orange3)' }}>kbli_akhir</span> kosong. Tidak bisa diklasifikasi untuk agregasi nasional SE2026.</p>
         </Card>
         <Card>
           <SectionTitle icon={Building2}>Kategori usaha</SectionTitle>

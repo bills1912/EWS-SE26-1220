@@ -55,7 +55,7 @@ export default function LoginPage() {
         transform: 'translateX(-50%)',
         width: 600, height: 600,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(232,84,28,0.08) 0%, transparent 70%)',
         pointerEvents: 'none',
       }}/>
 
@@ -71,10 +71,10 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <div style={{
             width: 56, height: 56, borderRadius: 16,
-            background: 'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)',
+            background: 'linear-gradient(135deg,var(--orange) 0%,#C04010 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
-            boxShadow: '0 0 32px rgba(99,102,241,0.4)',
+            boxShadow: '0 0 32px rgba(232,84,28,0.4)',
           }}>
             <Activity size={26} color="#fff" strokeWidth={2.2}/>
           </div>
@@ -127,7 +127,7 @@ export default function LoginPage() {
                   fontFamily: 'var(--font)',
                   transition: 'border-color .15s',
                 }}
-                onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
+                onFocus={e => e.target.style.borderColor = 'rgba(232,84,28,0.6)'}
                 onBlur={e => e.target.style.borderColor = error ? 'rgba(244,63,94,0.5)' : 'var(--border2)'}
               />
             </div>
@@ -157,7 +157,7 @@ export default function LoginPage() {
                     fontFamily: 'var(--font)',
                     transition: 'border-color .15s',
                   }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
+                  onFocus={e => e.target.style.borderColor = 'rgba(232,84,28,0.6)'}
                   onBlur={e => e.target.style.borderColor = error ? 'rgba(244,63,94,0.5)' : 'var(--border2)'}
                 />
                 <button
@@ -203,14 +203,14 @@ export default function LoginPage() {
                 cursor: loading ? 'not-allowed' : 'pointer',
                 background: loading
                   ? 'var(--bg4)'
-                  : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                  : 'linear-gradient(135deg, var(--orange) 0%, var(--orange) 100%)',
                 color: loading ? 'var(--text3)' : '#fff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
                 transition: 'all .2s',
-                boxShadow: loading ? 'none' : '0 4px 20px rgba(99,102,241,0.35)',
+                boxShadow: loading ? 'none' : '0 4px 20px rgba(232,84,28,0.35)',
                 fontFamily: 'var(--font)',
               }}
             >

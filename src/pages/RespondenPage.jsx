@@ -63,7 +63,7 @@ function Page0({ r }) {
             <Field label="Longitude" value={r.geotag.lon} Icon={MapPin} mono/>
           </div>
           <a href={r.geotag.url} target="_blank" rel="noreferrer"
-             style={{ display:'inline-flex', alignItems:'center', gap:6, marginTop:8, fontSize:11, color:'var(--indigo3)', textDecoration:'none' }}>
+             style={{ display:'inline-flex', alignItems:'center', gap:6, marginTop:8, fontSize:11, color:'var(--orange3)', textDecoration:'none' }}>
             <MapPin size={11}/> Lihat di Google Maps ↗
           </a>
         </div>
@@ -71,14 +71,14 @@ function Page0({ r }) {
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>
           Anggota Keluarga
-          <span style={{ marginLeft:8, color:'var(--indigo3)', fontWeight:600 }}>{r.jumlahAk} orang</span>
+          <span style={{ marginLeft:8, color:'var(--orange3)', fontWeight:600 }}>{r.jumlahAk} orang</span>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
           {(r.anggotaKeluarga||[]).map((ak, i) => (
             <div key={i} style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:i===0?'rgba(99,102,241,0.15)':'var(--bg4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <User size={13} color={i===0?'var(--indigo3)':'var(--text3)'} strokeWidth={2}/>
+                <div style={{ width:28, height:28, borderRadius:8, background:i===0?'rgba(232,84,28,0.15)':'var(--bg4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <User size={13} color={i===0?'var(--orange3)':'var(--text3)'} strokeWidth={2}/>
                 </div>
                 <div>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text1)' }}>{ak.nama}</div>
@@ -112,7 +112,7 @@ function Page0({ r }) {
             <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
               {r.kunjungan.map((k,i) => (
                 <div key={i} style={{ display:'flex', gap:10, alignItems:'center', fontSize:11, color:'var(--text2)' }}>
-                  <span style={{ color:'var(--indigo3)', fontFamily:'var(--mono)', fontSize:10, minWidth:16 }}>#{k.ke}</span>
+                  <span style={{ color:'var(--orange3)', fontFamily:'var(--mono)', fontSize:10, minWidth:16 }}>#{k.ke}</span>
                   <span style={{ fontFamily:'var(--mono)', fontSize:10 }}>{k.waktu}</span>
                   {k.catatan && k.catatan!=='—' && <span style={{ color:'var(--text3)' }}>— {k.catatan}</span>}
                 </div>
@@ -275,7 +275,7 @@ function DetailModal({ row, onClose }) {
           )}
           <div style={{ display:'flex', gap:0, padding:'12px 24px 0', borderBottom:'1px solid var(--border)' }}>
             {MODAL_PAGES.map((label,i) => (
-              <button key={i} onClick={() => setPage(i)} style={{ padding:'7px 14px', fontSize:11, fontWeight:page===i?600:400, color:page===i?'var(--indigo3)':'var(--text3)', background:'transparent', border:'none', cursor:'pointer', borderBottom:`2px solid ${page===i?'var(--indigo)':'transparent'}`, marginBottom:-1, transition:'all .15s', whiteSpace:'nowrap' }}>{label}</button>
+              <button key={i} onClick={() => setPage(i)} style={{ padding:'7px 14px', fontSize:11, fontWeight:page===i?600:400, color:page===i?'var(--orange3)':'var(--text3)', background:'transparent', border:'none', cursor:'pointer', borderBottom:`2px solid ${page===i?'var(--orange)':'transparent'}`, marginBottom:-1, transition:'all .15s', whiteSpace:'nowrap' }}>{label}</button>
             ))}
           </div>
         </div>
@@ -288,7 +288,7 @@ function DetailModal({ row, onClose }) {
           </button>
           <span style={{ fontSize:11, color:'var(--text3)' }}>{page+1} / {MODAL_PAGES.length}</span>
           {page < MODAL_PAGES.length-1
-            ? <button onClick={() => setPage(p=>p+1)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'rgba(99,102,241,0.15)', border:'1px solid rgba(99,102,241,0.3)', color:'var(--indigo3)' }}>Berikutnya <ChevronRight size={13} strokeWidth={2}/></button>
+            ? <button onClick={() => setPage(p=>p+1)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'rgba(232,84,28,0.15)', border:'1px solid rgba(232,84,28,0.3)', color:'var(--orange3)' }}>Berikutnya <ChevronRight size={13} strokeWidth={2}/></button>
             : <button onClick={onClose} style={{ padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:500, cursor:'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)' }}>Tutup</button>
           }
         </div>
@@ -419,7 +419,7 @@ export default function RespondenPage() {
                       </td>
                       <td style={{ padding:'9px 10px' }}>
                         {r.kbli
-                          ? <span style={{ fontFamily:'var(--mono)', fontSize:11, color:'var(--indigo3)' }}>{r.kbli}</span>
+                          ? <span style={{ fontFamily:'var(--mono)', fontSize:11, color:'var(--orange3)' }}>{r.kbli}</span>
                           : r.namaUsaha && r.namaUsaha!=='—'
                             ? <span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>kosong</span>
                             : <span style={{ color:'var(--text4)' }}>—</span>}
@@ -451,7 +451,7 @@ export default function RespondenPage() {
                 const prev = pageNums[i-1];
                 return [
                   prev && pg-prev>1 ? <span key={`e${pg}`} style={{ fontSize:11, color:'var(--text4)', padding:'0 2px' }}>…</span> : null,
-                  <button key={pg} onClick={() => goPage(pg)} style={{ width:30, height:30, fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:currentPage===pg?'rgba(99,102,241,0.2)':'var(--bg3)', color:currentPage===pg?'var(--indigo3)':'var(--text2)', cursor:'pointer', fontWeight:currentPage===pg?600:400 }}>{pg}</button>
+                  <button key={pg} onClick={() => goPage(pg)} style={{ width:30, height:30, fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:currentPage===pg?'rgba(232,84,28,0.2)':'var(--bg3)', color:currentPage===pg?'var(--orange3)':'var(--text2)', cursor:'pointer', fontWeight:currentPage===pg?600:400 }}>{pg}</button>
                 ];
               })}
               <button onClick={() => goPage(currentPage+1)} disabled={currentPage===totalPages} style={{ padding:'5px 8px', fontSize:11, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg3)', color:currentPage===totalPages?'var(--text4)':'var(--text2)', cursor:currentPage===totalPages?'default':'pointer', display:'flex', alignItems:'center', gap:2 }}>Next<ChevronRight size={11} strokeWidth={2}/></button>

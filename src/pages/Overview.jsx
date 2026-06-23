@@ -1,3 +1,4 @@
+import React from 'react';
 // src/pages/Overview.jsx — versi data real dari MongoDB
 import {
   BarChart2, CheckCircle, XCircle, Clock,
@@ -7,6 +8,28 @@ import {
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, SectionTitle, ProgressBar, Badge, PulseDot, statusColor, statusVariant } from '../components/ui.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
+
+// Animated counter — ease-out cubic
+function useCountUp(target, duration=700) {
+  const [val, setVal] = React.useState(0);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const t = parseFloat(target)||0;
+    ref.current = null;
+    const tick = ts => {
+      if (!ref.current) ref.current = ts;
+      const p = Math.min((ts-ref.current)/duration,1);
+      setVal(Math.round(t*(1-Math.pow(1-p,3))));
+      if (p<1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [target]);
+  return val;
+}
+function AnimCount({ v }) {
+  const n = useCountUp(v);
+  return <>{n.toLocaleString('id')}</>;
+}
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 
 // helper: bandingkan kecamatan case-insensitive
@@ -30,8 +53,8 @@ function MetricCard({ icon: Icon, label, value, sub, subColor, iconBg, iconColor
   return (
     <Card style={{ animationDelay: `${delay}ms` }} className="fade-up">
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
-        <div style={{ width:36, height:36, borderRadius:10, background: iconBg||'rgba(99,102,241,0.12)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <Icon size={17} color={iconColor||'var(--indigo2)'} strokeWidth={1.8} />
+        <div style={{ width:36, height:36, borderRadius:10, background: iconBg||'rgba(232,84,28,0.12)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <Icon size={17} color={iconColor||'var(--orange2)'} strokeWidth={1.8} />
         </div>
         {trend === 'up'   && <TrendingUp   size={13} color="#10b981" strokeWidth={2} />}
         {trend === 'down' && <TrendingDown  size={13} color="#f43f5e" strokeWidth={2} />}
@@ -48,7 +71,7 @@ function AnomalyRow({ item }) {
     ? { dot:'#f43f5e', bg:'rgba(244,63,94,0.05)', border:'rgba(244,63,94,0.14)' }
     : item.sev==='warn'
     ? { dot:'#f59e0b', bg:'rgba(245,158,11,0.05)', border:'rgba(245,158,11,0.14)' }
-    : { dot:'#818cf8', bg:'rgba(99,102,241,0.05)', border:'rgba(99,102,241,0.14)' };
+    : { dot:'var(--orange3)', bg:'rgba(232,84,28,0.05)', border:'rgba(232,84,28,0.14)' };
   return (
     <div style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px', background:c.bg, border:`1px solid ${c.border}`, borderRadius:10 }}>
       <div style={{ paddingTop:2 }}><PulseDot color={c.dot} size={7} /></div>
@@ -73,11 +96,11 @@ function Heatmap({ data }) {
   const cell = (v) => {
     if (!v) return { bg:'var(--bg4)', color:'var(--text4)' };
     const p = v/max;
-    if (p<0.2) return { bg:'rgba(99,102,241,0.12)', color:'var(--text3)' };
-    if (p<0.4) return { bg:'rgba(99,102,241,0.26)', color:'var(--text2)' };
-    if (p<0.6) return { bg:'rgba(99,102,241,0.44)', color:'var(--text1)' };
-    if (p<0.8) return { bg:'rgba(99,102,241,0.65)', color:'#fff' };
-    return { bg:'#5a5cf8', color:'#fff' };
+    if (p<0.2) return { bg:'rgba(232,84,28,0.12)', color:'var(--text3)' };
+    if (p<0.4) return { bg:'rgba(232,84,28,0.26)', color:'var(--text2)' };
+    if (p<0.6) return { bg:'rgba(232,84,28,0.44)', color:'var(--text1)' };
+    if (p<0.8) return { bg:'rgba(232,84,28,0.65)', color:'#fff' };
+    return { bg:'var(--orange2)', color:'#fff' };
   };
   return (
     <div style={{ overflowX:'auto' }}>
@@ -115,7 +138,7 @@ function ChartTooltip({ active, payload, label }) {
   return (
     <div style={{ background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:8, padding:'8px 12px', fontSize:11 }}>
       <div style={{ color:'var(--text2)', marginBottom:2 }}>{label}</div>
-      <div style={{ color:'var(--indigo3)', fontWeight:600, fontFamily:'var(--mono)' }}>{payload[0].value} records</div>
+      <div style={{ color:'var(--orange3)', fontWeight:600, fontFamily:'var(--mono)' }}>{payload[0].value} records</div>
     </div>
   );
 }
@@ -178,12 +201,12 @@ export default function Overview() {
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       {/* Metric row */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12 }}>
-        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={(summaryF.total||0).toLocaleString('id')}     sub={isFiltered ? selectedKec.split(' ').map(w=>w[0]+w.slice(1).toLowerCase()).join(' ') : `${summary.kecamatan||0} kecamatan`} trend="up" />
-        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={(summaryF.submitted||0).toLocaleString('id')} sub={`${summaryF.total?Math.round((summaryF.submitted||0)/summaryF.total*100):0}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
-        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={(summaryF.approved||0).toLocaleString('id')}  sub={`${summaryF.total?Math.round((summaryF.approved||0)/summaryF.total*100):0}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
-        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={(summaryF.rejected||0).toLocaleString('id')}  sub={`${summaryF.total?Math.round((summaryF.rejected||0)/summaryF.total*100):0}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
-        <MetricCard delay={200} icon={Building2}   label="Usaha terdata"     value={(summary.usaha||0).toLocaleString('id')}     sub={`${summary.kbliMissing||0} tanpa KBLI`} subColor="var(--amber)" iconBg="rgba(167,139,250,0.1)" iconColor="var(--purple)" />
-        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={anomaliF.length}                             sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
+        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={<AnimCount v={summaryF.total||0}/>}     sub={isFiltered ? selectedKec.split(' ').map(w=>w[0]+w.slice(1).toLowerCase()).join(' ') : `${summary.kecamatan||0} kecamatan`} trend="up" />
+        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={<AnimCount v={summaryF.submitted||0}/>} sub={`${summaryF.total?Math.round((summaryF.submitted||0)/summaryF.total*100):0}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
+        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={<AnimCount v={summaryF.approved||0}/>}  sub={`${summaryF.total?Math.round((summaryF.approved||0)/summaryF.total*100):0}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
+        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={<AnimCount v={summaryF.rejected||0}/>}  sub={`${summaryF.total?Math.round((summaryF.rejected||0)/summaryF.total*100):0}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
+        <MetricCard delay={200} icon={Building2}   label="Usaha terdata"     value={<AnimCount v={summary.usaha||0}/>}     sub={`${summary.kbliMissing||0} tanpa KBLI`} subColor="var(--amber)" iconBg="rgba(27,63,139,0.1)" iconColor="var(--blue3)" />
+        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={<AnimCount v={anomaliF.length}/>}                             sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
       </div>
 
       {/* Middle */}
@@ -215,11 +238,11 @@ export default function Overview() {
                 <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
                     <span style={{ fontSize:11, color:'var(--text2)' }}>KBLI terisi</span>
-                    <span style={{ fontSize:11, fontWeight:600, color:'var(--indigo3)', fontFamily:'var(--mono)' }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:'var(--orange3)', fontFamily:'var(--mono)' }}>
                       {(summary.usaha - (summary.kbliMissing||0))} / {summary.usaha}
                     </span>
                   </div>
-                  <ProgressBar pct={((summary.usaha-(summary.kbliMissing||0))/summary.usaha)*100} color="var(--indigo)" delay={360}/>
+                  <ProgressBar pct={((summary.usaha-(summary.kbliMissing||0))/summary.usaha)*100} color="var(--orange)" delay={360}/>
                   <div style={{ fontSize:10, color:'var(--amber)', marginTop:8, display:'flex', alignItems:'center', gap:4 }}>
                     <AlertTriangle size={10} strokeWidth={2} color="var(--amber)"/>
                     {summary.kbliMissing||0} usaha masih tanpa KBLI
@@ -234,14 +257,14 @@ export default function Overview() {
                 <AreaChart data={dailyTrend} margin={{ top:4, right:0, bottom:0, left:-30 }}>
                   <defs>
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3}/>
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0}/>
+                      <stop offset="0%" stopColor="var(--orange)" stopOpacity={0.3}/>
+                      <stop offset="100%" stopColor="var(--orange)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="day" tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
                   <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
                   <Tooltip content={<ChartTooltip/>}/>
-                  <Area type="monotone" dataKey="n" stroke="#6366f1" strokeWidth={1.8} fill="url(#areaGrad)" dot={false}/>
+                  <Area type="monotone" dataKey="n" stroke="var(--orange)" strokeWidth={1.8} fill="url(#areaGrad)" dot={false}/>
                 </AreaChart>
               </ResponsiveContainer>
             </Card>

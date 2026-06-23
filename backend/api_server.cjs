@@ -293,6 +293,69 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/evaluasi/detail ──────────────────────────────────────────────
+// Query: email, kec, desa, status, page (1-based), limit (default 20)
+// Return: { data[], total, totalPages, page }
+app.get('/api/evaluasi/detail', verifyToken, async (req, res) => {
+  try {
+    const { email, kec, desa, status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    // Query pakai pencacahEmail (email pencacah asli, meski currentUser sudah bergeser ke pengawas)
+    if (email)  filter.pencacahEmail = email;
+    if (kec)    filter.kecamatan     = { $regex: new RegExp(`^${kec}$`, 'i') };
+    if (desa)   filter.desa          = { $regex: new RegExp(`^${desa}$`, 'i') };
+    if (status) filter.status        = status;
+
+    const pg  = Math.max(1, parseInt(page));
+    const lim = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pg - 1) * lim;
+
+    const [data, total] = await Promise.all([
+      db.collection('assignment_detail')
+        .find(filter, { projection: { _id: 0 } })
+        .sort({ kecamatan: 1, desa: 1, slsCode: 1, subSlsCode: 1 })
+        .skip(skip).limit(lim).toArray(),
+      db.collection('assignment_detail').countDocuments(filter),
+    ]);
+
+    res.json({ data, total, totalPages: Math.ceil(total / lim), page: pg });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/evaluasi/desa-list ───────────────────────────────────────────
+// Query: email, kec — untuk populate dropdown desa filter
+app.get('/api/evaluasi/desa-list', verifyToken, async (req, res) => {
+  try {
+    const { email, kec } = req.query;
+    const coll = req.query.role === 'Pengawas'
+      ? 'assignment_pengawas' : 'assignment_pencacah';
+    const doc = await db.collection(coll)
+      .findOne({ email }, { projection: { perDesa: 1 } });
+    if (!doc) return res.json([]);
+    let list = doc.perDesa || [];
+    if (kec) list = list.filter(d =>
+      d.kecamatan.toLowerCase() === kec.toLowerCase());
+    // Sort by desa name
+    list.sort((a, b) => a.desa.localeCompare(b.desa));
+    res.json(list);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
+// ── GET /api/evaluasi/snapshots ───────────────────────────────────────────
+// Return history snapshot uploads untuk chart progress
+app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {
+  try {
+    const snaps = await db.collection('assignment_snapshots')
+      .find({}, { projection: { _id:0, snapshotAt:1, uploadedAt:1,
+                                 'summary.approved':1, 'summary.submit':1,
+                                 'summary.open':1, 'summary.reject':1,
+                                 gradeDistPencacah:1, gradeDistPengawas:1 }})
+      .sort({ snapshotAt: 1 }).toArray();
+    res.json(snaps);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.command({ ping: 1 });
