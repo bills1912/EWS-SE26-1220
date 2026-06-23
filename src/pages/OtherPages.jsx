@@ -9,6 +9,9 @@ import { Card, SectionTitle, ProgressBar, Badge, PulseDot, statusColor, statusLa
 import { useStatistik } from '../hooks/useEWSData.js';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 
+// helper: bandingkan kecamatan case-insensitive
+const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
+
 function Skeleton({ h=80 }) {
   return <div style={{ height:h, borderRadius:8, background:'linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }}/>;
 }
@@ -47,7 +50,7 @@ export function AnomalyPage() {
   const { selectedKec } = useKecamatan();
   if (loading) return <Card><Skeleton h={400}/></Card>;
   const allAnomali = stat?.anomali || [];
-  const anomali = selectedKec !== 'all' ? allAnomali.filter(a => a.kec === selectedKec) : allAnomali;
+  const anomali = selectedKec !== 'all' ? allAnomali.filter(a => matchKec(a.kec, selectedKec)) : allAnomali;
   const crit = anomali.filter(a=>a.sev==='crit');
   const warn = anomali.filter(a=>a.sev==='warn');
   const info = anomali.filter(a=>a.sev==='info');
@@ -68,9 +71,9 @@ export function KecepatanPage() {
   const allPace    = stat?.pace    || [];
   const allHeatmap = stat?.heatmap || { days:[], rows:[] };
   const isFiltered = selectedKec !== 'all';
-  const pace    = isFiltered ? allPace.filter(p => p.kec === selectedKec)    : allPace;
+  const pace    = isFiltered ? allPace.filter(p => matchKec(p.kec, selectedKec))    : allPace;
   const heatmap = isFiltered
-    ? { days: allHeatmap.days, rows: allHeatmap.rows.filter(r => r.kec === selectedKec) }
+    ? { days: allHeatmap.days, rows: allHeatmap.rows.filter(r => matchKec(r.kec, selectedKec)) }
     : allHeatmap;
   const max = heatmap.rows.length > 0 ? Math.max(...heatmap.rows.flatMap(r=>r.vals), 1) : 1;
   const cell = v => {
@@ -128,7 +131,7 @@ export function TargetPage() {
   const { selectedKec } = useKecamatan();
   if (loading) return <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>{Array(12).fill(0).map((_,i)=><Card key={i}><Skeleton h={120}/></Card>)}</div>;
   const allPace = stat?.pace || [];
-  const pace = selectedKec !== 'all' ? allPace.filter(p => p.kec === selectedKec) : allPace;
+  const pace = selectedKec !== 'all' ? allPace.filter(p => matchKec(p.kec, selectedKec)) : allPace;
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
       {pace.map((p,i) => (
@@ -215,7 +218,7 @@ export function PetugasPage() {
   const { selectedKec } = useKecamatan();
   if (loading) return <Card><Skeleton h={400}/></Card>;
   const allPetugas = stat?.petugas || [];
-  const petugas = selectedKec !== 'all' ? allPetugas.filter(p => p.kec === selectedKec) : allPetugas;
+  const petugas = selectedKec !== 'all' ? allPetugas.filter(p => matchKec(p.kec, selectedKec)) : allPetugas;
   const sorted  = [...petugas].sort((a,b) => { const o={crit:0,warn:1,ok:2}; return o[a.flag]-o[b.flag]; });
   return (
     <Card>

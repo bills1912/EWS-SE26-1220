@@ -19,6 +19,9 @@ import {
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 
+// helper: bandingkan kecamatan case-insensitive
+const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
+
 const TOKEN_KEY = 'ews_token';
 const getBase   = () => (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
@@ -227,7 +230,9 @@ function PetugasTable({ data, role, selectedKec, search, sortBy, setSortBy, sort
 
   let filtered = data.filter(p => {
     if (selectedKec !== 'all') {
-      const kd = p.perKecamatan?.[selectedKec];
+      // case-insensitive key lookup
+      const kecKey = Object.keys(p.perKecamatan || {}).find(k => k.toLowerCase() === selectedKec.toLowerCase());
+      const kd = kecKey ? p.perKecamatan[kecKey] : null;
       if (!kd || kd.total === 0) return false;
     }
     if (search) {
@@ -240,7 +245,8 @@ function PetugasTable({ data, role, selectedKec, search, sortBy, setSortBy, sort
   // Recompute stats jika filter kecamatan aktif
   if (selectedKec !== 'all') {
     filtered = filtered.map(p => {
-      const kd = p.perKecamatan?.[selectedKec] || {};
+      const kecKey = Object.keys(p.perKecamatan || {}).find(k => k.toLowerCase() === selectedKec.toLowerCase());
+      const kd = (kecKey ? p.perKecamatan[kecKey] : null) || {};
       const tot = kd.total || 0;
       const appr = kd.approved || 0;
       return { ...p, total: tot, approved: appr, submit: kd.submit||0, reject: kd.reject||0, open: kd.open||0,

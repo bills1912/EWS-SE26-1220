@@ -9,6 +9,9 @@ import { Card, SectionTitle, ProgressBar, Badge, PulseDot, statusColor, statusVa
 import { useStatistik } from '../hooks/useEWSData.js';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 
+// helper: bandingkan kecamatan case-insensitive
+const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
+
 // ── Loading skeleton ──────────────────────────────────────────────────────
 function Skeleton({ w = '100%', h = 20, style = {} }) {
   return (
@@ -156,10 +159,10 @@ export default function Overview() {
   const isFiltered = selectedKec !== 'all';
 
   // Filter client-side per kecamatan
-  const anomaliF    = isFiltered ? anomali.filter(a => a.kec === selectedKec) : anomali;
-  const paceF       = isFiltered ? pace.filter(p => p.kec === selectedKec)    : pace;
+  const anomaliF    = isFiltered ? anomali.filter(a => matchKec(a.kec, selectedKec)) : anomali;
+  const paceF       = isFiltered ? pace.filter(p => matchKec(p.kec, selectedKec))    : pace;
   const heatmapF    = isFiltered
-    ? { days: heatmap.days, rows: heatmap.rows.filter(r => r.kec === selectedKec) }
+    ? { days: heatmap.days, rows: heatmap.rows.filter(r => matchKec(r.kec, selectedKec)) }
     : heatmap;
   // Summary per-kecamatan dari pace
   const kecData     = isFiltered ? paceF[0] : null;

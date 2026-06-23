@@ -1,20 +1,31 @@
 /**
  * src/context/KecamatanContext.jsx
- * =================================
- * Context global filter kecamatan — satu pilihan berlaku ke semua halaman.
+ * ─────────────────────────────────
+ * PENTING: nama kecamatan harus EXACT MATCH dengan field "kec" di MongoDB
+ * (disimpan dalam format Titlecase oleh upload_to_mongo.py via kec_order list)
  */
 import { createContext, useContext, useState } from 'react';
 
 const KecamatanContext = createContext(null);
 
-const KECAMATAN_LIST = [
-  'PADANG BOLAK', 'SIMANGAMBAT', 'PORTIBI', 'HALONGONAN TIMUR',
-  'DOLOK', 'HALONGONAN', 'BATANG ONANG', 'DOLOK SIGOMPULON',
-  'PADANG BOLAK JULU', 'PADANG BOLAK TENGGARA', 'UJUNG BATU', 'HULU SIHAPAS',
+// Titlecase — HARUS sama persis dengan kec_order di upload_to_mongo.py
+export const KECAMATAN_LIST = [
+  'Padang Bolak',
+  'Simangambat',
+  'Portibi',
+  'Halongonan Timur',
+  'Dolok',
+  'Halongonan',
+  'Batang Onang',
+  'Dolok Sigompulon',
+  'Padang Bolak Julu',
+  'Padang Bolak Tenggara',
+  'Ujung Batu',
+  'Hulu Sihapas',
 ];
 
 export function KecamatanProvider({ children }) {
-  const [selectedKec, setSelectedKec] = useState('all'); // 'all' atau nama kecamatan
+  const [selectedKec, setSelectedKec] = useState('all');
   return (
     <KecamatanContext.Provider value={{ selectedKec, setSelectedKec, KECAMATAN_LIST }}>
       {children}

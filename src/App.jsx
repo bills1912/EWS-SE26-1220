@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { Ticker, Topbar } from './components/Topbar.jsx';
 import Overview from './pages/Overview.jsx';
 import { AnomalyPage } from './pages/AnomalyPage.jsx';
-import { KecepatanPage, TargetPage, KBLIPage, PetugasPage } from './pages/OtherPages.jsx';
+import { TargetPage, KBLIPage } from './pages/OtherPages.jsx';
 import RespondenPage from './pages/RespondenPage.jsx';
 import { EvaluasiPage } from './pages/EvaluasiPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
@@ -17,10 +17,8 @@ import { KecamatanProvider } from './context/KecamatanContext.jsx';
 const ALL_PAGES = {
   Overview:  <Overview />,
   Anomali:   <AnomalyPage />,
-  Kecepatan: <KecepatanPage />,
   Target:    <TargetPage />,
   KBLI:      <KBLIPage />,
-  Petugas:   <PetugasPage />,
   Responden: <RespondenPage />,
   Evaluasi:  <EvaluasiPage />,
 };
@@ -70,7 +68,7 @@ export default function App() {
 
   // Ambil daftar tab yang boleh diakses dari token user
   // Semua pegawai BPS mendapat akses penuh ke semua tab
-  const allowedTabs = ['Overview', 'Anomali', 'Kecepatan', 'Target', 'KBLI', 'Petugas', 'Responden', 'Evaluasi'];
+  const allowedTabs = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi'];
 
   // Pastikan tab aktif selalu valid (misalnya setelah logout/login ulang dengan role berbeda)
   useEffect(() => {

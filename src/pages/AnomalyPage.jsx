@@ -12,6 +12,9 @@ import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 
+// helper: bandingkan kecamatan case-insensitive
+const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
+
 // ── Skeleton ──────────────────────────────────────────────────────────────
 function Skeleton({ h = 80 }) {
   return (
@@ -299,14 +302,14 @@ export function AnomalyPage() {
   const isFiltered = selectedKec !== 'all';
 
   const allAnomali = stat?.anomali || [];
-  const anomali = isFiltered ? allAnomali.filter(a => a.kec === selectedKec) : allAnomali;
+  const anomali = isFiltered ? allAnomali.filter(a => matchKec(a.kec, selectedKec)) : allAnomali;
   const crit    = anomali.filter(a => a.sev === 'crit');
   const warn    = anomali.filter(a => a.sev === 'warn');
 
   // Filter outlier points per kecamatan (keep boxplot stats, hanya filter titik outlier)
   const filterOutlierSet = (od) => {
     if (!od || !isFiltered) return od;
-    return { ...od, outliers: (od.outliers||[]).filter(o => o.kec === selectedKec) };
+    return { ...od, outliers: (od.outliers||[]).filter(o => matchKec(o.kec, selectedKec)) };
   };
   const outlierSets = [
     { data: filterOutlierSet(stat.outlierDurasi),     title: 'Distribusi durasi pengisian kuesioner (menit)' },
