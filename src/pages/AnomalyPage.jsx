@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
+import { useKecamatan } from '../context/KecamatanContext.jsx';
 
 // ── Skeleton ──────────────────────────────────────────────────────────────
 function Skeleton({ h = 80 }) {
@@ -279,6 +280,7 @@ function AnomalyCard({ item }) {
 // ══════════════════════════════════════════════════════════════════════════
 export function AnomalyPage() {
   const { data: stat, loading, error } = useStatistik();
+  const { selectedKec } = useKecamatan();
 
   if (loading) return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -294,14 +296,22 @@ export function AnomalyPage() {
     </Card>
   );
 
-  const anomali = stat?.anomali || [];
+  const isFiltered = selectedKec !== 'all';
+
+  const allAnomali = stat?.anomali || [];
+  const anomali = isFiltered ? allAnomali.filter(a => a.kec === selectedKec) : allAnomali;
   const crit    = anomali.filter(a => a.sev === 'crit');
   const warn    = anomali.filter(a => a.sev === 'warn');
 
+  // Filter outlier points per kecamatan (keep boxplot stats, hanya filter titik outlier)
+  const filterOutlierSet = (od) => {
+    if (!od || !isFiltered) return od;
+    return { ...od, outliers: (od.outliers||[]).filter(o => o.kec === selectedKec) };
+  };
   const outlierSets = [
-    { data: stat.outlierDurasi,     title: 'Distribusi durasi pengisian kuesioner (menit)' },
-    { data: stat.outlierPendapatan, title: 'Distribusi pendapatan usaha (juta Rp/bulan)' },
-    { data: stat.outlierJumlahAk,   title: 'Distribusi jumlah anggota keluarga (orang)' },
+    { data: filterOutlierSet(stat.outlierDurasi),     title: 'Distribusi durasi pengisian kuesioner (menit)' },
+    { data: filterOutlierSet(stat.outlierPendapatan), title: 'Distribusi pendapatan usaha (juta Rp/bulan)' },
+    { data: filterOutlierSet(stat.outlierJumlahAk),   title: 'Distribusi jumlah anggota keluarga (orang)' },
   ].filter(s => s.data);
 
   return (

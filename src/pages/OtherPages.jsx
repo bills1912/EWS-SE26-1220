@@ -7,6 +7,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Card, SectionTitle, ProgressBar, Badge, PulseDot, statusColor, statusLabel, statusVariant } from '../components/ui.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
+import { useKecamatan } from '../context/KecamatanContext.jsx';
 
 function Skeleton({ h=80 }) {
   return <div style={{ height:h, borderRadius:8, background:'linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }}/>;
@@ -43,8 +44,10 @@ function AnomalyCard({ item }) {
 
 export function AnomalyPage() {
   const { data: stat, loading } = useStatistik();
+  const { selectedKec } = useKecamatan();
   if (loading) return <Card><Skeleton h={400}/></Card>;
-  const anomali = stat?.anomali || [];
+  const allAnomali = stat?.anomali || [];
+  const anomali = selectedKec !== 'all' ? allAnomali.filter(a => a.kec === selectedKec) : allAnomali;
   const crit = anomali.filter(a=>a.sev==='crit');
   const warn = anomali.filter(a=>a.sev==='warn');
   const info = anomali.filter(a=>a.sev==='info');
@@ -60,9 +63,15 @@ export function AnomalyPage() {
 // ── KECEPATAN PAGE ──────────────────────────────────────────────────────────
 export function KecepatanPage() {
   const { data: stat, loading } = useStatistik();
+  const { selectedKec } = useKecamatan();
   if (loading) return <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}><Card><Skeleton h={300}/></Card><Card><Skeleton h={300}/></Card></div>;
-  const pace    = stat?.pace    || [];
-  const heatmap = stat?.heatmap || { days:[], rows:[] };
+  const allPace    = stat?.pace    || [];
+  const allHeatmap = stat?.heatmap || { days:[], rows:[] };
+  const isFiltered = selectedKec !== 'all';
+  const pace    = isFiltered ? allPace.filter(p => p.kec === selectedKec)    : allPace;
+  const heatmap = isFiltered
+    ? { days: allHeatmap.days, rows: allHeatmap.rows.filter(r => r.kec === selectedKec) }
+    : allHeatmap;
   const max = heatmap.rows.length > 0 ? Math.max(...heatmap.rows.flatMap(r=>r.vals), 1) : 1;
   const cell = v => {
     if (!v) return { bg:'var(--bg4)', color:'var(--text4)' };
@@ -116,8 +125,10 @@ export function KecepatanPage() {
 // ── TARGET PAGE ─────────────────────────────────────────────────────────────
 export function TargetPage() {
   const { data: stat, loading } = useStatistik();
+  const { selectedKec } = useKecamatan();
   if (loading) return <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>{Array(12).fill(0).map((_,i)=><Card key={i}><Skeleton h={120}/></Card>)}</div>;
-  const pace = stat?.pace || [];
+  const allPace = stat?.pace || [];
+  const pace = selectedKec !== 'all' ? allPace.filter(p => p.kec === selectedKec) : allPace;
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
       {pace.map((p,i) => (
@@ -201,12 +212,14 @@ export function KBLIPage() {
 const FLAG_CFG = { crit:{label:'⚠ Anomali',variant:'crit'}, warn:{label:'Perlu cek',variant:'warn'}, ok:{label:'Normal',variant:'ok'} };
 export function PetugasPage() {
   const { data: stat, loading } = useStatistik();
+  const { selectedKec } = useKecamatan();
   if (loading) return <Card><Skeleton h={400}/></Card>;
-  const petugas = stat?.petugas || [];
+  const allPetugas = stat?.petugas || [];
+  const petugas = selectedKec !== 'all' ? allPetugas.filter(p => p.kec === selectedKec) : allPetugas;
   const sorted  = [...petugas].sort((a,b) => { const o={crit:0,warn:1,ok:2}; return o[a.flag]-o[b.flag]; });
   return (
     <Card>
-      <SectionTitle icon={Users} right={<span style={{ fontSize:10, color:'var(--text3)' }}>{petugas.length} petugas</span>}>Monitor petugas lapangan</SectionTitle>
+      <SectionTitle icon={Users} right={<span style={{ fontSize:10, color:'var(--text3)' }}>{sorted.length} petugas{selectedKec !== 'all' ? ` di ${selectedKec.split(' ').map(w=>w[0]+w.slice(1).toLowerCase()).join(' ')}` : ''}</span>}>Monitor petugas lapangan</SectionTitle>
       <div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>

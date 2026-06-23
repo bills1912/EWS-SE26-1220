@@ -8,8 +8,10 @@ import Overview from './pages/Overview.jsx';
 import { AnomalyPage } from './pages/AnomalyPage.jsx';
 import { KecepatanPage, TargetPage, KBLIPage, PetugasPage } from './pages/OtherPages.jsx';
 import RespondenPage from './pages/RespondenPage.jsx';
+import { EvaluasiPage } from './pages/EvaluasiPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import { useAuth } from './context/AuthContext.jsx';
+import { KecamatanProvider } from './context/KecamatanContext.jsx';
 
 // Semua halaman yang tersedia
 const ALL_PAGES = {
@@ -20,6 +22,7 @@ const ALL_PAGES = {
   KBLI:      <KBLIPage />,
   Petugas:   <PetugasPage />,
   Responden: <RespondenPage />,
+  Evaluasi:  <EvaluasiPage />,
 };
 
 function Footer({ role }) {
@@ -67,7 +70,7 @@ export default function App() {
 
   // Ambil daftar tab yang boleh diakses dari token user
   // Semua pegawai BPS mendapat akses penuh ke semua tab
-  const allowedTabs = ['Overview', 'Anomali', 'Kecepatan', 'Target', 'KBLI', 'Petugas', 'Responden'];
+  const allowedTabs = ['Overview', 'Anomali', 'Kecepatan', 'Target', 'KBLI', 'Petugas', 'Responden', 'Evaluasi'];
 
   // Pastikan tab aktif selalu valid (misalnya setelah logout/login ulang dengan role berbeda)
   useEffect(() => {
@@ -87,6 +90,7 @@ export default function App() {
   if (!isAuthenticated) return <LoginPage/>;
 
   return (
+    <KecamatanProvider>
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 100 }}>
         <Ticker/>
@@ -97,5 +101,6 @@ export default function App() {
       </main>
       <Footer role={user?.role}/>
     </div>
+    </KecamatanProvider>
   );
 }

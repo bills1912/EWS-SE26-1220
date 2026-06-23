@@ -1,5 +1,5 @@
 // src/pages/RespondenPage.jsx — versi data real dari MongoDB
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, X, AlertTriangle, CheckCircle, Clock,
@@ -9,7 +9,8 @@ import {
   Building, Activity, Leaf,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge } from '../components/ui.jsx';
-import { useResponden, useKecamatan } from '../hooks/useEWSData.js';
+import { useResponden, useKecamatan as useKecamatanData } from '../hooks/useEWSData.js';
+import { useKecamatan as useKecamatanCtx } from '../context/KecamatanContext.jsx';
 
 const STATUS_CFG = {
   APPROVED:  { variant:'ok',      label:'Approved',  Icon:CheckCircle },
@@ -306,7 +307,14 @@ export default function RespondenPage() {
   const [currentPage, setCurrentPage]     = useState(1);
   const [selected, setSelected]           = useState(null);
 
-  const { data: kecList } = useKecamatan();
+  // Sync dengan global kecamatan filter dari Topbar
+  const { selectedKec: globalKec } = useKecamatanCtx();
+  useEffect(() => {
+    setFilterKec(globalKec);
+    setCurrentPage(1);
+  }, [globalKec]);
+
+  const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
 
   const queryParams = useMemo(() => ({

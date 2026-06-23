@@ -7,6 +7,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, SectionTitle, ProgressBar, Badge, PulseDot, statusColor, statusVariant } from '../components/ui.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
+import { useKecamatan } from '../context/KecamatanContext.jsx';
 
 // ── Loading skeleton ──────────────────────────────────────────────────────
 function Skeleton({ w = '100%', h = 20, style = {} }) {
@@ -119,6 +120,7 @@ function ChartTooltip({ active, payload, label }) {
 // ══════════════════════════════════════════════════════════════════════════
 export default function Overview() {
   const { data: stat, loading, error } = useStatistik();
+  const { selectedKec } = useKecamatan();  // ← HARUS sebelum early return
 
   if (loading) return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
@@ -151,26 +153,42 @@ export default function Overview() {
   const pace        = stat?.pace        || [];
   const heatmap     = stat?.heatmap     || { days:[], rows:[] };
   const dailyTrend  = stat?.dailyTrend  || [];
-  const critCount   = anomali.filter(a => a.sev === 'crit').length;
+  const isFiltered = selectedKec !== 'all';
+
+  // Filter client-side per kecamatan
+  const anomaliF    = isFiltered ? anomali.filter(a => a.kec === selectedKec) : anomali;
+  const paceF       = isFiltered ? pace.filter(p => p.kec === selectedKec)    : pace;
+  const heatmapF    = isFiltered
+    ? { days: heatmap.days, rows: heatmap.rows.filter(r => r.kec === selectedKec) }
+    : heatmap;
+  // Summary per-kecamatan dari pace
+  const kecData     = isFiltered ? paceF[0] : null;
+  const summaryF    = isFiltered && kecData
+    ? { ...summary, approved: kecData.n, total: kecData.target,
+        submitted: kecData.target - kecData.n - (kecData.reject||0),
+        rejected:  kecData.reject||0 }
+    : summary;
+
+  const critCount   = anomaliF.filter(a => a.sev === 'crit').length;
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       {/* Metric row */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12 }}>
-        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={(summary.total||0).toLocaleString('id')}     sub={`${summary.kecamatan||0} kecamatan`} trend="up" />
-        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={(summary.submitted||0).toLocaleString('id')} sub={`${summary.total?Math.round((summary.submitted||0)/summary.total*100):0}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
-        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={(summary.approved||0).toLocaleString('id')}  sub={`${summary.total?Math.round((summary.approved||0)/summary.total*100):0}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
-        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={(summary.rejected||0).toLocaleString('id')}  sub={`${summary.total?Math.round((summary.rejected||0)/summary.total*100):0}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
+        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={(summaryF.total||0).toLocaleString('id')}     sub={isFiltered ? selectedKec.split(' ').map(w=>w[0]+w.slice(1).toLowerCase()).join(' ') : `${summary.kecamatan||0} kecamatan`} trend="up" />
+        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={(summaryF.submitted||0).toLocaleString('id')} sub={`${summaryF.total?Math.round((summaryF.submitted||0)/summaryF.total*100):0}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
+        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={(summaryF.approved||0).toLocaleString('id')}  sub={`${summaryF.total?Math.round((summaryF.approved||0)/summaryF.total*100):0}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
+        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={(summaryF.rejected||0).toLocaleString('id')}  sub={`${summaryF.total?Math.round((summaryF.rejected||0)/summaryF.total*100):0}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
         <MetricCard delay={200} icon={Building2}   label="Usaha terdata"     value={(summary.usaha||0).toLocaleString('id')}     sub={`${summary.kbliMissing||0} tanpa KBLI`} subColor="var(--amber)" iconBg="rgba(167,139,250,0.1)" iconColor="var(--purple)" />
-        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={summary.anomali||0}                         sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
+        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={anomaliF.length}                             sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
       </div>
 
       {/* Middle */}
       <div style={{ display:'grid', gridTemplateColumns:'3fr 2fr', gap:14 }}>
         <Card>
-          <SectionTitle icon={ShieldAlert} right={<Badge variant="crit">{anomali.length} peringatan</Badge>}>Peringatan aktif</SectionTitle>
+          <SectionTitle icon={ShieldAlert} right={<Badge variant="crit">{anomaliF.length} peringatan</Badge>}>Peringatan aktif</SectionTitle>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {anomali.slice(0,5).map(a => <AnomalyRow key={a.id} item={a}/>)}
+            {anomaliF.slice(0,5).map(a => <AnomalyRow key={a.id} item={a}/>)}
           </div>
         </Card>
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -178,16 +196,16 @@ export default function Overview() {
             <SectionTitle icon={CheckCircle}>Status pendataan</SectionTitle>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               {[
-                { label:'Approved',           n:summary.approved||0,  color:'#10b981' },
-                { label:'Submitted (pending)', n:summary.submitted||0, color:'#f59e0b' },
-                { label:'Rejected',           n:summary.rejected||0,  color:'#f43f5e' },
+                { label:'Approved',           n:summaryF.approved||0,  color:'#10b981' },
+                { label:'Submitted (pending)', n:summaryF.submitted||0, color:'#f59e0b' },
+                { label:'Rejected',           n:summaryF.rejected||0,  color:'#f43f5e' },
               ].map((s,i) => (
                 <div key={s.label}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
                     <span style={{ fontSize:11, color:'var(--text2)' }}>{s.label}</span>
                     <span style={{ fontSize:11, fontWeight:600, color:s.color, fontFamily:'var(--mono)' }}>{s.n.toLocaleString('id')}</span>
                   </div>
-                  <ProgressBar pct={summary.total ? (s.n/summary.total)*100 : 0} color={s.color} delay={i*120}/>
+                  <ProgressBar pct={summaryF.total ? (s.n/summaryF.total)*100 : 0} color={s.color} delay={i*120}/>
                 </div>
               ))}
               {(summary.usaha > 0) && (
@@ -231,12 +249,12 @@ export default function Overview() {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
         <Card>
           <SectionTitle icon={BarChart2}>Heatmap pendataan per kecamatan × hari</SectionTitle>
-          <Heatmap data={heatmap}/>
+          <Heatmap data={heatmapF}/>
         </Card>
         <Card>
           <SectionTitle icon={Zap}>Approval rate per kecamatan</SectionTitle>
           <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
-            {pace.map((p,i) => (
+            {paceF.map((p,i) => (
               <div key={p.kec} style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <span style={{ fontSize:10, color:'var(--text3)', width:118, flexShrink:0, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.kec}</span>
                 <ProgressBar pct={p.pct} color={statusColor(p.status)} delay={i*55}/>

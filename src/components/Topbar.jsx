@@ -3,6 +3,7 @@
  */
 
 import { Activity, RefreshCw, Sun, Moon, Monitor, LogOut, User } from 'lucide-react';
+import KecamatanFilter from './KecamatanFilter.jsx';
 import { useState } from 'react';
 import { PulseDot } from './ui.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
@@ -10,7 +11,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
 
 // Semua tab yang mungkin (urutan tetap)
-const ALL_TABS = ['Overview','Anomali','Kecepatan','Target','KBLI','Petugas','Responden'];
+const ALL_TABS = ['Overview','Anomali','Kecepatan','Target','KBLI','Petugas','Responden','Evaluasi'];
 
 // Label badge per role
 const ROLE_BADGE = {
@@ -161,6 +162,7 @@ export function Topbar({ activeTab, setTab, allowedTabs = ALL_TABS }) {
       </nav>
 
       <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+        <KecamatanFilter/>
         <ThemeToggle/>
         <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#34d399' }}>
           <PulseDot color="#10b981" size={7}/><span>Live</span>

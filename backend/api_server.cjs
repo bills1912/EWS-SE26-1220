@@ -273,6 +273,26 @@ app.get('/api/kecamatan', verifyToken, async (req, res) => {
 });
 
 // Health — public
+// ══════════════════════════════════════════════════════════════════════════
+// GET /api/evaluasi — data evaluasi petugas dari assignment CSV
+// ══════════════════════════════════════════════════════════════════════════
+app.get('/api/evaluasi', verifyToken, async (req, res) => {
+  try {
+    const [pencacah, pengawas, kecamatan, statDoc] = await Promise.all([
+      db.collection('assignment_pencacah').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
+      db.collection('assignment_pengawas').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
+      db.collection('assignment_kecamatan').find({}, { projection: { _id: 0 } }).toArray().catch(() => []),
+      db.collection('statistik_se2026').findOne({ _id: 'statistik_utama' }, { projection: { assignmentSummary: 1 } }).catch(() => null),
+    ]);
+    res.json({
+      summary:   statDoc?.assignmentSummary || {},
+      pencacah:  pencacah  || [],
+      pengawas:  pengawas  || [],
+      kecamatan: kecamatan || [],
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.command({ ping: 1 });
