@@ -4,12 +4,14 @@
   "private": true,
   "main": "api_server.cjs",
   "scripts": {
-    "start": "node api_server.cjs"
+    "start": "node api_server.cjs",
+    "setup": "node create-admin.cjs"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.8.0"
   }
 }
