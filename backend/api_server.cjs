@@ -513,23 +513,69 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
                          totalPages: Math.ceil(total/lim), page: pg });
 
     } else if (type === 'tidakTahu') {
-      // AK dengan statusKerja 'Tidak Tahu'
+      // Scan SEMUA field yang bernilai 'Tidak Tahu' di seluruh record
+      const isNotTahu = v => typeof v === 'string' &&
+        ['tidak tahu','tidaktahu','tidak diketahui','tidak dikenal',
+         'tidak tahu/tidak diketahui'].includes((v||'').trim().toLowerCase());
+
+      const FIELD_LABELS = {
+        statusKerja:'Status Pekerjaan', rekening:'Kepemilikan Rekening',
+        ijazah:'Pendidikan', statusKawin:'Status Kawin', profesi:'Profesi',
+        airMinum:'Sumber Air Minum', penerangan:'Penerangan',
+        jenisAtap:'Jenis Atap', jenisDinding:'Jenis Dinding',
+        jenisLantai:'Jenis Lantai', statusKepemilikan:'Status Kepemilikan',
+        tempatBAB:'Tempat BAB', buangTinja:'Pembuangan Tinja',
+        jenisUsaha:'Jenis Usaha', skalaUsaha:'Skala Usaha',
+      };
+      const RT_FIELDS = ['airMinum','penerangan','jenisAtap','jenisDinding','jenisLantai',
+                          'statusKepemilikan','tempatBAB','buangTinja'];
+
       const allDocs = await db.collection('isian_se2026').find(
-        { status: { $in: STATUS_DONE }, 'anggotaKeluarga.statusKerja': 'Tidak Tahu' },
-        { projection: { id:1, namaKepala:1, kecamatan:1, desa:1, petugas:1, status:1, anggotaKeluarga:1 } }
+        { status: { $in: STATUS_DONE } },
+        { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, petugas:1,
+                        status:1, anggotaKeluarga:1, usaha:1,
+                        airMinum:1, penerangan:1, jenisAtap:1, jenisDinding:1,
+                        jenisLantai:1, statusKepemilikan:1, tempatBAB:1, buangTinja:1 } }
       ).toArray();
 
       let list = [];
       for (const r of allDocs) {
+        const temuan = [];
+        // AK fields
         for (const ak of (r.anggotaKeluarga || [])) {
-          if (ak.statusKerja === 'Tidak Tahu') {
-            const entry = { id: r.id, namaKK: r.namaKepala, namaAK: ak.nama,
-                            hubungan: ak.hubungan, umur: ak.umur,
-                            kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status };
-            if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
-              list.push(entry);
+          for (const [field, val] of Object.entries(ak)) {
+            if (isNotTahu(val)) {
+              temuan.push({ level:'AK', field: FIELD_LABELS[field]||field,
+                            nilai: val, nama: ak.nama||'—', hubungan: ak.hubungan||'—' });
             }
           }
+        }
+        // RT fields
+        for (const field of RT_FIELDS) {
+          if (isNotTahu(r[field])) {
+            temuan.push({ level:'RT', field: FIELD_LABELS[field]||field,
+                          nilai: r[field], nama:'—', hubungan:'—' });
+          }
+        }
+        // Usaha fields
+        for (const u of (r.usaha||[])) {
+          for (const field of ['jenisUsaha','skalaUsaha']) {
+            if (isNotTahu(u[field])) {
+              temuan.push({ level:'Usaha', field: FIELD_LABELS[field]||field,
+                            nilai: u[field], nama: u.namaUsaha||'—', hubungan:'—' });
+            }
+          }
+        }
+        if (!temuan.length) continue;
+        const entry = {
+          id: r.id, namaKK: r.namaKepala, noKK: r.noKK||'—',
+          kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status,
+          jumlah: temuan.length,
+          fields: [...new Set(temuan.map(t => t.field))].join(', '),
+          temuan,
+        };
+        if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
+          list.push(entry);
         }
       }
       list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
