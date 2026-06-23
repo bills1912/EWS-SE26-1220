@@ -539,6 +539,23 @@ export function EvaluasiPage() {
   const isPengawas = activeTab==='pengawas';
   const srcData    = isPengawas ? pengawas : pencacah;
 
+  // Hitung jumlah hasil filter untuk masing-masing tab (untuk label tab)
+  const countFiltered = (src) => src.filter(p => {
+    if (selectedKec !== 'all') {
+      const ok = Object.keys(p.perKecamatan||{}).some(k => k.toLowerCase() === selectedKec.toLowerCase());
+      if (!ok) return false;
+    }
+    if (filterDesa) {
+      const ok = (p.perDesa||[]).some(d =>
+        d.desa.toLowerCase() === filterDesa.toLowerCase() &&
+        (selectedKec === 'all' || d.kecamatan.toLowerCase() === selectedKec.toLowerCase()));
+      if (!ok) return false;
+    }
+    return true;
+  }).length;
+  const countPcl = countFiltered(pencacah);
+  const countPws = countFiltered(pengawas);
+
   // Filter
   let filtered = srcData.filter(p => {
     if (selectedKec!=='all') {
@@ -634,8 +651,8 @@ export function EvaluasiPage() {
           {/* Tab */}
           <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:9,padding:3,gap:2 }}>
             {[
-              { key:'pencacah', label:`📋 Pencacah (${pencacah.length})`, color:'var(--orange3)' },
-              { key:'pengawas', label:`🛡 Pengawas (${pengawas.length})`,  color:'var(--blue3)' },
+              { key:'pencacah', label:`📋 Pencacah (${countPcl})`, color:'var(--orange3)' },
+              { key:'pengawas', label:`🛡 Pengawas (${countPws})`,  color:'var(--blue3)' },
             ].map(t => (
               <button key={t.key} onClick={()=>setActiveTab(t.key)}
                 style={{ padding:'6px 16px',fontSize:12,fontWeight:activeTab===t.key?600:400,
