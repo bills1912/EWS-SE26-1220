@@ -380,6 +380,38 @@ app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/crosscheck/:type ─────────────────────────────────────────────
+// type: nikKK | nikAK | rekening | tidakTahu
+// Query: kec, desa, pcl, page, limit
+app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
+  try {
+    const { type } = req.params;
+    const validTypes = ['nikKK','nikAK','rekening','tidakTahu'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
+
+    const doc = await db.collection('statistik_se2026').findOne(
+      { _id: 'statistik_utama' },
+      { projection: { [`crosscheckLists.${type}`]: 1 } }
+    );
+    let list = doc?.crosscheckLists?.[type] || [];
+
+    // Filter
+    const { kec, desa, pcl, q, page = 1, limit = 50 } = req.query;
+    if (kec) list = list.filter(r => (r.kec||'').toLowerCase().includes(kec.toLowerCase()));
+    if (desa) list = list.filter(r => (r.desa||'').toLowerCase().includes(desa.toLowerCase()));
+    if (pcl)  list = list.filter(r => (r.pcl||'').toLowerCase().includes(pcl.toLowerCase()));
+    if (q)    list = list.filter(r =>
+      JSON.stringify(r).toLowerCase().includes(q.toLowerCase()));
+
+    const pg  = Math.max(1, parseInt(page));
+    const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const total = list.length;
+    const data  = list.slice((pg-1)*lim, pg*lim);
+
+    res.json({ data, total, totalPages: Math.ceil(total/lim), page: pg });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.command({ ping: 1 });
