@@ -14,6 +14,7 @@ import {
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
+import { PetugasTimeSeriesChart } from '../components/PetugasTimeSeriesChart.jsx';
 
 const TOKEN_KEY = 'ews_token';
 const BASE      = () => (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -333,6 +334,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
                 ))}
               </div>
             )}
+            {/* Time series aktivitas harian */}
+            <div style={{ borderTop:'1px solid var(--border)',paddingTop:12,marginBottom:14 }}>
+              <PetugasTimeSeriesChart email={p.email} role="Pencacah" nama={p.nama}/>
+            </div>
             {/* Detail sub-SLS */}
             <div style={{ borderTop:'1px solid var(--border)',paddingTop:10 }}>
               <div style={{ fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',
@@ -420,6 +425,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
                 ))}
               </div>
             )}
+            {/* Time series aktivitas harian pengawas */}
+            <div style={{ borderTop:'1px solid var(--border)',paddingTop:12,marginBottom:14 }}>
+              <PetugasTimeSeriesChart email={p.email} role="Pengawas" nama={p.nama}/>
+            </div>
             <div style={{ borderTop:'1px solid var(--border)',paddingTop:10 }}>
               <div style={{ fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8,display:'flex',alignItems:'center',gap:6 }}>
                 <FileText size={10} color="var(--blue3)"/> Detail Sub-SLS yang Diawasi

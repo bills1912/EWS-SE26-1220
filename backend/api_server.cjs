@@ -300,11 +300,18 @@ app.get('/api/evaluasi/detail', verifyToken, async (req, res) => {
   try {
     const { email, kec, desa, status, page = 1, limit = 20 } = req.query;
     const filter = {};
-    // Query pakai pencacahEmail (email pencacah asli, meski currentUser sudah bergeser ke pengawas)
-    if (email)  filter.pencacahEmail = email;
-    if (kec)    filter.kecamatan     = { $regex: new RegExp(`^${kec}$`, 'i') };
-    if (desa)   filter.desa          = { $regex: new RegExp(`^${desa}$`, 'i') };
-    if (status) filter.status        = status;
+
+    // Cari berdasarkan email pencacah asli (pencacahEmail) ATAU email currentUser
+    // — fallback untuk data lama yang belum punya field pencacahEmail
+    if (email) {
+      filter.$or = [
+        { pencacahEmail: email },
+        { email: email, pencacahEmail: { $exists: false } },
+      ];
+    }
+    if (kec)    filter.kecamatan = { $regex: new RegExp(`^${kec}$`, 'i') };
+    if (desa)   filter.desa      = { $regex: new RegExp(`^${desa}$`, 'i') };
+    if (status) filter.status    = status;
 
     const pg  = Math.max(1, parseInt(page));
     const lim = Math.min(100, Math.max(1, parseInt(limit)));
@@ -341,6 +348,23 @@ app.get('/api/evaluasi/desa-list', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+// ── GET /api/evaluasi/timeseries ─────────────────────────────────────────
+// Return dailySeries untuk satu petugas (embedded di document)
+// Query: email, role (Pencacah|Pengawas)
+app.get('/api/evaluasi/timeseries', verifyToken, async (req, res) => {
+  try {
+    const { email, role = 'Pencacah' } = req.query;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const coll = role === 'Pengawas' ? 'assignment_pengawas' : 'assignment_pencacah';
+    const doc = await db.collection(coll).findOne(
+      { email },
+      { projection: { _id: 0, email: 1, nama: 1, dailySeries: 1, avgPerDay: 1 } }
+    );
+    if (!doc) return res.status(404).json({ error: 'Petugas tidak ditemukan' });
+    res.json({ series: doc.dailySeries || [], avgPerDay: doc.avgPerDay || {} });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ── GET /api/evaluasi/snapshots ───────────────────────────────────────────
 // Return history snapshot uploads untuk chart progress
