@@ -470,7 +470,12 @@ export function EvaluasiPage() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [search,    setSearch]    = useState('');
-  const [activeTab, setActiveTab] = useState('pencacah');
+  // Persist tab ke URL hash (#pencacah / #pengawas) agar tidak reset saat refresh
+  const getInitialTab = () => {
+    const hash = window.location.hash.replace('#', '');
+    return hash === 'pengawas' ? 'pengawas' : 'pencacah';
+  };
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const [sortBy,    setSortBy]    = useState('perfScore');
   const [sortDir,   setSortDir]   = useState('desc');
   const [page,      setPage]      = useState(1);
@@ -634,7 +639,7 @@ export function EvaluasiPage() {
       {/* Summary cards dengan animasi */}
       <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
         <SumCard label="Total Assignment" value={summary.totalAssignment||0} color="var(--text1)" icon={BarChart2}
-          sub={`${summary.totalKecamatan} kecamatan · ${pencacah.length} pencacah`}/>
+          sub={`${summary.totalKecamatan||0} kecamatan · ${pencacah.length} pencacah`}/>
         <SumCard label="Total Approved"   value={summary.approved||0} color="#10b981" icon={CheckCircle}
           sub={`${summary.totalAssignment?Math.round((summary.approved||0)/summary.totalAssignment*100):0}% dari total`}/>
         <SumCard label="Menunggu Approve" value={summary.submit||0}   color="#f59e0b" icon={Clock}
@@ -654,7 +659,10 @@ export function EvaluasiPage() {
               { key:'pencacah', label:`📋 Pencacah (${countPcl})`, color:'var(--orange3)' },
               { key:'pengawas', label:`🛡 Pengawas (${countPws})`,  color:'var(--blue3)' },
             ].map(t => (
-              <button key={t.key} onClick={()=>setActiveTab(t.key)}
+              <button key={t.key} onClick={() => {
+                  setActiveTab(t.key);
+                  window.location.hash = t.key;
+                }}
                 style={{ padding:'6px 16px',fontSize:12,fontWeight:activeTab===t.key?600:400,
                          borderRadius:7,border:'none',cursor:'pointer',
                          background:activeTab===t.key?'var(--bg5)':'transparent',

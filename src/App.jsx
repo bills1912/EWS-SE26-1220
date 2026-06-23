@@ -64,7 +64,13 @@ function LoadingScreen() {
 
 export default function App() {
   const { isAuthenticated, loading, logout, user } = useAuth();
-  const [tab, setTab] = useState('Overview');
+  // Persist tab aktif ke URL hash agar tidak reset saat reload
+  const getInitialTab = () => {
+    const hash = window.location.hash.replace('#', '').trim();
+    const allowed = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi'];
+    return allowed.includes(hash) ? hash : 'Overview';
+  };
+  const [tab, setTab] = useState(getInitialTab);
 
   // Ambil daftar tab yang boleh diakses dari token user
   // Semua pegawai BPS mendapat akses penuh ke semua tab
@@ -92,7 +98,11 @@ export default function App() {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 100 }}>
         <Ticker/>
-        <Topbar activeTab={tab} setTab={setTab} allowedTabs={allowedTabs}/>
+        <Topbar
+          activeTab={tab}
+          setTab={(t) => { setTab(t); window.location.hash = t; }}
+          allowedTabs={allowedTabs}
+        />
       </div>
       <main style={{ flex: 1, padding: '20px 24px' }} key={tab} className="fade-up">
         {ALL_PAGES[tab] || <Overview/>}
