@@ -278,14 +278,23 @@ app.get('/api/kecamatan', verifyToken, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/evaluasi', verifyToken, async (req, res) => {
   try {
-    const [pencacah, pengawas, kecamatan, statDoc] = await Promise.all([
+    const [pencacah, pengawas, kecamatan, statDoc, latestSnap] = await Promise.all([
       db.collection('assignment_pencacah').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
       db.collection('assignment_pengawas').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
       db.collection('assignment_kecamatan').find({}, { projection: { _id: 0 } }).toArray().catch(() => []),
       db.collection('statistik_se2026').findOne({ _id: 'statistik_utama' }, { projection: { assignmentSummary: 1 } }).catch(() => null),
+      db.collection('assignment_snapshots').findOne({}, { sort: { snapshotAt: -1 }, projection: { summary: 1, _id: 0 } }).catch(() => null),
     ]);
+
+    // Gunakan assignmentSummary dari statistik_utama jika ada,
+    // fallback ke summary snapshot terbaru jika assignmentSummary hilang/kosong
+    const assignSummary = statDoc?.assignmentSummary;
+    const summary = (assignSummary && assignSummary.totalAssignment)
+      ? assignSummary
+      : (latestSnap?.summary || {});
+
     res.json({
-      summary:   statDoc?.assignmentSummary || {},
+      summary,
       pencacah:  pencacah  || [],
       pengawas:  pengawas  || [],
       kecamatan: kecamatan || [],
@@ -389,26 +398,130 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
     const validTypes = ['nikKK','nikAK','rekening','tidakTahu'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
 
-    const doc = await db.collection('statistik_se2026').findOne(
-      { _id: 'statistik_utama' },
-      { projection: { [`crosscheckLists.${type}`]: 1 } }
-    );
-    let list = doc?.crosscheckLists?.[type] || [];
-
-    // Filter
-    const { kec, desa, pcl, q, page = 1, limit = 50 } = req.query;
-    if (kec) list = list.filter(r => (r.kec||'').toLowerCase().includes(kec.toLowerCase()));
-    if (desa) list = list.filter(r => (r.desa||'').toLowerCase().includes(desa.toLowerCase()));
-    if (pcl)  list = list.filter(r => (r.pcl||'').toLowerCase().includes(pcl.toLowerCase()));
-    if (q)    list = list.filter(r =>
-      JSON.stringify(r).toLowerCase().includes(q.toLowerCase()));
-
+    const { q = '', page = 1, limit = 10 } = req.query;
     const pg  = Math.max(1, parseInt(page));
     const lim = Math.min(200, Math.max(1, parseInt(limit)));
-    const total = list.length;
-    const data  = list.slice((pg-1)*lim, pg*lim);
 
+    const STATUS_DONE = ['SUBMITTED','APPROVED','REJECTED'];
+
+    // Query langsung dari isian_se2026 (tidak bergantung pada crosscheckLists di statistik doc)
+    let pipeline = [];
+    let countPipeline = [];
+
+    if (type === 'nikKK') {
+      // NIK kepala keluarga yang startsWith '9999'
+      const baseMatch = {
+        status: { $in: STATUS_DONE },
+        nik: { $regex: '^9999', $options: 'i' }
+      };
+      if (q) {
+        baseMatch.$or = [
+          { namaKepala: { $regex: q, $options: 'i' } },
+          { nik:        { $regex: q, $options: 'i' } },
+          { kecamatan:  { $regex: q, $options: 'i' } },
+          { desa:       { $regex: q, $options: 'i' } },
+          { petugas:    { $regex: q, $options: 'i' } },
+          { noKK:       { $regex: q, $options: 'i' } },
+        ];
+      }
+      pipeline = [
+        { $match: baseMatch },
+        { $project: { _id:0, id:1, no:1, nama:'$namaKepala', nik:1, noKK:1,
+                      kec:'$kecamatan', desa:1, sls:1, pcl:'$petugas', status:1 } },
+        { $sort: { kec:1, desa:1, id:1 } },
+        { $skip: (pg-1)*lim }, { $limit: lim }
+      ];
+      countPipeline = [{ $match: baseMatch }, { $count: 'n' }];
+
+    } else if (type === 'nikAK') {
+      // NIK anggota keluarga yang startsWith '9999'
+      const baseMatch = { status: { $in: STATUS_DONE }, 'anggotaKeluarga.nik': { $regex: '^9999' } };
+      const allDocs = await db.collection('isian_se2026').find(baseMatch,
+        { projection: { id:1, namaKepala:1, kecamatan:1, desa:1, petugas:1, status:1, anggotaKeluarga:1 } }
+      ).toArray();
+
+      // Flatten anggota keluarga
+      let list = [];
+      for (const r of allDocs) {
+        for (const ak of (r.anggotaKeluarga || [])) {
+          if (/^9999/.test(ak.nik || '')) {
+            const entry = { id: r.id, namaKK: r.namaKepala, namaAK: ak.nama,
+                            nikAK: ak.nik, hubungan: ak.hubungan,
+                            kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status };
+            if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
+              list.push(entry);
+            }
+          }
+        }
+      }
+      list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
+      const total = list.length;
+      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+                         totalPages: Math.ceil(total/lim), page: pg });
+
+    } else if (type === 'rekening') {
+      // KK yang semua AK-nya tidak punya rekening aktif
+      const allDocs = await db.collection('isian_se2026').find(
+        { status: { $in: STATUS_DONE }, anggotaKeluarga: { $exists: true, $ne: [] } },
+        { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, sls:1,
+                        petugas:1, status:1, jumlahAk:1, anggotaKeluarga:1 } }
+      ).toArray();
+
+      let list = [];
+      for (const r of allDocs) {
+        const aks = r.anggotaKeluarga || [];
+        if (!aks.length) continue;
+        const hasActive = aks.some(ak => (ak.rekening||'').toLowerCase().startsWith('ya'));
+        if (hasActive) continue;
+        const rekVals = [...new Set(aks.map(ak => ak.rekening).filter(Boolean))];
+        const entry = { id: r.id, nama: r.namaKepala, noKK: r.noKK,
+                        kec: r.kecamatan, desa: r.desa, sls: r.sls,
+                        jumlahAk: r.jumlahAk || aks.length,
+                        jawaban: rekVals.join(', ') || '—',
+                        pcl: r.petugas, status: r.status };
+        if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
+          list.push(entry);
+        }
+      }
+      list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
+      const total = list.length;
+      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+                         totalPages: Math.ceil(total/lim), page: pg });
+
+    } else if (type === 'tidakTahu') {
+      // AK dengan statusKerja 'Tidak Tahu'
+      const allDocs = await db.collection('isian_se2026').find(
+        { status: { $in: STATUS_DONE }, 'anggotaKeluarga.statusKerja': 'Tidak Tahu' },
+        { projection: { id:1, namaKepala:1, kecamatan:1, desa:1, petugas:1, status:1, anggotaKeluarga:1 } }
+      ).toArray();
+
+      let list = [];
+      for (const r of allDocs) {
+        for (const ak of (r.anggotaKeluarga || [])) {
+          if (ak.statusKerja === 'Tidak Tahu') {
+            const entry = { id: r.id, namaKK: r.namaKepala, namaAK: ak.nama,
+                            hubungan: ak.hubungan, umur: ak.umur,
+                            kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status };
+            if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
+              list.push(entry);
+            }
+          }
+        }
+      }
+      list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
+      const total = list.length;
+      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+                         totalPages: Math.ceil(total/lim), page: pg });
+    }
+
+    // Untuk nikKK: jalankan pipeline aggregasi
+    const [data, countResult] = await Promise.all([
+      db.collection('isian_se2026').aggregate(pipeline).toArray(),
+      db.collection('isian_se2026').aggregate(countPipeline).toArray(),
+    ]);
+    const total = countResult[0]?.n || 0;
     res.json({ data, total, totalPages: Math.ceil(total/lim), page: pg });
+
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
