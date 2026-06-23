@@ -280,7 +280,9 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>
         {/* Rejected */}
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>
-        {/* Open/belum dikerjakan */}
+        {/* Draft = sedang dikerjakan belum submit */}
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>
+        {/* Open/belum disentuh */}
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>
         {/* Progress */}
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -300,11 +302,12 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={13} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
+          <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Tugas"   value={p.total}                                    icon={BarChart2}  animate/>
               <Mini label="Belum Dikerjakan" value={p.open}    color="var(--text4)"           icon={Inbox}     animate/>
+              <Mini label="Draft"         value={p.draft||0}   color="var(--blue3)"            icon={FileText}  animate/>
               <Mini label="Sudah Submit"  value={p.submit}     color="#f59e0b"                icon={Clock}     animate/>
               <Mini label="Approved"      value={p.approved}   color="#10b981"                icon={CheckCircle} animate/>
               <Mini label="Rejected"      value={p.reject}     color="#f43f5e"                icon={XCircle}   animate/>
@@ -376,6 +379,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:p.submit>0?600:400 }}>{p.submit||0}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
@@ -394,10 +398,11 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={13} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
+          <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Diawasi"   value={p.total}                                        icon={BarChart2}   animate/>
               <Mini label="Belum Dikerjakan" value={p.open}     color="var(--text4)"               icon={Inbox}       animate/>
+              <Mini label="Draft"            value={p.draft||0} color="var(--blue3)"               icon={FileText}    animate/>
               <Mini label="Menunggu Approve" value={p.submit}   color="#f59e0b"                    icon={Clock}       animate/>
               <Mini label="Approved"          value={p.approved} color="#10b981"                   icon={CheckCircle} animate/>
               <Mini label="Ditolak"           value={p.reject}   color="#f43f5e"                   icon={XCircle}     animate/>
@@ -563,8 +568,9 @@ export function EvaluasiPage() {
       const appr = dd.reduce((a,d)=>a+d.approved,0);
       const sub  = dd.reduce((a,d)=>a+d.submit,  0);
       const rej  = dd.reduce((a,d)=>a+d.reject,  0);
+      const dr   = dd.reduce((a,d)=>a+(d.draft||0),0);
       const op   = dd.reduce((a,d)=>a+d.open,    0);
-      return { ...p,total:tot,approved:appr,submit:sub,reject:rej,open:op,
+      return { ...p,total:tot,approved:appr,submit:sub,reject:rej,draft:dr,open:op,
                pctApproved:tot>0?Math.round(appr/tot*100*10)/10:0 };
     }).filter(p=>p.total>0);
   }
@@ -610,16 +616,16 @@ export function EvaluasiPage() {
 
       {/* Summary cards dengan animasi */}
       <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
-        <SumCard label="Pencacah"         value={pencacah.length}   color="var(--orange3)" icon={Users}
-          sub={`${pencacah.reduce((a,p)=>a+p.approved,0)} approved`}/>
-        <SumCard label="Pengawas"         value={pengawas.length}   color="var(--blue3)"   icon={Shield}
-          sub={`${pengawas.reduce((a,p)=>a+p.approved,0)} diapprove`}/>
         <SumCard label="Total Assignment" value={summary.totalAssignment||0} color="var(--text1)" icon={BarChart2}
-          sub={`${summary.totalKecamatan} kecamatan`}/>
+          sub={`${summary.totalKecamatan} kecamatan · ${pencacah.length} pencacah`}/>
         <SumCard label="Total Approved"   value={summary.approved||0} color="#10b981" icon={CheckCircle}
           sub={`${summary.totalAssignment?Math.round((summary.approved||0)/summary.totalAssignment*100):0}% dari total`}/>
         <SumCard label="Menunggu Approve" value={summary.submit||0}   color="#f59e0b" icon={Clock}
           sub="sudah submit, belum diapprove"/>
+        <SumCard label="Total Draft"      value={summary.draft||0}    color="var(--blue3)" icon={FileText}
+          sub="sedang diisi, belum disubmit"/>
+        <SumCard label="Total Rejected"   value={summary.reject||0}   color="#f43f5e" icon={XCircle}
+          sub={`${summary.totalAssignment?Math.round((summary.reject||0)/summary.totalAssignment*100):0}% dari total`}/>
       </div>
 
       {/* Tabel */}
@@ -663,7 +669,8 @@ export function EvaluasiPage() {
           <span><strong style={{ color:'var(--text2)' }}>Total</strong> = semua tugas yang diberikan</span>
           <span><strong style={{ color:'#f59e0b' }}>Submit</strong> = sudah diisi, menunggu diapprove pengawas</span>
           <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
-          <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum dikerjakan</span>
+          <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
+          <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
           {isPengawas && <span><strong style={{ color:'var(--text2)' }}>Avg Latensi</strong>: hijau &lt;3h · kuning &lt;7h · merah ≥7h</span>}
         </div>
 
@@ -677,7 +684,8 @@ export function EvaluasiPage() {
                 <H label="Total"   col="total"     right/>
                 <H label="Submit"  right/>
                 <H label="Approved" col="approved" right/>
-                <H label="Rejected" right/>
+                <H label={isPengawas ? 'Pending' : 'Rejected'} right/>
+                <H label="Draft"    col="draft"     right/>
                 <H label="Open"     right/>
                 <H label="Progress" col="pct"/>
                 <H label={isPengawas?'Avg Latensi':'Avg Durasi'} col={isPengawas?'lat':'dur'} right/>
@@ -688,7 +696,7 @@ export function EvaluasiPage() {
             </thead>
             <tbody>
               {paginated.length===0
-                ? <tr><td colSpan={13} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                ? <tr><td colSpan={14} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
                       ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa}/>

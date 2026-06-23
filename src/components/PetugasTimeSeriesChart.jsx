@@ -99,7 +99,7 @@ function CustomTooltip({ active, payload, label, avgPerDay }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{p.value}</span>
             {/* Bandingkan dengan rata-rata */}
-            {avgPerDay && p.dataKey !== 'cumApproved' && avgPerDay[p.dataKey] != null && (
+            {avgPerDay && p.dataKey !== 'cumProgress' && avgPerDay[p.dataKey] != null && (
               <span style={{
                 fontSize: 9, color: p.value >= avgPerDay[p.dataKey] ? '#10b981' : '#f43f5e',
                 background: p.value >= avgPerDay[p.dataKey] ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)',
@@ -191,9 +191,13 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
           filled.push(map[k] || { date: k, approved: 0, submitted: 0, rejected: 0, draft: 0, open: 0 });
           cur.setDate(cur.getDate() + 1);
         }
-        // Cumulative approved
+        // Kumulatif = semua yang sudah pernah dikerjakan pencacah:
+        // approved + submitted (menunggu approve) + draft (sedang diisi) + rejected (dikembalikan)
         let cum = 0;
-        const withCum = filled.map(r => { cum += r.approved || 0; return { ...r, cumApproved: cum }; });
+        const withCum = filled.map(r => {
+          cum += (r.approved || 0) + (r.submitted || 0) + (r.draft || 0) + (r.rejected || 0);
+          return { ...r, cumProgress: cum };
+        });
         setSeries(withCum);
         setAvgPerDay(avg || {});
         setLoading(false);
@@ -371,8 +375,8 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
           <Area
             yAxisId="right"
             type="monotone"
-            dataKey="cumApproved"
-            name="Kumulatif ✓"
+            dataKey="cumProgress"
+            name="Kumulatif (appr+sub+draft+rej)"
             stroke="rgba(232,84,28,0.7)"
             strokeWidth={1.5}
             fill="rgba(232,84,28,0.06)"
@@ -389,7 +393,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
 
       <div style={{ fontSize: 9, color: 'var(--text4)', marginTop: 4, display: 'flex',
                      gap: 12, flexWrap: 'wrap' }}>
-        <span>Sumbu kanan (area) = kumulatif approved</span>
+        <span>Sumbu kanan (area) = kumulatif dikerjakan (approved + submitted + draft + rejected)</span>
         <span>Garis putus-putus = rata-rata harian (klik label untuk toggle)</span>
         <span>Tanggal dari dateModified assignment</span>
       </div>
