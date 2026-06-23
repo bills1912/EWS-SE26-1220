@@ -435,26 +435,50 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
 
     } else if (type === 'nikAK') {
       // NIK anggota keluarga yang startsWith '9999'
-      const baseMatch = { status: { $in: STATUS_DONE }, 'anggotaKeluarga.nik': { $regex: '^9999' } };
-      const allDocs = await db.collection('isian_se2026').find(baseMatch,
-        { projection: { id:1, namaKepala:1, kecamatan:1, desa:1, petugas:1, status:1, anggotaKeluarga:1 } }
-      ).toArray();
-
-      // Flatten anggota keluarga
-      let list = [];
-      for (const r of allDocs) {
-        for (const ak of (r.anggotaKeluarga || [])) {
-          if (/^9999/.test(ak.nik || '')) {
-            const entry = { id: r.id, namaKK: r.namaKepala, namaAK: ak.nama,
-                            nikAK: ak.nik, hubungan: ak.hubungan,
-                            kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status };
-            if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
-              list.push(entry);
-            }
+      // Gunakan $unwind + $match untuk flatten array anggotaKeluarga di MongoDB
+      const agg = [
+        { $match: { status: { $in: STATUS_DONE } } },
+        { $unwind: { path: '$anggotaKeluarga', preserveNullAndEmptyArrays: false } },
+        { $match: {
+            $or: [
+              { 'anggotaKeluarga.nik': /^9999/ },
+              { 'anggotaKeluarga.nik': '9999' },
+              { 'anggotaKeluarga.nik': { $regex: '^9{4}' } },
+            ]
           }
+        },
+        { $project: {
+            _id: 0,
+            id: 1, namaKK: '$namaKepala',
+            namaAK: '$anggotaKeluarga.nama',
+            nikAK:  '$anggotaKeluarga.nik',
+            hubungan: '$anggotaKeluarga.hubungan',
+            kec: '$kecamatan', desa: 1, pcl: '$petugas', status: 1,
+          }
+        },
+        { $sort: { kec: 1, desa: 1, id: 1 } },
+      ];
+
+      let list = await db.collection('isian_se2026').aggregate(agg).toArray();
+
+      // Fallback: jika anggotaKeluarga tidak ada di MongoDB,
+      // kembalikan pesan informatif bukan array kosong
+      if (list.length === 0) {
+        // Coba cek apakah collection punya anggotaKeluarga sama sekali
+        const sampleWithAK = await db.collection('isian_se2026').findOne(
+          { anggotaKeluarga: { $exists: true, $not: { $size: 0 } } },
+          { projection: { id:1, anggotaKeluarga: { $slice: 1 } } }
+        );
+        if (!sampleWithAK) {
+          return res.json({ data: [], total: 0, totalPages: 0, page: pg,
+            warning: 'anggotaKeluarga tidak tersimpan di collection isian_se2026. Jalankan upload_to_mongo.py --drop untuk upload ulang.' });
         }
       }
-      list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
+
+      if (q) {
+        const ql = q.toLowerCase();
+        list = list.filter(r => JSON.stringify(r).toLowerCase().includes(ql));
+      }
       const total = list.length;
       return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
                          totalPages: Math.ceil(total/lim), page: pg });
