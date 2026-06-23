@@ -1,51 +1,65 @@
 /**
  * src/hooks/useEWSData.js
  * =======================
- * Custom hooks untuk mengambil data dari API EWS SE2026.
- *
- * Strategi URL API (runtime, bukan build-time):
- * 1. Jika ada window.__API_URL__ (disuntik server) → pakai itu
- * 2. Jika ada import.meta.env.VITE_API_URL → pakai itu  
- * 3. Jika hostname bukan localhost → tebak URL backend dari hostname frontend
- * 4. Fallback ke localhost:3001
+ * BASE_URL diambil dari window.__API_URL__ yang di-inject
+ * oleh index.html saat halaman dimuat — tidak tergantung build-time env.
  */
 
 import { useState, useEffect } from 'react';
 
-function resolveBaseURL() {
-  // Prioritas 1: runtime injection via window.__API_URL__
+const TOKEN_KEY = 'ews_token';
+
+function getBaseURL() {
+  // Prioritas 1: inject runtime dari index.html (window.__API_URL__)
   if (typeof window !== 'undefined' && window.__API_URL__) {
-    return window.__API_URL__;
+    return window.__API_URL__.replace(/\/$/, '');
   }
-
-  // Prioritas 2: build-time env (tersedia jika Railway inject saat build)
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && envUrl !== 'undefined') {
-    return envUrl;
+  // Prioritas 2: Vite build-time env
+  const env = import.meta.env.VITE_API_URL;
+  if (env && env !== 'undefined' && env !== '') {
+    return env.replace(/\/$/, '');
   }
-
-  // Prioritas 3: auto-detect — jika bukan localhost, coba tebak URL backend
-  // Railway biasanya: frontend = ews-frontend.up.railway.app
-  //                   backend  = ews-api.up.railway.app
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    // Kembalikan string kosong → fetch pakai relative URL /api/...
-    // Ini hanya works jika frontend & backend di domain yang sama atau ada reverse proxy
-    return '';
-  }
-
-  // Prioritas 4: fallback dev lokal
+  // Prioritas 3: dev lokal
   return 'http://localhost:3001';
 }
 
-const BASE_URL = resolveBaseURL();
-
 async function apiFetch(path) {
-  const url = `${BASE_URL}${path}`;
-  const res = await fetch(url);
+  const BASE_URL = getBaseURL(); // dipanggil setiap request, bukan sekali saat load
+  const token = localStorage.getItem(TOKEN_KEY);
+
+  if (!token) {
+    throw new Error('Token tidak ditemukan. Silakan login.');
+  }
+
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+  } catch {
+    throw new Error('Tidak dapat terhubung ke server API. Periksa koneksi.');
+  }
+
+  if (res.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('ews_user');
+    window.dispatchEvent(new Event('ews:unauthorized'));
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Sesi berakhir. Silakan login kembali.');
+  }
+
   if (!res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      throw new Error(`Server error (${res.status}). BASE_URL: ${BASE_URL}`);
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
+
   return res.json();
 }
 
@@ -55,16 +69,14 @@ export function useStatistik() {
     let cancelled = false;
     apiFetch('/api/statistik')
       .then(data => { if (!cancelled) setState({ data, loading: false, error: null }); })
-      .catch(err => { if (!cancelled) setState({ data: null, loading: false, error: err.message }); });
+      .catch(err  => { if (!cancelled) setState({ data: null, loading: false, error: err.message }); });
     return () => { cancelled = true; };
   }, []);
   return state;
 }
 
 export function useResponden(params = {}) {
-  const [state, setState] = useState({
-    data: [], total: 0, totalPages: 1, loading: true, error: null
-  });
+  const [state, setState] = useState({ data: [], total: 0, totalPages: 1, loading: true, error: null });
   const paramsKey = JSON.stringify(params);
   useEffect(() => {
     let cancelled = false;
@@ -81,14 +93,9 @@ export function useResponden(params = {}) {
     if (params.kbli)      qs.set('kbli',      params.kbli);
     apiFetch(`/api/responden?${qs}`)
       .then(res => {
-        if (!cancelled) setState({
-          data: res.data, total: res.total,
-          totalPages: res.totalPages, loading: false, error: null
-        });
+        if (!cancelled) setState({ data: res.data, total: res.total, totalPages: res.totalPages, loading: false, error: null });
       })
-      .catch(err => {
-        if (!cancelled) setState(s => ({ ...s, loading: false, error: err.message }));
-      });
+      .catch(err => { if (!cancelled) setState(s => ({ ...s, loading: false, error: err.message })); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey]);
@@ -103,7 +110,7 @@ export function useRespondenDetail(id) {
     setState({ data: null, loading: true, error: null });
     apiFetch(`/api/responden/${id}`)
       .then(data => { if (!cancelled) setState({ data, loading: false, error: null }); })
-      .catch(err => { if (!cancelled) setState({ data: null, loading: false, error: err.message }); });
+      .catch(err  => { if (!cancelled) setState({ data: null, loading: false, error: err.message }); });
     return () => { cancelled = true; };
   }, [id]);
   return state;
@@ -118,7 +125,7 @@ export function usePetugas(params = {}) {
     if (params.kec) qs.set('kec', params.kec);
     apiFetch(`/api/petugas?${qs}`)
       .then(data => { if (!cancelled) setState({ data, loading: false, error: null }); })
-      .catch(err => { if (!cancelled) setState({ data: [], loading: false, error: err.message }); });
+      .catch(err  => { if (!cancelled) setState({ data: [], loading: false, error: err.message }); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey]);
@@ -130,7 +137,7 @@ export function useKecamatan() {
   useEffect(() => {
     apiFetch('/api/kecamatan')
       .then(data => setState({ data, loading: false, error: null }))
-      .catch(err => setState({ data: [], loading: false, error: err.message }));
+      .catch(err  => setState({ data: [], loading: false, error: err.message }));
   }, []);
   return state;
 }

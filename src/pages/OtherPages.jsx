@@ -63,7 +63,7 @@ export function KecepatanPage() {
   if (loading) return <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}><Card><Skeleton h={300}/></Card><Card><Skeleton h={300}/></Card></div>;
   const pace    = stat?.pace    || [];
   const heatmap = stat?.heatmap || { days:[], rows:[] };
-  const max = Math.max(...heatmap.rows.flatMap(r=>r.vals));
+  const max = heatmap.rows.length > 0 ? Math.max(...heatmap.rows.flatMap(r=>r.vals), 1) : 1;
   const cell = v => {
     if (!v) return { bg:'var(--bg4)', color:'var(--text4)' };
     const p = v/max;

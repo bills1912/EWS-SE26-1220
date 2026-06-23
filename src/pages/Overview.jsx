@@ -145,19 +145,24 @@ export default function Overview() {
     </Card>
   );
 
-  const { summary, anomali, pace, heatmap, dailyTrend } = stat;
-  const critCount = anomali.filter(a => a.sev === 'crit').length;
+  // Safe destructuring — pengadmin hanya dapat subset data (tanpa anomali/pace/heatmap/dailyTrend)
+  const summary     = stat?.summary     || {};
+  const anomali     = stat?.anomali     || [];
+  const pace        = stat?.pace        || [];
+  const heatmap     = stat?.heatmap     || { days:[], rows:[] };
+  const dailyTrend  = stat?.dailyTrend  || [];
+  const critCount   = anomali.filter(a => a.sev === 'crit').length;
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
       {/* Metric row */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12 }}>
-        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={summary.total.toLocaleString('id')}     sub={`${summary.kecamatan} kecamatan`} trend="up" />
-        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={summary.submitted.toLocaleString('id')} sub={`${Math.round(summary.submitted/summary.total*100)}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
-        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={summary.approved.toLocaleString('id')}  sub={`${Math.round(summary.approved/summary.total*100)}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
-        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={summary.rejected.toLocaleString('id')}  sub={`${Math.round(summary.rejected/summary.total*100)}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
-        <MetricCard delay={200} icon={Building2}   label="Usaha terdata"     value={summary.usaha.toLocaleString('id')}     sub={`${summary.kbliMissing} tanpa KBLI`} subColor="var(--amber)" iconBg="rgba(167,139,250,0.1)" iconColor="var(--purple)" />
-        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={summary.anomali}                        sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
+        <MetricCard delay={0}   icon={BarChart2}   label="Total records"     value={(summary.total||0).toLocaleString('id')}     sub={`${summary.kecamatan||0} kecamatan`} trend="up" />
+        <MetricCard delay={50}  icon={Clock}       label="Menunggu validasi" value={(summary.submitted||0).toLocaleString('id')} sub={`${summary.total?Math.round((summary.submitted||0)/summary.total*100):0}% pending`} subColor="var(--amber)" iconBg="rgba(245,158,11,0.1)" iconColor="#f59e0b" />
+        <MetricCard delay={100} icon={CheckCircle} label="Approved"          value={(summary.approved||0).toLocaleString('id')}  sub={`${summary.total?Math.round((summary.approved||0)/summary.total*100):0}% selesai`} subColor="var(--green)" iconBg="rgba(16,185,129,0.1)" iconColor="#10b981" trend="up" />
+        <MetricCard delay={150} icon={XCircle}     label="Rejected"          value={(summary.rejected||0).toLocaleString('id')}  sub={`${summary.total?Math.round((summary.rejected||0)/summary.total*100):0}% dikembalikan`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" />
+        <MetricCard delay={200} icon={Building2}   label="Usaha terdata"     value={(summary.usaha||0).toLocaleString('id')}     sub={`${summary.kbliMissing||0} tanpa KBLI`} subColor="var(--amber)" iconBg="rgba(167,139,250,0.1)" iconColor="var(--purple)" />
+        <MetricCard delay={250} icon={ShieldAlert} label="Anomali aktif"     value={summary.anomali||0}                         sub={`${critCount} kritis`} subColor="var(--red)" iconBg="rgba(244,63,94,0.1)" iconColor="#f43f5e" trend="up" />
       </div>
 
       {/* Middle */}
@@ -173,50 +178,52 @@ export default function Overview() {
             <SectionTitle icon={CheckCircle}>Status pendataan</SectionTitle>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               {[
-                { label:'Approved',           n:summary.approved,  color:'#10b981' },
-                { label:'Submitted (pending)', n:summary.submitted, color:'#f59e0b' },
-                { label:'Rejected',           n:summary.rejected,  color:'#f43f5e' },
+                { label:'Approved',           n:summary.approved||0,  color:'#10b981' },
+                { label:'Submitted (pending)', n:summary.submitted||0, color:'#f59e0b' },
+                { label:'Rejected',           n:summary.rejected||0,  color:'#f43f5e' },
               ].map((s,i) => (
                 <div key={s.label}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
                     <span style={{ fontSize:11, color:'var(--text2)' }}>{s.label}</span>
                     <span style={{ fontSize:11, fontWeight:600, color:s.color, fontFamily:'var(--mono)' }}>{s.n.toLocaleString('id')}</span>
                   </div>
-                  <ProgressBar pct={(s.n/summary.total)*100} color={s.color} delay={i*120}/>
+                  <ProgressBar pct={summary.total ? (s.n/summary.total)*100 : 0} color={s.color} delay={i*120}/>
                 </div>
               ))}
-              <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>KBLI terisi</span>
-                  <span style={{ fontSize:11, fontWeight:600, color:'var(--indigo3)', fontFamily:'var(--mono)' }}>
-                    {(summary.usaha - summary.kbliMissing)} / {summary.usaha}
-                  </span>
+              {(summary.usaha > 0) && (
+                <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                    <span style={{ fontSize:11, color:'var(--text2)' }}>KBLI terisi</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:'var(--indigo3)', fontFamily:'var(--mono)' }}>
+                      {(summary.usaha - (summary.kbliMissing||0))} / {summary.usaha}
+                    </span>
+                  </div>
+                  <ProgressBar pct={((summary.usaha-(summary.kbliMissing||0))/summary.usaha)*100} color="var(--indigo)" delay={360}/>
+                  <div style={{ fontSize:10, color:'var(--amber)', marginTop:8, display:'flex', alignItems:'center', gap:4 }}>
+                    <AlertTriangle size={10} strokeWidth={2} color="var(--amber)"/>
+                    {summary.kbliMissing||0} usaha masih tanpa KBLI
+                  </div>
                 </div>
-                <ProgressBar pct={((summary.usaha-summary.kbliMissing)/summary.usaha)*100} color="var(--indigo)" delay={360}/>
-                <div style={{ fontSize:10, color:'var(--amber)', marginTop:8, display:'flex', alignItems:'center', gap:4 }}>
-                  <AlertTriangle size={10} strokeWidth={2} color="var(--amber)"/>
-                  {summary.kbliMissing} usaha masih tanpa KBLI
-                </div>
-              </div>
+              )}
             </div>
           </Card>
           <Card>
-            <SectionTitle icon={BarChart2}>Tren pendataan harian</SectionTitle>
-            <ResponsiveContainer width="100%" height={100}>
-              <AreaChart data={dailyTrend} margin={{ top:4, right:0, bottom:0, left:-30 }}>
-                <defs>
-                  <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
-                <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
-                <Tooltip content={<ChartTooltip/>}/>
-                <Area type="monotone" dataKey="n" stroke="#6366f1" strokeWidth={1.8} fill="url(#areaGrad)" dot={false}/>
-              </AreaChart>
-            </ResponsiveContainer>
-          </Card>
+              <SectionTitle icon={BarChart2}>Tren pendataan harian</SectionTitle>
+              <ResponsiveContainer width="100%" height={100}>
+                <AreaChart data={dailyTrend} margin={{ top:4, right:0, bottom:0, left:-30 }}>
+                  <defs>
+                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} axisLine={false} tickLine={false}/>
+                  <Tooltip content={<ChartTooltip/>}/>
+                  <Area type="monotone" dataKey="n" stroke="#6366f1" strokeWidth={1.8} fill="url(#areaGrad)" dot={false}/>
+                </AreaChart>
+              </ResponsiveContainer>
+            </Card>
         </div>
       </div>
 
