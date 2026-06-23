@@ -549,6 +549,54 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/debug/nikak ─────────────────────────────────────────────────
+// Debug endpoint: cek struktur anggotaKeluarga di MongoDB
+app.get('/api/debug/nikak', verifyToken, async (req, res) => {
+  try {
+    // Total docs
+    const total = await db.collection('isian_se2026').countDocuments({});
+
+    // Cek apakah anggotaKeluarga ada di MongoDB
+    const sampleNoAK = await db.collection('isian_se2026').findOne(
+      { anggotaKeluarga: { $exists: false } }, { projection: { id:1 } }
+    );
+    const sampleWithAK = await db.collection('isian_se2026').findOne(
+      { anggotaKeluarga: { $exists: true, $not: { $size: 0 } } },
+      { projection: { id:1, 'anggotaKeluarga': { $slice: 1 } } }
+    );
+
+    // Hitung docs dengan anggotaKeluarga
+    const withAK   = await db.collection('isian_se2026').countDocuments(
+      { anggotaKeluarga: { $exists: true, $not: { $size: 0 } } }
+    );
+
+    // Cari NIK 9999 dengan berbagai cara
+    const byRegex  = await db.collection('isian_se2026').countDocuments(
+      { 'anggotaKeluarga.nik': { $regex: '^9999' } }
+    );
+    const byExact  = await db.collection('isian_se2026').countDocuments(
+      { 'anggotaKeluarga.nik': '9999' }
+    );
+
+    // Sample AK fields dari doc pertama yang punya AK
+    const akSample = sampleWithAK?.anggotaKeluarga?.[0] || null;
+    const akFields = akSample ? Object.keys(akSample) : [];
+
+    res.json({
+      total_docs: total,
+      docs_with_ak: withAK,
+      docs_without_ak_field: sampleNoAK ? 'ADA (field anggotaKeluarga tidak tersimpan di semua doc)' : 'TIDAK ADA (semua doc punya field)',
+      sample_ak_fields: akFields,
+      sample_ak_nik: akSample?.nik,
+      query_regex_9999: byRegex,
+      query_exact_9999: byExact,
+      verdict: byRegex > 0 ? 'DATA ADA di MongoDB' : 
+               withAK  > 0 ? 'Field ada tapi NIK 9999 tidak ketemu' :
+                              'anggotaKeluarga TIDAK TERSIMPAN di MongoDB',
+    });
+  } catch (err) { res.status(500).json({ error: err.message, stack: err.stack }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.command({ ping: 1 });
