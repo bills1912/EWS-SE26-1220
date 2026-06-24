@@ -59,7 +59,72 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+
+// ── Security headers — mencegah scraping, sniffing, framing ──────────────
+app.use((req, res, next) => {
+  // Sembunyikan teknologi yang dipakai
+  res.removeHeader('X-Powered-By');
+  res.setHeader('Server', 'EWS-SE26');
+
+  // Cegah embedding di iframe (clickjacking)
+  res.setHeader('X-Frame-Options', 'DENY');
+
+  // Cegah MIME sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // XSS protection
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+
+  // Referrer policy — jangan bocorkan URL sumber
+  res.setHeader('Referrer-Policy', 'no-referrer');
+
+  // Cache control — data sensitif tidak boleh di-cache proxy/browser
+  if (req.path.startsWith('/api/') && req.path !== '/api/health') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+  }
+
+  next();
+});
+
+// ── Rate limiting per IP ──────────────────────────────────────────────────
+const hitMap = new Map(); // ip → { count, resetAt }
+const RATE_WINDOW_MS  = 60_000;  // 1 menit
+const RATE_MAX_LOGIN  = 10;       // maks 10 login attempt per menit per IP
+const RATE_MAX_API    = 200;      // maks 200 request API per menit per IP
+
+function rateLimitMiddleware(maxReq) {
+  return (req, res, next) => {
+    const ip  = req.ip || req.socket?.remoteAddress || 'unknown';
+    const now = Date.now();
+    const key = `${ip}:${req.path.split('/')[2] || 'root'}`;
+    let entry = hitMap.get(key);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + RATE_WINDOW_MS };
+      hitMap.set(key, entry);
+    }
+    entry.count++;
+    res.setHeader('X-RateLimit-Limit',     maxReq);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxReq - entry.count));
+    if (entry.count > maxReq) {
+      return res.status(429).json({
+        error: 'Terlalu banyak permintaan. Coba lagi dalam 1 menit.',
+        retryAfter: Math.ceil((entry.resetAt - now) / 1000),
+      });
+    }
+    next();
+  };
+}
+
+// Bersihkan hitMap setiap 5 menit agar tidak bocor memori
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of hitMap.entries()) {
+    if (now > v.resetAt) hitMap.delete(k);
+  }
+}, 300_000);
+
+app.use(express.json({ limit: '1mb' }));  // batasi payload
 
 // ── Koneksi MongoDB ───────────────────────────────────────────────────────
 async function getDB() {
@@ -109,11 +174,46 @@ function requireFullAccess(req, res, next) {
   next();
 }
 
+// ── Anonimisasi data sensitif ────────────────────────────────────────────
+// Masking: hanya perlihatkan sebagian NIK/No KK (untuk audit trail tapi tidak expose penuh)
+function maskNIK(nik) {
+  if (!nik || nik.length < 6) return '****';
+  return nik.slice(0, 4) + '****' + nik.slice(-4);
+}
+function maskNoKK(noKK) {
+  if (!noKK || noKK.length < 6) return '****';
+  return noKK.slice(0, 4) + '****' + noKK.slice(-4);
+}
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return email;
+  const [local, domain] = email.split('@');
+  const shown = local.length > 3 ? local.slice(0,3) + '***' : local[0] + '***';
+  return `${shown}@${domain}`;
+}
+// Anonimisasi satu record responden
+function anonymizeResponden(r, fullAccess = false) {
+  if (!r) return r;
+  if (fullAccess) return r;  // kepala/kasubbag/statistisi dapat data lengkap
+  return {
+    ...r,
+    nik:         r.nik    ? maskNIK(r.nik)    : r.nik,
+    noKK:        r.noKK   ? maskNoKK(r.noKK)  : r.noKK,
+    namaKepala:  r.namaKepala ? r.namaKepala.replace(/(?<=.{3}).(?=.{2})/g, '*') : r.namaKepala,
+    namaPasangan: r.namaPasangan ? '***' : r.namaPasangan,
+    alamat:      r.alamat ? '***' : r.alamat,
+    anggotaKeluarga: (r.anggotaKeluarga || []).map(ak => ({
+      ...ak,
+      nik:  ak.nik  ? maskNIK(ak.nik)  : ak.nik,
+      nama: ak.nama ? ak.nama.replace(/(?<=.{3}).(?=.{2})/g, '*') : ak.nama,
+    })),
+  };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // AUTH ROUTES
 // ══════════════════════════════════════════════════════════════════════════
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', rateLimitMiddleware(RATE_MAX_LOGIN), async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -595,53 +695,10 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── GET /api/debug/nikak ─────────────────────────────────────────────────
-// Debug endpoint: cek struktur anggotaKeluarga di MongoDB
-app.get('/api/debug/nikak', verifyToken, async (req, res) => {
-  try {
-    // Total docs
-    const total = await db.collection('isian_se2026').countDocuments({});
+// [debug endpoint dihapus dari production]
 
-    // Cek apakah anggotaKeluarga ada di MongoDB
-    const sampleNoAK = await db.collection('isian_se2026').findOne(
-      { anggotaKeluarga: { $exists: false } }, { projection: { id:1 } }
-    );
-    const sampleWithAK = await db.collection('isian_se2026').findOne(
-      { anggotaKeluarga: { $exists: true, $not: { $size: 0 } } },
-      { projection: { id:1, 'anggotaKeluarga': { $slice: 1 } } }
-    );
-
-    // Hitung docs dengan anggotaKeluarga
-    const withAK   = await db.collection('isian_se2026').countDocuments(
-      { anggotaKeluarga: { $exists: true, $not: { $size: 0 } } }
-    );
-
-    // Cari NIK 9999 dengan berbagai cara
-    const byRegex  = await db.collection('isian_se2026').countDocuments(
-      { 'anggotaKeluarga.nik': { $regex: '^9999' } }
-    );
-    const byExact  = await db.collection('isian_se2026').countDocuments(
-      { 'anggotaKeluarga.nik': '9999' }
-    );
-
-    // Sample AK fields dari doc pertama yang punya AK
-    const akSample = sampleWithAK?.anggotaKeluarga?.[0] || null;
-    const akFields = akSample ? Object.keys(akSample) : [];
-
-    res.json({
-      total_docs: total,
-      docs_with_ak: withAK,
-      docs_without_ak_field: sampleNoAK ? 'ADA (field anggotaKeluarga tidak tersimpan di semua doc)' : 'TIDAK ADA (semua doc punya field)',
-      sample_ak_fields: akFields,
-      sample_ak_nik: akSample?.nik,
-      query_regex_9999: byRegex,
-      query_exact_9999: byExact,
-      verdict: byRegex > 0 ? 'DATA ADA di MongoDB' : 
-               withAK  > 0 ? 'Field ada tapi NIK 9999 tidak ketemu' :
-                              'anggotaKeluarga TIDAK TERSIMPAN di MongoDB',
-    });
-  } catch (err) { res.status(500).json({ error: err.message, stack: err.stack }); }
-});
+// Rate limit untuk semua endpoint API (kecuali health)
+app.use('/api', rateLimitMiddleware(RATE_MAX_API));
 
 app.get('/api/health', async (req, res) => {
   try {
