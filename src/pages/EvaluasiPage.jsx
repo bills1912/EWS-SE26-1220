@@ -272,6 +272,15 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
           <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
+        {/* Pengawas */}
+        <td style={{ padding:'9px 8px' }}>
+          <div style={{ fontSize:10,fontWeight:600,color:'var(--text2)',whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis' }}>
+            {p.pengawas?.nama||'—'}
+          </div>
+          <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:140 }}>
+            {p.pengawas?.email||''}
+          </div>
+        </td>
         {/* Total = semua assignment yg ditugaskan */}
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>
         {/* Submit = submitted tapi belum diapprove */}
@@ -301,6 +310,18 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
           <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
+            {p.pengawas?.nama && (
+              <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'7px 12px',
+                             background:'rgba(27,63,139,0.06)',border:'1px solid rgba(27,63,139,0.15)',
+                             borderRadius:8 }}>
+                <Shield size={10} color="var(--blue3)" strokeWidth={2}/>
+                <div>
+                  <span style={{ fontSize:9,color:'var(--text4)',textTransform:'uppercase',letterSpacing:'0.06em',fontWeight:700 }}>Pengawas (PML)</span>
+                  <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)',marginLeft:8 }}>{p.pengawas.nama}</span>
+                  <span style={{ fontSize:9,color:'var(--text4)',fontFamily:'var(--mono)',marginLeft:6 }}>{p.pengawas.email}</span>
+                </div>
+              </div>
+            )}
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Tugas"   value={p.total}                                    icon={BarChart2}  animate/>
               <Mini label="Belum Dikerjakan" value={p.open}    color="var(--text4)"           icon={Inbox}     animate/>
@@ -500,6 +521,9 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
         <div style="font-size:7px;color:#9CA3AF">${p.email||''}</div>
       </td>
       <td style="padding:5px 6px;font-size:8px;color:#374151">${p.kecamatan||'—'}</td>
+      ${!isPengawas ? `<td style="padding:5px 6px;font-size:8px;color:#374151">
+        <div style="font-weight:500">${p.pengawas?.nama||'—'}</div>
+      </td>` : ''}
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:600">${p.total||0}</td>
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#059669">${p.approved||0}</td>
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#D97706;font-weight:${(p.submit||0)>0?'600':'400'}">${p.submit||0}</td>
@@ -598,6 +622,7 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
         <th class="c" style="width:24px">#</th>
         <th style="width:160px">Nama ${roleLabel}</th>
         <th style="width:90px">Kecamatan</th>
+        ${!isPengawas ? '<th style="width:90px">Pengawas</th>' : ''}
         <th class="c" style="width:40px">Total</th>
         <th class="c" style="background:#059669;width:44px">Approved</th>
         <th class="c" style="background:#D97706;width:40px">Submit</th>
@@ -649,7 +674,9 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
 
   // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
   const headers1 = [
-    'No','Nama','Email','Kecamatan','Total','Approved','Submit',
+    'No','Nama','Email','Kecamatan',
+    ...(!isPengawas ? ['Pengawas (PML)','Email Pengawas'] : []),
+    'Total','Approved','Submit',
     'Rejected','Draft','Open','Progress (%)','Avg per Hari (total)','Perf Score','Grade','Keterangan Grade',
   ];
   const data1 = filtered.map((p, i) => {
@@ -657,6 +684,7 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
     const avgT = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
     return [
       i+1, p.nama||'', p.email||'', p.kecamatan||'',
+      ...(!isPengawas ? [p.pengawas?.nama||'—', p.pengawas?.email||'—'] : []),
       p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
       (p.pctApproved||0).toFixed(1), +avgT||'',
       p.perfScore??'', p.grade||'', GRADE_LABEL[p.grade]||'',
@@ -1021,6 +1049,7 @@ export function EvaluasiPage() {
                 <H label="#"/>
                 <H label={isPengawas?'Pengawas':'Pencacah'}/>
                 <H label="Kecamatan"/>
+                {!isPengawas && <H label="Pengawas"/>}
                 <H label="Total"   col="total"     right/>
                 <H label="Submit"  right/>
                 <H label="Approved" col="approved" right/>
