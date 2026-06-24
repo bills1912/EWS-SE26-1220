@@ -291,9 +291,6 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{p.pctApproved}%</span>
           </div>
         </td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>
-          {p.avgDurHari!=null?`${p.avgDurHari}h`:'—'}
-        </td>
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}>
@@ -311,7 +308,6 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
               <Mini label="Sudah Submit"  value={p.submit}     color="#f59e0b"                icon={Clock}     animate/>
               <Mini label="Approved"      value={p.approved}   color="#10b981"                icon={CheckCircle} animate/>
               <Mini label="Rejected"      value={p.reject}     color="#f43f5e"                icon={XCircle}   animate/>
-              <Mini label="Avg Pengisian" value={p.avgDurHari!=null?`${p.avgDurHari} hari`:'—'} icon={Clock}/>
               <Mini label="Perf Score"    value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
             </div>
             {/* Score breakdown */}
@@ -361,7 +357,6 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
 function PengawasRow({ p, rank, filterKec, filterDesa }) {
   const [open, setOpen] = useState(false);
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
-  const lc = p.avgLatHari==null?'var(--text2)':p.avgLatHari<3?'#10b981':p.avgLatHari<7?'#f59e0b':'#f43f5e';
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
@@ -387,9 +382,6 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{p.pctApproved}%</span>
           </div>
         </td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:12,color:lc,fontWeight:600,textAlign:'right' }}>
-          {p.avgLatHari!=null?`${p.avgLatHari}h`:'—'}
-        </td>
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}>
@@ -406,7 +398,6 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
               <Mini label="Menunggu Approve" value={p.submit}   color="#f59e0b"                    icon={Clock}       animate/>
               <Mini label="Approved"          value={p.approved} color="#10b981"                   icon={CheckCircle} animate/>
               <Mini label="Ditolak"           value={p.reject}   color="#f43f5e"                   icon={XCircle}     animate/>
-              <Mini label="Avg Latensi"       value={p.avgLatHari!=null?`${p.avgLatHari} hari`:'—'} color={lc} icon={Clock}/>
               <Mini label="Perf Score"        value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
             </div>
             {p.perfScore!=null && (
@@ -491,12 +482,6 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
   // Baris tabel per petugas
   const rows = filtered.map((p, i) => {
     const grade = p.grade || 'D';
-    const dur   = isPengawas
-      ? (p.avgLatHari != null ? `${p.avgLatHari}h` : '—')
-      : (p.avgDurHari != null ? `${p.avgDurHari}h` : '—');
-    const durColor = isPengawas
-      ? (p.avgLatHari < 3 ? '#059669' : p.avgLatHari < 7 ? '#D97706' : '#DC2626')
-      : '#374151';
     const pct     = p.pctApproved || 0;
     const pctColor = pct >= 50 ? '#059669' : pct >= 20 ? '#D97706' : '#DC2626';
     const BAR_W   = 60;
@@ -522,7 +507,6 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#1B3F8B">${p.draft||0}</td>
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#9CA3AF">${p.open||0}</td>
       <td style="padding:5px 6px">${bar}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:${durColor};font-weight:600">${dur}</td>
       <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#374151">${p.perfScore??'—'}</td>
       <td style="padding:5px 6px;text-align:center">
         <span style="background:${GRADE_BG[grade]};color:${GRADE_COLOR[grade]};padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700">${grade}</span>
@@ -621,7 +605,6 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
         <th class="c" style="background:#1B3F8B;width:36px">Draft</th>
         <th class="c" style="width:36px">Open</th>
         <th style="width:90px">Progress</th>
-        <th class="c" style="width:50px">${isPengawas?'Avg Latensi':'Avg Durasi'}</th>
         <th class="c" style="width:44px">Score</th>
         <th class="c" style="width:44px">Grade</th>
         <th class="c" style="width:44px">Avg/Hari</th>
@@ -667,17 +650,15 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
   // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
   const headers1 = [
     'No','Nama','Email','Kecamatan','Total','Approved','Submit',
-    'Rejected','Draft','Open','Progress (%)','Avg Durasi/Latensi (hari)',
-    'Avg per Hari (total)','Perf Score','Grade','Keterangan Grade',
+    'Rejected','Draft','Open','Progress (%)','Avg per Hari (total)','Perf Score','Grade','Keterangan Grade',
   ];
   const data1 = filtered.map((p, i) => {
     const avg  = p.avgPerDay || {};
     const avgT = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
-    const dur  = isPengawas ? (p.avgLatHari ?? '') : (p.avgDurHari ?? '');
     return [
       i+1, p.nama||'', p.email||'', p.kecamatan||'',
       p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
-      (p.pctApproved||0).toFixed(1), dur, +avgT||'',
+      (p.pctApproved||0).toFixed(1), +avgT||'',
       p.perfScore??'', p.grade||'', GRADE_LABEL[p.grade]||'',
     ];
   });
@@ -871,8 +852,6 @@ export function EvaluasiPage() {
     if (sortBy==='approved')  return d*(b.approved-a.approved);
     if (sortBy==='total')     return d*(b.total-a.total);
     if (sortBy==='pct')       return d*(b.pctApproved-a.pctApproved);
-    if (sortBy==='dur')       return d*((a.avgDurHari??999)-(b.avgDurHari??999));
-    if (sortBy==='lat')       return d*((a.avgLatHari??999)-(b.avgLatHari??999));
     if (sortBy==='kecepatan') return d*((b.kecepatan??0)-(a.kecepatan??0));
     if (sortBy==='perfScore') return d*((b.perfScore??0)-(a.perfScore??0));
     if (sortBy==='grade') {
@@ -1033,7 +1012,6 @@ export function EvaluasiPage() {
           <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
           <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
           <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
-          {isPengawas && <span><strong style={{ color:'var(--text2)' }}>Avg Latensi</strong>: hijau &lt;3h · kuning &lt;7h · merah ≥7h</span>}
         </div>
 
         <div style={{ overflowX:'auto' }}>
@@ -1050,7 +1028,6 @@ export function EvaluasiPage() {
                 <H label="Draft"    col="draft"     right/>
                 <H label="Open"     right/>
                 <H label="Progress" col="pct"/>
-                <H label={isPengawas?'Avg Latensi':'Avg Durasi'} col={isPengawas?'lat':'dur'} right/>
                 <H label="Perf Score" col="perfScore"/>
                 <H label="Grade"   col="grade"/>
                 <th style={{ width:24 }}/>
