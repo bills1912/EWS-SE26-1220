@@ -351,12 +351,12 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
           <XAxis
             dataKey="date"
             tickFormatter={fmtDate}
-            tick={{ fontSize: 9, fill: 'var(--text4)' }}
+            tick={{ fontSize: 9, fill: 'var(--text3)' }}
             axisLine={false} tickLine={false}
           />
           <YAxis
             yAxisId="left"
-            tick={{ fontSize: 9, fill: 'var(--text4)' }}
+            tick={{ fontSize: 9, fill: 'var(--text3)' }}
             axisLine={false} tickLine={false}
             allowDecimals={false} width={28}
           />
@@ -435,7 +435,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
         </ComposedChart>
       </ResponsiveContainer>
 
-      <div style={{ fontSize: 9, color: 'var(--text4)', marginTop: 4, display: 'flex',
+      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, display: 'flex',
                      gap: 12, flexWrap: 'wrap' }}>
         <span>Sumbu kanan (area) = kumulatif dikerjakan (approved + submitted + draft + rejected)</span>
         <span>Garis putus-putus = rata-rata harian (klik label untuk toggle)</span>

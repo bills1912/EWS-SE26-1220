@@ -202,7 +202,7 @@ function DetailPanel({ email, filterKec, filterDesa }) {
                 ? <tr><td colSpan={7} style={{ textAlign:'center',padding:'24px',color:'var(--text4)',fontSize:12 }}>Tidak ada data</td></tr>
                 : data.map((d,i) => (
                   <tr key={i} style={{ borderBottom:'1px solid var(--border)',
-                                        background:i%2===0?'transparent':'rgba(255,255,255,0.015)' }}>
+                                        background:i%2===0?'transparent':'rgba(255,255,255,0.04)' }}>
                     <td style={{ padding:'7px 10px',color:'var(--text2)',whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis' }}>{d.desa}</td>
                     <td style={{ padding:'7px 10px',color:'var(--text3)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{d.slsName}</td>
                     <td style={{ padding:'7px 10px' }}>
@@ -266,10 +266,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
         onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text4)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
           <div style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</div>
-          <div style={{ fontSize:9,color:'var(--text4)',fontFamily:'var(--mono)' }}>{p.email}</div>
+          <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
         {/* Total = semua assignment yg ditugaskan */}
@@ -363,10 +363,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
         style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
         onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text4)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
           <div style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</div>
-          <div style={{ fontSize:9,color:'var(--text4)',fontFamily:'var(--mono)' }}>{p.email}</div>
+          <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>

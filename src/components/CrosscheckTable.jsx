@@ -193,7 +193,7 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
         </div>
 
         {/* Info */}
-        <span style={{ fontSize:10, color:'var(--text4)', whiteSpace:'nowrap', flexShrink:0 }}>
+        <span style={{ fontSize:10, color:'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
           {loading ? 'Memuat…' : total > 0
             ? `${startIdx}–${endIdx} dari ${total.toLocaleString('id')}`
             : '0 data'
@@ -256,15 +256,15 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
             ) : rows.map((row, i) => (
               <tr key={i}
                 style={{ borderBottom:'1px solid var(--border)',
-                  background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                  background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.04)',
                   transition:'background .1s' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
                 onMouseLeave={e => e.currentTarget.style.background =
-                  i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)'}
+                  i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.04)'}
               >
                 {/* Nomor urut global */}
                 <td style={{ padding:'8px 10px', textAlign:'center', fontSize:10,
-                  color:'var(--text4)', fontFamily:'var(--mono)', width:36, flexShrink:0 }}>
+                  color:'var(--text3)', fontFamily:'var(--mono)', width:36, flexShrink:0 }}>
                   {startIdx + i}
                 </td>
                 {cols.map(c => {
@@ -324,7 +324,7 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
           marginTop:12, flexWrap:'wrap', gap:8 }}>
 
-          <span style={{ fontSize:10, color:'var(--text4)' }}>
+          <span style={{ fontSize:10, color:'var(--text3)' }}>
             Halaman {page} dari {pages}
           </span>
 
