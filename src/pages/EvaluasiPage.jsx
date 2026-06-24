@@ -2,7 +2,7 @@
  * src/pages/EvaluasiPage.jsx
  * ─────────────────────────────────────────────────────────────────────────
  * Evaluasi seluruh petugas (Pencacah + Pengawas).
- * Kolom: # | Nama | Kecamatan | Total | Submit | Approved | Rejected | Open | Progress | Avg Durasi/Latensi | Perf Score | Grade | Status
+ * Kolom: # | Nama | Kecamatan | Total | Submit | Approved | Rejected | Open | Progress | Avg Durasi/Latensi | Avg/Hari
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -300,8 +300,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
+        {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
+        */}
         <td style={{ padding:'9px 8px' }}>
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
@@ -329,24 +331,27 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
               <Mini label="Sudah Submit"  value={p.submit}     color="#f59e0b"                icon={Clock}     animate/>
               <Mini label="Approved"      value={p.approved}   color="#10b981"                icon={CheckCircle} animate/>
               <Mini label="Rejected"      value={p.reject}     color="#f43f5e"                icon={XCircle}   animate/>
-              <Mini label="Perf Score"    value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
+              {/* MINI PERF SCORE — uncomment jika diperlukan:
+              <Mini label="Perf Score" value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
+              */}
             </div>
-            {/* Score breakdown */}
+
+            {/* BREAKDOWN SKOR PERFORMA — uncomment jika diperlukan:
             {p.perfScore!=null && (
               <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:12,padding:'10px 12px',
                              background:'var(--bg3)',borderRadius:8,border:'1px solid var(--border)' }}>
                 <div style={{ fontSize:9,color:'var(--text4)',width:'100%',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4 }}>
-                  💡 Breakdown skor performa
+                  Breakdown skor performa
                 </div>
                 {[
                   { label:'Progress (20%)',  val:p.progressScore, desc:'(appr+sub+rej+draft)/total', color:'var(--orange3)' },
-                  { label:'Kualitas (40%)',  val:p.qualityScore,  desc:'approved/(approved+submit+reject)', color:'var(--green3)' },
-                  { label:'Kecepatan (20%)', val:p.speedScore,    desc:'inverted avg durasi', color:'var(--blue3)' },
+                  { label:'Field (50%)',     val:p.fieldScore,    desc:'(submit+draft)/total',       color:'var(--blue3)' },
+                  { label:'Quality (30%)',   val:p.qualityScore,  desc:'submit/(submit+draft)',       color:'#10b981' },
                 ].map(s => (
                   <div key={s.label} style={{ flex:1,minWidth:140 }}>
                     <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
                       <span style={{ fontSize:9,color:s.color,fontWeight:600 }}>{s.label}</span>
-                      <span style={{ fontSize:9,fontFamily:'var(--mono)',color:s.color }}>{s.val??'—'}</span>
+                      <span style={{ fontSize:9,fontFamily:'var(--mono)',color:s.color }}>{s.val??'--'}</span>
                     </div>
                     <ProgressBar pct={s.val??0} color={s.color} height={3}/>
                     <div style={{ fontSize:8,color:'var(--text4)',marginTop:2 }}>{s.desc}</div>
@@ -354,6 +359,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
                 ))}
               </div>
             )}
+            */}
             {/* Time series aktivitas harian */}
             <div style={{ borderTop:'1px solid var(--border)',paddingTop:12,marginBottom:14 }}>
               <PetugasTimeSeriesChart email={p.email} role="Pencacah" nama={p.nama}/>
@@ -403,8 +409,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
+        {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
+        */}
         <td style={{ padding:'9px 8px' }}>
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
@@ -419,22 +427,26 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
               <Mini label="Menunggu Approve" value={p.submit}   color="#f59e0b"                    icon={Clock}       animate/>
               <Mini label="Approved"          value={p.approved} color="#10b981"                   icon={CheckCircle} animate/>
               <Mini label="Ditolak"           value={p.reject}   color="#f43f5e"                   icon={XCircle}     animate/>
-              <Mini label="Perf Score"        value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
+              {/* MINI PERF SCORE — uncomment jika diperlukan:
+              <Mini label="Perf Score" value={p.perfScore!=null?`${p.perfScore}/100`:'—'} color={GRADE_CFG[p.grade]?.color} icon={Star}/>
+              */}
             </div>
+
+            {/* BREAKDOWN SKOR PERFORMA — uncomment jika diperlukan:
             {p.perfScore!=null && (
               <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:12,padding:'10px 12px',
                              background:'var(--bg3)',borderRadius:8,border:'1px solid var(--border)' }}>
                 <div style={{ fontSize:9,color:'var(--text4)',width:'100%',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4 }}>
-                  💡 Breakdown skor performa
+                  Breakdown skor performa
                 </div>
                 {[
-                  { label:'Approval Rate (50%)', val:p.approvalRate, desc:'approved/total', color:'var(--orange3)' },
-                  { label:'Kecepatan (30%)',      val:p.speedScore,   desc:'inverted avg latensi', color:'var(--green3)' },
+                  { label:'Decision Rate (50%)', val:p.decisionRate,  desc:'(appr+rej)/(sub+appr+rej)', color:'var(--orange3)' },
+                  { label:'Approval Rate (30%)', val:p.approvalRate,  desc:'approved/(appr+rej)',        color:'#10b981' },
                 ].map(s => (
                   <div key={s.label} style={{ flex:1,minWidth:140 }}>
                     <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
                       <span style={{ fontSize:9,color:s.color,fontWeight:600 }}>{s.label}</span>
-                      <span style={{ fontSize:9,fontFamily:'var(--mono)',color:s.color }}>{s.val??'—'}</span>
+                      <span style={{ fontSize:9,fontFamily:'var(--mono)',color:s.color }}>{s.val??'--'}</span>
                     </div>
                     <ProgressBar pct={s.val??0} color={s.color} height={3}/>
                     <div style={{ fontSize:8,color:'var(--text4)',marginTop:2 }}>{s.desc}</div>
@@ -442,6 +454,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
                 ))}
               </div>
             )}
+            */}
             {/* Time series aktivitas harian pengawas */}
             <div style={{ borderTop:'1px solid var(--border)',paddingTop:12,marginBottom:14 }}>
               <PetugasTimeSeriesChart email={p.email} role="Pengawas" nama={p.nama}/>
@@ -476,184 +489,225 @@ function SumCard({ label, value, sub, color, icon: Icon }) {
   );
 }
 
-// ── Generate & Print PDF Evaluasi ─────────────────────────────────────────
-function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas }) {
+// ── Generate PDF Evaluasi (jsPDF — download langsung) ──────────────────────
+async function generatePDF({ activeTab, filtered, summary }) {
   const isPengawas = activeTab === 'pengawas';
-  const src        = isPengawas ? pengawas : pencacah;
-  const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
-  const generated  = new Date().toLocaleString('id-ID', {
-    day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'
-  });
   const roleLabel  = isPengawas ? 'Pengawas' : 'Pencacah';
-
-  const GRADE_COLOR = { A:'#10b981', B:'#E8541C', C:'#f59e0b', D:'#f43f5e' };
-  const GRADE_BG    = { A:'#D1FAE5', B:'#FFEDD5', C:'#FEF3C7', D:'#FFE4E6' };
+  const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
   const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
 
-  const statusBadge = (s) => {
-    const cfg = {
-      APPROVED:  { bg:'#D1FAE5', color:'#059669' },
-      SUBMITTED: { bg:'#FEF3C7', color:'#D97706' },
-      REJECTED:  { bg:'#FFE4E6', color:'#DC2626' },
-    };
-    const c = cfg[s] || { bg:'#F3F4F6', color:'#6B7280' };
-    return `<span style="background:${c.bg};color:${c.color};padding:1px 6px;border-radius:99px;font-size:9px;font-weight:600">${s}</span>`;
+  // Load jsPDF dari CDN
+  if (!window.jspdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  if (!window.jspdf?.jsPDF) {
+    alert('Gagal memuat library PDF. Periksa koneksi internet.'); return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W   = doc.internal.pageSize.getWidth();   // 297
+  const H   = doc.internal.pageSize.getHeight();  // 210
+  const M   = 12;  // margin
+  const COL = W - 2 * M;
+
+  // ── Warna ────────────────────────────────────────────────────────────────
+  const ORANGE  = [232, 84, 28];
+  const BLUE    = [27, 63, 139];
+  const GREEN   = [16, 185, 129];
+  const YELLOW  = [245, 158, 11];
+  const RED     = [244, 63, 94];
+  const LGRAY   = [243, 244, 246];
+  const MGRAY   = [229, 231, 235];
+  const DGRAY   = [55, 65, 81];
+  const WHITE   = [255, 255, 255];
+
+  const GRADE_COLOR = { A: GREEN, B: ORANGE, C: YELLOW, D: RED };
+
+  // Helper
+  const setFill   = (rgb) => doc.setFillColor(...rgb);
+  const setTxt    = (rgb) => doc.setTextColor(...rgb);
+  const setFont   = (sz, style='normal') => { doc.setFontSize(sz); doc.setFont('helvetica', style); };
+
+  let y = 0;
+
+  // ── Header bar ───────────────────────────────────────────────────────────
+  const drawHeader = (pageNum) => {
+    setFill(ORANGE); doc.rect(0, 0, W, 14, 'F');
+    setTxt(WHITE); setFont(8, 'bold');
+    doc.text(`EWS SE2026 — Laporan Evaluasi ${roleLabel}`, M, 9);
+    setFont(7);
+    doc.text(`BPS Kab. Padang Lawas Utara  |  ${snap}`, W - M, 9, { align: 'right' });
+    // Footer
+    setFill(LGRAY); doc.rect(0, H - 10, W, 10, 'F');
+    setTxt(DGRAY); setFont(6.5);
+    doc.text('Dokumen ini bersifat rahasia — hanya untuk lingkungan internal BPS Kab. Padang Lawas Utara', M, H - 4);
+    setFont(7, 'bold');
+    doc.text(`Halaman ${pageNum}`, W - M, H - 4, { align: 'right' });
   };
 
-  // Baris tabel per petugas
-  const rows = filtered.map((p, i) => {
-    const grade = p.grade || 'D';
-    const pct     = (p.progressScore != null ? p.progressScore : (p.pctApproved ?? 0));
-    const pctColor = pct >= 50 ? '#059669' : pct >= 20 ? '#D97706' : '#DC2626';
-    const BAR_W   = 60;
-    const filled  = Math.round(pct / 100 * BAR_W);
-    const bar     = `<div style="display:flex;align-items:center;gap:4px">
-      <div style="width:${BAR_W}px;height:5px;background:#E5E7EB;border-radius:99px;overflow:hidden">
-        <div style="width:${filled}px;height:100%;background:${pctColor};border-radius:99px"></div>
-      </div>
-      <span style="font-size:8px;color:${pctColor};font-weight:600">${pct}%</span>
-    </div>`;
+  // ── Halaman 1: Cover + Summary ───────────────────────────────────────────
+  drawHeader(1);
+  y = 20;
 
-    return `<tr style="background:${i%2===0?'#fff':'#F9FAFB'}">
-      <td style="padding:5px 6px;text-align:center;color:#9CA3AF;font-size:8px">${i+1}</td>
-      <td style="padding:5px 6px">
-        <div style="font-weight:600;font-size:8.5px;color:#111827">${p.nama||'—'}</div>
-        <div style="font-size:7px;color:#9CA3AF">${p.email||''}</div>
-      </td>
-      <td style="padding:5px 6px;font-size:8px;color:#374151">${p.kecamatan||'—'}</td>
-      ${!isPengawas ? `<td style="padding:5px 6px;font-size:8px;color:#374151">
-        <div style="font-weight:500">${p.pengawas?.nama||'—'}</div>
-      </td>` : ''}
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:600">${p.total||0}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#059669">${p.approved||0}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#D97706;font-weight:${(p.submit||0)>0?'600':'400'}">${p.submit||0}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#DC2626">${p.reject||0}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#1B3F8B">${p.draft||0}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#9CA3AF">${p.open||0}</td>
-      <td style="padding:5px 6px">${bar}</td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#374151">${p.perfScore??'—'}</td>
-      <td style="padding:5px 6px;text-align:center">
-        <span style="background:${GRADE_BG[grade]};color:${GRADE_COLOR[grade]};padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700">${grade}</span>
-      </td>
-      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:var(--orange3,#E8541C)">
-        ${(() => {
-          const avg = p.avgPerDay;
-          if (!avg) return '—';
-          const t = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0));
-          return t > 0 ? t.toFixed(1) : '—';
-        })()}
-      </td>
-    </tr>`;
-  }).join('');
+  setTxt(ORANGE); setFont(18, 'bold');
+  doc.text(`LAPORAN EVALUASI ${roleLabel.toUpperCase()}`, M, y); y += 7;
 
-  // Distribusi grade
-  const gradeDist = ['A','B','C','D'].map(g => {
-    const n   = filtered.filter(p => p.grade === g).length;
+  setTxt(BLUE); setFont(10, 'bold');
+  doc.text('Sensus Ekonomi 2026 (SE2026)', M, y); y += 5;
+
+  setTxt(DGRAY); setFont(8);
+  doc.text(`BPS Kabupaten Padang Lawas Utara  |  Snapshot: ${snap}  |  Total ${roleLabel}: ${filtered.length}`, M, y); y += 8;
+
+  // Garis
+  doc.setDrawColor(...MGRAY); doc.setLineWidth(0.3);
+  doc.line(M, y, W - M, y); y += 6;
+
+  // Summary boxes
+  const s = summary || {};
+  const boxes = [
+    ['Total Assignment', (s.totalAssignment||0).toLocaleString('id'), DGRAY],
+    ['Approved',         (s.approved||0).toLocaleString('id'),        GREEN],
+    ['Submit',           (s.submit||0).toLocaleString('id'),           YELLOW],
+    ['Rejected',         (s.reject||0).toLocaleString('id'),           RED],
+    ['Draft',            (s.draft||0).toLocaleString('id'),            BLUE],
+    ['Open',             (s.open||0).toLocaleString('id'),             [156,163,175]],
+  ];
+  const bW = COL / boxes.length;
+  boxes.forEach(([label, val, color], i) => {
+    const bx = M + i * bW;
+    setFill(LGRAY); doc.roundedRect(bx, y, bW - 2, 16, 2, 2, 'F');
+    setTxt(color); setFont(13, 'bold');
+    doc.text(val, bx + bW/2 - 1, y + 8, { align: 'center' });
+    setTxt([156,163,175]); setFont(6.5);
+    doc.text(label, bx + bW/2 - 1, y + 13, { align: 'center' });
+  });
+  y += 22;
+
+  // Grade distribution
+  const gradeCounts = { A:0, B:0, C:0, D:0 };
+  filtered.forEach(p => { if (p.grade) gradeCounts[p.grade] = (gradeCounts[p.grade]||0)+1; });
+  const gW = COL / 4;
+  ['A','B','C','D'].forEach((g, i) => {
+    const gx = M + i * gW;
+    const n  = gradeCounts[g] || 0;
     const pct = filtered.length ? Math.round(n/filtered.length*100) : 0;
-    return `<div style="flex:1;text-align:center;padding:10px 8px;background:#F9FAFB;border-radius:8px;border:1px solid #E5E7EB">
-      <div style="font-size:20px;font-weight:800;color:${GRADE_COLOR[g]}">${n}</div>
-      <div style="font-size:10px;font-weight:700;color:${GRADE_COLOR[g]};margin:2px 0">Grade ${g}</div>
-      <div style="font-size:9px;color:#9CA3AF">${GRADE_LABEL[g]} · ${pct}%</div>
-    </div>`;
-  }).join('');
+    setFill(LGRAY); doc.roundedRect(gx, y, gW - 2, 14, 2, 2, 'F');
+    setTxt(GRADE_COLOR[g]); setFont(12, 'bold');
+    doc.text(String(n), gx + gW/2 - 1, y + 7, { align: 'center' });
+    setFont(6.5);
+    doc.text(`Grade ${g} — ${GRADE_LABEL[g]} (${pct}%)`, gx + gW/2 - 1, y + 12, { align: 'center' });
+  });
+  y += 20;
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Laporan Evaluasi ${roleLabel} SE2026 — ${snap}</title>
-  <style>
-    @page { size:A4 landscape; margin:12mm 10mm; }
-    * { box-sizing:border-box; margin:0; padding:0; font-family:Arial,sans-serif; }
-    body { background:#fff; color:#111827; font-size:9px; }
-    table { width:100%; border-collapse:collapse; }
-    th { background:#E8541C; color:#fff; padding:6px; text-align:left; font-size:8px;
-         text-transform:uppercase; letter-spacing:0.05em; position:sticky; top:0; }
-    th.c { text-align:center; }
-    tr:hover { background:#FFF7ED !important; }
-    .no-print { display:none !important; }
-    @media print {
-      thead { display:table-header-group; }
-      tr { page-break-inside:avoid; }
+  // ── Tabel data ───────────────────────────────────────────────────────────
+  const cols = isPengawas
+    ? [
+        { h:'#',        w:8,  key: (_,i) => i+1,                    align:'center' },
+        { h:'Nama',     w:42, key: p => p.nama||'—' },
+        { h:'Kec.',     w:28, key: p => p.kecamatan||'—' },
+        { h:'Total',    w:16, key: p => p.total||0,                  align:'right' },
+        { h:'Approved', w:18, key: p => p.approved||0,               align:'right', color: GREEN },
+        { h:'Submit',   w:16, key: p => p.submit||0,                 align:'right', color: YELLOW },
+        { h:'Rejected', w:16, key: p => p.reject||0,                 align:'right', color: RED },
+        { h:'Draft',    w:14, key: p => p.draft||0,                  align:'right', color: BLUE },
+        { h:'Open',     w:14, key: p => p.open||0,                   align:'right' },
+        { h:'Progress', w:22, key: p => `${(p.progressScore??p.pctApproved??0).toFixed(1)}%`, align:'right' },
+        { h:'Avg/Hari', w:20, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
+      ]
+    : [
+        { h:'#',        w:8,  key: (_,i) => i+1,                    align:'center' },
+        { h:'Nama',     w:36, key: p => p.nama||'—' },
+        { h:'Kec.',     w:24, key: p => p.kecamatan||'—' },
+        { h:'Pengawas', w:30, key: p => p.pengawas?.nama||'—' },
+        { h:'Total',    w:14, key: p => p.total||0,                  align:'right' },
+        { h:'Approved', w:16, key: p => p.approved||0,               align:'right', color: GREEN },
+        { h:'Submit',   w:14, key: p => p.submit||0,                 align:'right', color: YELLOW },
+        { h:'Rejected', w:14, key: p => p.reject||0,                 align:'right', color: RED },
+        { h:'Draft',    w:12, key: p => p.draft||0,                  align:'right', color: BLUE },
+        { h:'Open',     w:12, key: p => p.open||0,                   align:'right' },
+        { h:'Progress', w:20, key: p => `${(p.progressScore??p.pctApproved??0).toFixed(1)}%`, align:'right' },
+        { h:'Avg/Hari', w:18, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
+      ];
+
+  const ROW_H    = 7;
+  const HEAD_H   = 8;
+  let   pageNum  = 1;
+
+  const drawTableHeader = () => {
+    setFill(isPengawas ? BLUE : ORANGE);
+    doc.rect(M, y, COL, HEAD_H, 'F');
+    setTxt(WHITE); setFont(6.5, 'bold');
+    let x = M;
+    cols.forEach(c => {
+      doc.text(c.h, x + c.w/2, y + 5.5, { align: 'center' });
+      x += c.w;
+    });
+    y += HEAD_H;
+  };
+
+  doc.addPage(); pageNum++;
+  drawHeader(pageNum);
+  y = 18;
+  setTxt(isPengawas ? BLUE : ORANGE); setFont(10, 'bold');
+  doc.text(`Data ${roleLabel} (${filtered.length} orang)`, M, y); y += 5;
+  drawTableHeader();
+
+  filtered.forEach((p, idx) => {
+    // Halaman baru jika perlu
+    if (y + ROW_H > H - 14) {
+      doc.addPage(); pageNum++;
+      drawHeader(pageNum);
+      y = 18;
+      drawTableHeader();
     }
-  </style>
-</head>
-<body>
-  <!-- HEADER -->
-  <div style="background:linear-gradient(135deg,#E8541C,#1B3F8B);padding:14px 16px;border-radius:10px;margin-bottom:12px;color:#fff">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div style="font-size:6px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:3px">BPS Kabupaten Padang Lawas Utara · EWS SE2026</div>
-        <div style="font-size:16px;font-weight:800">Laporan Evaluasi ${roleLabel}</div>
-        <div style="font-size:9px;opacity:0.85;margin-top:3px">Sensus Ekonomi 2026 — Data per ${snap}</div>
-      </div>
-      <div style="text-align:right;font-size:8px;opacity:0.75">
-        <div>Dicetak: ${generated}</div>
-        <div>Total ${roleLabel}: ${filtered.length}</div>
-        <div>Snapshot: ${snap}</div>
-      </div>
-    </div>
-  </div>
 
-  <!-- SUMMARY CARDS -->
-  <div style="display:flex;gap:8px;margin-bottom:10px">
-    ${[
-      ['Total Assignment', (summary.totalAssignment||0).toLocaleString('id'), '#374151'],
-      ['Approved',         (summary.approved||0).toLocaleString('id'),        '#059669'],
-      ['Submit',           (summary.submit||0).toLocaleString('id'),           '#D97706'],
-      ['Rejected',         (summary.reject||0).toLocaleString('id'),           '#DC2626'],
-      ['Draft',            (summary.draft||0).toLocaleString('id'),            '#1B3F8B'],
-      ['Open',             (summary.open||0).toLocaleString('id'),             '#9CA3AF'],
-    ].map(([l,v,c]) =>
-      `<div style="flex:1;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px;text-align:center">
-        <div style="font-size:14px;font-weight:800;color:${c}">${v}</div>
-        <div style="font-size:7px;color:#9CA3AF;margin-top:2px">${l}</div>
-      </div>`
-    ).join('')}
-  </div>
+    const isEven = idx % 2 === 0;
+    setFill(isEven ? WHITE : LGRAY);
+    doc.rect(M, y, COL, ROW_H, 'F');
 
-  <!-- GRADE DISTRIBUTION -->
-  <div style="display:flex;gap:8px;margin-bottom:10px">${gradeDist}</div>
+    // Border bawah
+    doc.setDrawColor(...MGRAY); doc.setLineWidth(0.1);
+    doc.line(M, y + ROW_H, M + COL, y + ROW_H);
 
-  <!-- TABEL -->
-  <table>
-    <thead>
-      <tr>
-        <th class="c" style="width:24px">#</th>
-        <th style="width:160px">Nama ${roleLabel}</th>
-        <th style="width:90px">Kecamatan</th>
-        ${!isPengawas ? '<th style="width:90px">Pengawas</th>' : ''}
-        <th class="c" style="width:40px">Total</th>
-        <th class="c" style="background:#059669;width:44px">Approved</th>
-        <th class="c" style="background:#D97706;width:40px">Submit</th>
-        <th class="c" style="background:#DC2626;width:40px">Rejected</th>
-        <th class="c" style="background:#1B3F8B;width:36px">Draft</th>
-        <th class="c" style="width:36px">Open</th>
-        <th style="width:90px">Progress</th>
-        <th class="c" style="width:44px">Score</th>
-        <th class="c" style="width:44px">Grade</th>
-        <th class="c" style="width:44px">Avg/Hari</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
+    let x = M;
+    cols.forEach(c => {
+      const val = String(typeof c.key === 'function' ? c.key(p, idx) : '');
+      const clr = c.color || DGRAY;
+      setTxt(clr); setFont(6.5, c.color ? 'bold' : 'normal');
+      const align = c.align || 'left';
+      const tx = align === 'right' ? x + c.w - 1.5
+               : align === 'center' ? x + c.w / 2
+               : x + 1.5;
+      // Truncate panjang teks
+      const maxW = c.w - 3;
+      const txt  = doc.getTextWidth(val) > maxW
+        ? val.slice(0, Math.floor(val.length * maxW / doc.getTextWidth(val)) - 1) + '…'
+        : val;
+      doc.text(txt, tx, y + 4.8, { align });
+      x += c.w;
+    });
+    y += ROW_H;
+  });
 
-  <!-- FOOTER -->
-  <div style="margin-top:12px;padding:8px 10px;background:#F9FAFB;border-radius:6px;border:1px solid #E5E7EB;font-size:7.5px;color:#9CA3AF">
-    <strong style="color:#374151">Keterangan:</strong>
-    Grade A (Unggul) = top 25% skor peers · Grade B (Baik) = 50–75% · Grade C (Cukup) = 25–50% · Grade D (Perlu Perhatian) = bottom 25%.
-    Skor = Progress 40% + Kualitas 40% + Kecepatan 20% − Penalti.
-    Dokumen ini bersifat rahasia — hanya untuk lingkungan internal BPS Kab. Padang Lawas Utara.
-  </div>
-</body>
-</html>`;
+  // ── Keterangan ───────────────────────────────────────────────────────────
+  if (y + 14 > H - 14) { doc.addPage(); pageNum++; drawHeader(pageNum); y = 18; }
+  y += 4;
+  doc.setDrawColor(...MGRAY); doc.line(M, y, W - M, y); y += 4;
+  setTxt([156,163,175]); setFont(6.5);
+  doc.text(
+    'Progress = (Approved+Submit+Rejected+Draft)/Total. Avg/Hari = total dikerjakan / hari kalender sejak 15 Juni.',
+    M, y
+  );
 
-  // Buka di tab baru dan trigger print
-  const win = window.open('', '_blank', 'width=1200,height=800');
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 800);
+  // ── Download ──────────────────────────────────────────────────────────────
+  const fname = `evaluasi_${isPengawas?'pengawas':'pencacah'}_se2026_${snap}.pdf`;
+  doc.save(fname);
 }
 
 
@@ -677,7 +731,9 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
     'No','Nama','Email','Kecamatan',
     ...(!isPengawas ? ['Pengawas (PML)','Email Pengawas'] : []),
     'Total','Approved','Submit',
-    'Rejected','Draft','Open','Progress (%)','Avg per Hari (total)','Perf Score','Grade','Keterangan Grade',
+    'Rejected','Draft','Open','Progress (%)','Avg per Hari (total)',
+    // KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
+    // 'Perf Score','Grade','Keterangan Grade',
   ];
   const data1 = filtered.map((p, i) => {
     const avg  = p.avgPerDay || {};
@@ -687,7 +743,7 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
       ...(!isPengawas ? [p.pengawas?.nama||'—', p.pengawas?.email||'—'] : []),
       p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
       (p.progressScore ?? p.pctApproved ?? 0).toFixed(1), +avgT||'',
-      p.perfScore??'', p.grade||'', GRADE_LABEL[p.grade]||'',
+
     ];
   });
 
@@ -706,15 +762,6 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
     k.total ? ((k.approved+k.submit)/k.total*100).toFixed(1) : 0,
     k.n ? (k.scoreSum/k.n).toFixed(1) : 0,
   ]);
-
-  // ── Sheet 3: Distribusi Grade ─────────────────────────────────────────
-  const headers3 = ['Grade','Keterangan','Jumlah','Persentase','Kriteria'];
-  const data3 = ['A','B','C','D'].map(g => {
-    const n = filtered.filter(p => p.grade===g).length;
-    return [g, GRADE_LABEL[g], n,
-      filtered.length ? ((n/filtered.length)*100).toFixed(1)+'%' : '0%',
-      {A:'Skor di atas Q3 peers',B:'Skor Q2–Q3 peers',C:'Skor Q1–Q2 peers',D:'Skor di bawah Q1 peers'}[g]];
-  });
 
   // Gabung 3 sheet dalam 1 CSV dengan separator baris kosong
   const csv = [
@@ -991,7 +1038,7 @@ export function EvaluasiPage() {
                     <button
                       onClick={() => {
                         setShowExportMenu(false);
-                        generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas });
+                        generatePDF({ activeTab, filtered, summary }).catch(e => alert('Error: '+e.message));
                       }}
                       style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                         padding:'10px 14px',background:'none',border:'none',
@@ -1003,7 +1050,7 @@ export function EvaluasiPage() {
                       <Printer size={13} color="var(--orange3)"/>
                       <div>
                         <div style={{ fontWeight:600 }}>Export PDF</div>
-                        <div style={{ fontSize:10,color:'var(--text4)' }}>Laporan siap cetak (A4 landscape)</div>
+                        <div style={{ fontSize:10,color:'var(--text4)' }}>Download HTML · buka lalu Ctrl+P untuk cetak</div>
                       </div>
                     </button>
                     <button
@@ -1057,14 +1104,13 @@ export function EvaluasiPage() {
                 <H label="Draft"    col="draft"     right/>
                 <H label="Open"     right/>
                 <H label="Progress" col="pct"/>
-                <H label="Perf Score" col="perfScore"/>
-                <H label="Grade"   col="grade"/>
+
                 <th style={{ width:24 }}/>
               </tr>
             </thead>
             <tbody>
               {paginated.length===0
-                ? <tr><td colSpan={14} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
                       ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa}/>
