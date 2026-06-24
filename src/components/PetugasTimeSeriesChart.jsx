@@ -239,6 +239,14 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
 
   const activeDays = avgPerDay.activeDays || 0;
 
+  // Total rata-rata per hari aktif = jumlah semua status
+  const avgTotal = Math.round((
+    (avgPerDay.approved  || 0) +
+    (avgPerDay.submitted || 0) +
+    (avgPerDay.rejected  || 0) +
+    (avgPerDay.draft     || 0)
+  ) * 10) / 10;
+
   return (
     <div>
       {/* Header */}
@@ -284,6 +292,42 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
             Klik label untuk toggle garis referensi
           </span>
         </div>
+
+        {/* Kartu total rata-rata keseluruhan */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+                       padding: '10px 14px', borderRadius: 8,
+                       background: 'linear-gradient(135deg, rgba(232,84,28,0.1), rgba(27,63,139,0.08))',
+                       border: '1px solid rgba(232,84,28,0.25)' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, color: 'var(--text4)', fontWeight: 700,
+                           textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>
+              Total rata-rata per hari aktif
+            </div>
+            {/* Bar total */}
+            <div style={{ height: 6, background: 'var(--bg4)', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 99,
+                background: 'linear-gradient(90deg, var(--orange3), #10b981)',
+                width: `${Math.min((avgTotal / Math.max(avgTotal, 1)) * 100, 100)}%`,
+                transition: 'width 0.8s cubic-bezier(.22,.68,0,1.2)',
+              }}/>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 3 }}>
+              approved + submitted + rejected + draft per hari aktif
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'var(--mono)',
+                           color: 'var(--orange3)', lineHeight: 1 }}>
+              <ANum value={avgTotal}/>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 2 }}>
+              tugas/hari · {activeDays} hari aktif
+            </div>
+          </div>
+        </div>
+
+        {/* 4 indikator per status */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {['approved','submitted','rejected','draft'].map(key => (
             <div key={key} onClick={() => setShowAvg(prev => ({...prev, [key]: !prev[key]}))}
@@ -293,7 +337,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
                 label={LABEL[key]}
                 value={avgPerDay[key] || 0}
                 color={CLR[key]}
-                maxVal={maxAvg}
+                maxVal={avgTotal || maxAvg}
               />
             </div>
           ))}

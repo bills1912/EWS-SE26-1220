@@ -527,6 +527,14 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
       <td style="padding:5px 6px;text-align:center">
         <span style="background:${GRADE_BG[grade]};color:${GRADE_COLOR[grade]};padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700">${grade}</span>
       </td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:var(--orange3,#E8541C)">
+        ${(() => {
+          const avg = p.avgPerDay;
+          if (!avg) return '—';
+          const t = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0));
+          return t > 0 ? t.toFixed(1) : '—';
+        })()}
+      </td>
     </tr>`;
   }).join('');
 
@@ -616,6 +624,7 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
         <th class="c" style="width:50px">${isPengawas?'Avg Latensi':'Avg Durasi'}</th>
         <th class="c" style="width:44px">Score</th>
         <th class="c" style="width:44px">Grade</th>
+        <th class="c" style="width:44px">Avg/Hari</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -640,6 +649,88 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
 }
 
 
+// ── Generate Excel Evaluasi (CSV — tanpa library eksternal) ───────────────
+function generateExcel({ activeTab, filtered, summary, isPengawas }) {
+  const roleLabel   = isPengawas ? 'Pengawas' : 'Pencacah';
+  const snap        = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
+  const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
+
+  // Escape nilai agar aman di CSV
+  const esc = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row  = cols => cols.map(esc).join(',');
+  const rows = arr  => arr.map(row).join('\n');
+
+  // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
+  const headers1 = [
+    'No','Nama','Email','Kecamatan','Total','Approved','Submit',
+    'Rejected','Draft','Open','Progress (%)','Avg Durasi/Latensi (hari)',
+    'Avg per Hari (total)','Perf Score','Grade','Keterangan Grade',
+  ];
+  const data1 = filtered.map((p, i) => {
+    const avg  = p.avgPerDay || {};
+    const avgT = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
+    const dur  = isPengawas ? (p.avgLatHari ?? '') : (p.avgDurHari ?? '');
+    return [
+      i+1, p.nama||'', p.email||'', p.kecamatan||'',
+      p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
+      (p.pctApproved||0).toFixed(1), dur, +avgT||'',
+      p.perfScore??'', p.grade||'', GRADE_LABEL[p.grade]||'',
+    ];
+  });
+
+  // ── Sheet 2: Ringkasan per Kecamatan ─────────────────────────────────
+  const kecMap = {};
+  filtered.forEach(p => {
+    const kec = p.kecamatan || '—';
+    if (!kecMap[kec]) kecMap[kec] = {n:0,total:0,approved:0,submit:0,reject:0,draft:0,open:0,scoreSum:0};
+    kecMap[kec].n++;
+    ['total','approved','submit','reject','draft','open'].forEach(f => kecMap[kec][f] += p[f]||0);
+    kecMap[kec].scoreSum += p.perfScore||0;
+  });
+  const headers2 = ['Kecamatan','Jumlah PCL','Total','Approved','Submit','Rejected','Draft','Open','Progress (%)','Avg Score'];
+  const data2 = Object.entries(kecMap).sort(([a],[b]) => a.localeCompare(b)).map(([kec,k]) => [
+    kec, k.n, k.total, k.approved, k.submit, k.reject, k.draft, k.open,
+    k.total ? ((k.approved+k.submit)/k.total*100).toFixed(1) : 0,
+    k.n ? (k.scoreSum/k.n).toFixed(1) : 0,
+  ]);
+
+  // ── Sheet 3: Distribusi Grade ─────────────────────────────────────────
+  const headers3 = ['Grade','Keterangan','Jumlah','Persentase','Kriteria'];
+  const data3 = ['A','B','C','D'].map(g => {
+    const n = filtered.filter(p => p.grade===g).length;
+    return [g, GRADE_LABEL[g], n,
+      filtered.length ? ((n/filtered.length)*100).toFixed(1)+'%' : '0%',
+      {A:'Skor di atas Q3 peers',B:'Skor Q2–Q3 peers',C:'Skor Q1–Q2 peers',D:'Skor di bawah Q1 peers'}[g]];
+  });
+
+  // Gabung 3 sheet dalam 1 CSV dengan separator baris kosong
+  const csv = [
+    `=== DATA ${roleLabel.toUpperCase()} ===`,
+    rows([headers1, ...data1]),
+    '',
+    '=== RINGKASAN PER KECAMATAN ===',
+    rows([headers2, ...data2]),
+    '',
+    '=== DISTRIBUSI GRADE ===',
+    rows([headers3, ...data3]),
+  ].join('\n');
+
+  // Download dengan BOM UTF-8 agar nama Indonesia terbaca di Excel
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `evaluasi_${roleLabel.toLowerCase()}_se2026_${snap}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
 // ══════════════════════════════════════════════════════════════════════════
 export function EvaluasiPage() {
   const [data,      setData]      = useState(null);
@@ -657,6 +748,7 @@ export function EvaluasiPage() {
   const [page,      setPage]      = useState(1);
   const [filterDesa,setFilterDesa]= useState('');
   const [desaList,  setDesaList]  = useState([]);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -860,18 +952,75 @@ export function EvaluasiPage() {
                          border:'1px solid var(--border)',borderRadius:8,color:'var(--text1)',
                          outline:'none',fontFamily:'var(--font)',width:180 }}/>
             </div>
-            {/* Export PDF */}
-            <button
-              onClick={() => generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })}
-              style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
-                fontSize:11,fontWeight:600,borderRadius:8,cursor:'pointer',
-                background:'var(--orange)',color:'#fff',border:'none',
-                boxShadow:'0 1px 4px rgba(232,84,28,0.3)',transition:'opacity .15s' }}
-              onMouseEnter={e=>e.currentTarget.style.opacity='0.88'}
-              onMouseLeave={e=>e.currentTarget.style.opacity='1'}
-            >
-              <Printer size={12} strokeWidth={2}/> Export PDF
-            </button>
+            {/* Export dropdown */}
+            <div style={{ position:'relative' }}>
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+                  fontSize:11,fontWeight:600,borderRadius:8,cursor:'pointer',
+                  background:'var(--orange)',color:'#fff',border:'none',
+                  boxShadow:'0 1px 4px rgba(232,84,28,0.3)',transition:'opacity .15s' }}
+                onMouseEnter={e=>e.currentTarget.style.opacity='0.88'}
+                onMouseLeave={e=>e.currentTarget.style.opacity='1'}
+              >
+                <Download size={12} strokeWidth={2}/> Export
+                <ChevronDown size={10} style={{ marginLeft:2,
+                  transform: showExportMenu ? 'rotate(180deg)' : 'none',
+                  transition:'transform .15s' }}/>
+              </button>
+
+              {showExportMenu && (
+                <>
+                  {/* Overlay untuk tutup saat klik luar */}
+                  <div onClick={() => setShowExportMenu(false)}
+                    style={{ position:'fixed',inset:0,zIndex:999 }}/>
+                  <div style={{
+                    position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:1000,
+                    background:'var(--bg2)', border:'1px solid var(--border2)',
+                    borderRadius:10, overflow:'hidden', minWidth:180,
+                    boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
+                    animation:'fadeSlideDown .12s ease',
+                  }}>
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas });
+                      }}
+                      style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                        padding:'10px 14px',background:'none',border:'none',
+                        cursor:'pointer',fontSize:12,color:'var(--text1)',
+                        borderBottom:'1px solid var(--border)',textAlign:'left' }}
+                      onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                      onMouseLeave={e=>e.currentTarget.style.background='none'}
+                    >
+                      <Printer size={13} color="var(--orange3)"/>
+                      <div>
+                        <div style={{ fontWeight:600 }}>Export PDF</div>
+                        <div style={{ fontSize:10,color:'var(--text4)' }}>Laporan siap cetak (A4 landscape)</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        generateExcel({ activeTab, filtered, summary,
+                          isPengawas: activeTab === 'pengawas' });
+                      }}
+                      style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                        padding:'10px 14px',background:'none',border:'none',
+                        cursor:'pointer',fontSize:12,color:'var(--text1)',textAlign:'left' }}
+                      onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                      onMouseLeave={e=>e.currentTarget.style.background='none'}
+                    >
+                      <FileText size={13} color="var(--blue3)"/>
+                      <div>
+                        <div style={{ fontWeight:600 }}>Export Excel (CSV)</div>
+                        <div style={{ fontSize:10,color:'var(--text4)' }}>3 tabel: data, per kecamatan, grade</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
