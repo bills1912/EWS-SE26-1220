@@ -589,23 +589,7 @@ async function generatePDF({ activeTab, filtered, summary }) {
   });
   y += 22;
 
-  // Grade distribution
-  const gradeCounts = { A:0, B:0, C:0, D:0 };
-  filtered.forEach(p => { if (p.grade) gradeCounts[p.grade] = (gradeCounts[p.grade]||0)+1; });
-  const gW = COL / 4;
-  ['A','B','C','D'].forEach((g, i) => {
-    const gx = M + i * gW;
-    const n  = gradeCounts[g] || 0;
-    const pct = filtered.length ? Math.round(n/filtered.length*100) : 0;
-    setFill(LGRAY); doc.roundedRect(gx, y, gW - 2, 14, 2, 2, 'F');
-    setTxt(GRADE_COLOR[g]); setFont(12, 'bold');
-    doc.text(String(n), gx + gW/2 - 1, y + 7, { align: 'center' });
-    setFont(6.5);
-    doc.text(`Grade ${g} — ${GRADE_LABEL[g]} (${pct}%)`, gx + gW/2 - 1, y + 12, { align: 'center' });
-  });
-  y += 20;
-
-  // ── Tabel data ───────────────────────────────────────────────────────────
+  // ── Tabel data — langsung di halaman yang sama ─────────────────────────
   const cols = isPengawas
     ? [
         { h:'#',        w:8,  key: (_,i) => i+1,                    align:'center' },
@@ -637,7 +621,7 @@ async function generatePDF({ activeTab, filtered, summary }) {
 
   const ROW_H    = 7;
   const HEAD_H   = 8;
-  let   pageNum  = 1;
+  let   pageNum  = 1;  // halaman pertama sudah ada (cover+tabel)
 
   const drawTableHeader = () => {
     setFill(isPengawas ? BLUE : ORANGE);
@@ -651,10 +635,10 @@ async function generatePDF({ activeTab, filtered, summary }) {
     y += HEAD_H;
   };
 
-  doc.addPage(); pageNum++;
-  drawHeader(pageNum);
-  y = 18;
-  setTxt(isPengawas ? BLUE : ORANGE); setFont(10, 'bold');
+  // Judul tabel
+  y += 2;
+  doc.setDrawColor(...MGRAY); doc.line(M, y, W - M, y); y += 5;
+  setTxt(isPengawas ? BLUE : ORANGE); setFont(9, 'bold');
   doc.text(`Data ${roleLabel} (${filtered.length} orang)`, M, y); y += 5;
   drawTableHeader();
 
