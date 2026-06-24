@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
-  Shield, ChevronLeft, ChevronRight, FileText,
+  Shield, ChevronLeft, ChevronRight, FileText, Printer, Download,
   Star, AlertCircle, Inbox,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
@@ -464,6 +464,182 @@ function SumCard({ label, value, sub, color, icon: Icon }) {
   );
 }
 
+// ── Generate & Print PDF Evaluasi ─────────────────────────────────────────
+function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas }) {
+  const isPengawas = activeTab === 'pengawas';
+  const src        = isPengawas ? pengawas : pencacah;
+  const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
+  const generated  = new Date().toLocaleString('id-ID', {
+    day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+  const roleLabel  = isPengawas ? 'Pengawas' : 'Pencacah';
+
+  const GRADE_COLOR = { A:'#10b981', B:'#E8541C', C:'#f59e0b', D:'#f43f5e' };
+  const GRADE_BG    = { A:'#D1FAE5', B:'#FFEDD5', C:'#FEF3C7', D:'#FFE4E6' };
+  const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
+
+  const statusBadge = (s) => {
+    const cfg = {
+      APPROVED:  { bg:'#D1FAE5', color:'#059669' },
+      SUBMITTED: { bg:'#FEF3C7', color:'#D97706' },
+      REJECTED:  { bg:'#FFE4E6', color:'#DC2626' },
+    };
+    const c = cfg[s] || { bg:'#F3F4F6', color:'#6B7280' };
+    return `<span style="background:${c.bg};color:${c.color};padding:1px 6px;border-radius:99px;font-size:9px;font-weight:600">${s}</span>`;
+  };
+
+  // Baris tabel per petugas
+  const rows = filtered.map((p, i) => {
+    const grade = p.grade || 'D';
+    const dur   = isPengawas
+      ? (p.avgLatHari != null ? `${p.avgLatHari}h` : '—')
+      : (p.avgDurHari != null ? `${p.avgDurHari}h` : '—');
+    const durColor = isPengawas
+      ? (p.avgLatHari < 3 ? '#059669' : p.avgLatHari < 7 ? '#D97706' : '#DC2626')
+      : '#374151';
+    const pct     = p.pctApproved || 0;
+    const pctColor = pct >= 50 ? '#059669' : pct >= 20 ? '#D97706' : '#DC2626';
+    const BAR_W   = 60;
+    const filled  = Math.round(pct / 100 * BAR_W);
+    const bar     = `<div style="display:flex;align-items:center;gap:4px">
+      <div style="width:${BAR_W}px;height:5px;background:#E5E7EB;border-radius:99px;overflow:hidden">
+        <div style="width:${filled}px;height:100%;background:${pctColor};border-radius:99px"></div>
+      </div>
+      <span style="font-size:8px;color:${pctColor};font-weight:600">${pct}%</span>
+    </div>`;
+
+    return `<tr style="background:${i%2===0?'#fff':'#F9FAFB'}">
+      <td style="padding:5px 6px;text-align:center;color:#9CA3AF;font-size:8px">${i+1}</td>
+      <td style="padding:5px 6px">
+        <div style="font-weight:600;font-size:8.5px;color:#111827">${p.nama||'—'}</div>
+        <div style="font-size:7px;color:#9CA3AF">${p.email||''}</div>
+      </td>
+      <td style="padding:5px 6px;font-size:8px;color:#374151">${p.kecamatan||'—'}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:600">${p.total||0}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#059669">${p.approved||0}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#D97706;font-weight:${(p.submit||0)>0?'600':'400'}">${p.submit||0}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#DC2626">${p.reject||0}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#1B3F8B">${p.draft||0}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:#9CA3AF">${p.open||0}</td>
+      <td style="padding:5px 6px">${bar}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;color:${durColor};font-weight:600">${dur}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:8.5px;font-weight:700;color:#374151">${p.perfScore??'—'}</td>
+      <td style="padding:5px 6px;text-align:center">
+        <span style="background:${GRADE_BG[grade]};color:${GRADE_COLOR[grade]};padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700">${grade}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Distribusi grade
+  const gradeDist = ['A','B','C','D'].map(g => {
+    const n   = filtered.filter(p => p.grade === g).length;
+    const pct = filtered.length ? Math.round(n/filtered.length*100) : 0;
+    return `<div style="flex:1;text-align:center;padding:10px 8px;background:#F9FAFB;border-radius:8px;border:1px solid #E5E7EB">
+      <div style="font-size:20px;font-weight:800;color:${GRADE_COLOR[g]}">${n}</div>
+      <div style="font-size:10px;font-weight:700;color:${GRADE_COLOR[g]};margin:2px 0">Grade ${g}</div>
+      <div style="font-size:9px;color:#9CA3AF">${GRADE_LABEL[g]} · ${pct}%</div>
+    </div>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Laporan Evaluasi ${roleLabel} SE2026 — ${snap}</title>
+  <style>
+    @page { size:A4 landscape; margin:12mm 10mm; }
+    * { box-sizing:border-box; margin:0; padding:0; font-family:Arial,sans-serif; }
+    body { background:#fff; color:#111827; font-size:9px; }
+    table { width:100%; border-collapse:collapse; }
+    th { background:#E8541C; color:#fff; padding:6px; text-align:left; font-size:8px;
+         text-transform:uppercase; letter-spacing:0.05em; position:sticky; top:0; }
+    th.c { text-align:center; }
+    tr:hover { background:#FFF7ED !important; }
+    .no-print { display:none !important; }
+    @media print {
+      thead { display:table-header-group; }
+      tr { page-break-inside:avoid; }
+    }
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div style="background:linear-gradient(135deg,#E8541C,#1B3F8B);padding:14px 16px;border-radius:10px;margin-bottom:12px;color:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:6px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:3px">BPS Kabupaten Padang Lawas Utara · EWS SE2026</div>
+        <div style="font-size:16px;font-weight:800">Laporan Evaluasi ${roleLabel}</div>
+        <div style="font-size:9px;opacity:0.85;margin-top:3px">Sensus Ekonomi 2026 — Data per ${snap}</div>
+      </div>
+      <div style="text-align:right;font-size:8px;opacity:0.75">
+        <div>Dicetak: ${generated}</div>
+        <div>Total ${roleLabel}: ${filtered.length}</div>
+        <div>Snapshot: ${snap}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY CARDS -->
+  <div style="display:flex;gap:8px;margin-bottom:10px">
+    ${[
+      ['Total Assignment', (summary.totalAssignment||0).toLocaleString('id'), '#374151'],
+      ['Approved',         (summary.approved||0).toLocaleString('id'),        '#059669'],
+      ['Submit',           (summary.submit||0).toLocaleString('id'),           '#D97706'],
+      ['Rejected',         (summary.reject||0).toLocaleString('id'),           '#DC2626'],
+      ['Draft',            (summary.draft||0).toLocaleString('id'),            '#1B3F8B'],
+      ['Open',             (summary.open||0).toLocaleString('id'),             '#9CA3AF'],
+    ].map(([l,v,c]) =>
+      `<div style="flex:1;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:14px;font-weight:800;color:${c}">${v}</div>
+        <div style="font-size:7px;color:#9CA3AF;margin-top:2px">${l}</div>
+      </div>`
+    ).join('')}
+  </div>
+
+  <!-- GRADE DISTRIBUTION -->
+  <div style="display:flex;gap:8px;margin-bottom:10px">${gradeDist}</div>
+
+  <!-- TABEL -->
+  <table>
+    <thead>
+      <tr>
+        <th class="c" style="width:24px">#</th>
+        <th style="width:160px">Nama ${roleLabel}</th>
+        <th style="width:90px">Kecamatan</th>
+        <th class="c" style="width:40px">Total</th>
+        <th class="c" style="background:#059669;width:44px">Approved</th>
+        <th class="c" style="background:#D97706;width:40px">Submit</th>
+        <th class="c" style="background:#DC2626;width:40px">Rejected</th>
+        <th class="c" style="background:#1B3F8B;width:36px">Draft</th>
+        <th class="c" style="width:36px">Open</th>
+        <th style="width:90px">Progress</th>
+        <th class="c" style="width:50px">${isPengawas?'Avg Latensi':'Avg Durasi'}</th>
+        <th class="c" style="width:44px">Score</th>
+        <th class="c" style="width:44px">Grade</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <!-- FOOTER -->
+  <div style="margin-top:12px;padding:8px 10px;background:#F9FAFB;border-radius:6px;border:1px solid #E5E7EB;font-size:7.5px;color:#9CA3AF">
+    <strong style="color:#374151">Keterangan:</strong>
+    Grade A (Unggul) = top 25% skor peers · Grade B (Baik) = 50–75% · Grade C (Cukup) = 25–50% · Grade D (Perlu Perhatian) = bottom 25%.
+    Skor = Progress 40% + Kualitas 40% + Kecepatan 20% − Penalti.
+    Dokumen ini bersifat rahasia — hanya untuk lingkungan internal BPS Kab. Padang Lawas Utara.
+  </div>
+</body>
+</html>`;
+
+  // Buka di tab baru dan trigger print
+  const win = window.open('', '_blank', 'width=1200,height=800');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 800);
+}
+
+
 // ══════════════════════════════════════════════════════════════════════════
 export function EvaluasiPage() {
   const [data,      setData]      = useState(null);
@@ -684,6 +860,18 @@ export function EvaluasiPage() {
                          border:'1px solid var(--border)',borderRadius:8,color:'var(--text1)',
                          outline:'none',fontFamily:'var(--font)',width:180 }}/>
             </div>
+            {/* Export PDF */}
+            <button
+              onClick={() => generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })}
+              style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+                fontSize:11,fontWeight:600,borderRadius:8,cursor:'pointer',
+                background:'var(--orange)',color:'#fff',border:'none',
+                boxShadow:'0 1px 4px rgba(232,84,28,0.3)',transition:'opacity .15s' }}
+              onMouseEnter={e=>e.currentTarget.style.opacity='0.88'}
+              onMouseLeave={e=>e.currentTarget.style.opacity='1'}
+            >
+              <Printer size={12} strokeWidth={2}/> Export PDF
+            </button>
           </div>
         </div>
 
