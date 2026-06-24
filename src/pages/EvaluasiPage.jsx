@@ -259,7 +259,7 @@ function Mini({ label, value, color, icon: Icon, animate=false }) {
 // ── Row Pencacah ───────────────────────────────────────────────────────────
 function PencacahRow({ p, rank, filterKec, filterDesa }) {
   const [open, setOpen] = useState(false);
-  const fc = p.pctApproved>=50?'#10b981':p.pctApproved>=20?'#f59e0b':'#f43f5e';
+  const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
@@ -296,8 +296,8 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         {/* Progress */}
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
-            <div style={{ flex:1 }}><ProgressBar pct={p.pctApproved} color={fc} height={4}/></div>
-            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{p.pctApproved}%</span>
+            <div style={{ flex:1 }}><ProgressBar pct={p.progressScore ?? p.pctApproved ?? 0} color={fc} height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
@@ -339,7 +339,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
                   💡 Breakdown skor performa
                 </div>
                 {[
-                  { label:'Progress (40%)',  val:p.progressScore, desc:'(approved+submit)/total', color:'var(--orange3)' },
+                  { label:'Progress (20%)',  val:p.progressScore, desc:'(appr+sub+rej+draft)/total', color:'var(--orange3)' },
                   { label:'Kualitas (40%)',  val:p.qualityScore,  desc:'approved/(approved+submit+reject)', color:'var(--green3)' },
                   { label:'Kecepatan (20%)', val:p.speedScore,    desc:'inverted avg durasi', color:'var(--blue3)' },
                 ].map(s => (
@@ -399,8 +399,8 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
-            <div style={{ flex:1 }}><ProgressBar pct={p.pctApproved} color={fc} height={4}/></div>
-            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{p.pctApproved}%</span>
+            <div style={{ flex:1 }}><ProgressBar pct={p.progressScore ?? p.pctApproved ?? 0} color={fc} height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
@@ -503,7 +503,7 @@ function generatePDF({ data, activeTab, filtered, summary, pencacah, pengawas })
   // Baris tabel per petugas
   const rows = filtered.map((p, i) => {
     const grade = p.grade || 'D';
-    const pct     = p.pctApproved || 0;
+    const pct     = (p.progressScore != null ? p.progressScore : (p.pctApproved ?? 0));
     const pctColor = pct >= 50 ? '#059669' : pct >= 20 ? '#D97706' : '#DC2626';
     const BAR_W   = 60;
     const filled  = Math.round(pct / 100 * BAR_W);
@@ -686,7 +686,7 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
       i+1, p.nama||'', p.email||'', p.kecamatan||'',
       ...(!isPengawas ? [p.pengawas?.nama||'—', p.pengawas?.email||'—'] : []),
       p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
-      (p.pctApproved||0).toFixed(1), +avgT||'',
+      (p.progressScore ?? p.pctApproved ?? 0).toFixed(1), +avgT||'',
       p.perfScore??'', p.grade||'', GRADE_LABEL[p.grade]||'',
     ];
   });
@@ -879,7 +879,7 @@ export function EvaluasiPage() {
     const d = sortDir==='desc'?-1:1;
     if (sortBy==='approved')  return d*(b.approved-a.approved);
     if (sortBy==='total')     return d*(b.total-a.total);
-    if (sortBy==='pct')       return d*(b.pctApproved-a.pctApproved);
+    if (sortBy==='pct')       return d*((b.progressScore != null ? b.progressScore : b.pctApproved || 0) - (a.progressScore != null ? a.progressScore : a.pctApproved || 0));
     if (sortBy==='kecepatan') return d*((b.kecepatan??0)-(a.kecepatan??0));
     if (sortBy==='perfScore') return d*((b.perfScore??0)-(a.perfScore??0));
     if (sortBy==='grade') {
