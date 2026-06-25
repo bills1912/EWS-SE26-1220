@@ -406,19 +406,28 @@ function Mini({ label, value, color, icon: Icon, animate=false }) {
 }
 
 // ── Row Pencacah ───────────────────────────────────────────────────────────
-function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS) }) {
+function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS), highlight = null }) {
   const [open, setOpen] = useState(false);
   const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
+  const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
+                 : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
+  const _hlBorder= highlight==='top' ? '4px solid #f97316'
+                 : highlight==='bot' ? '4px solid #f43f5e' : 'none';
+  const _hlHover = highlight==='top' ? 'rgba(249,115,22,0.27)'
+                 : highlight==='bot' ? 'rgba(244,63,94,0.24)' : 'var(--bg3)';
+  const _hlNameColor = highlight==='top' ? '#fb923c'
+                     : highlight==='bot' ? '#fb7185' : 'var(--text1)';
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
-        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
-        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
-        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s',
+          background: _hlBg, borderLeft: _hlBorder }}
+        onMouseEnter={e=>e.currentTarget.style.background=_hlHover}
+        onMouseLeave={e=>e.currentTarget.style.background=_hlBg}>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
           <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
-            <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</span>
+            <span style={{ fontSize:11,fontWeight:600,color:_hlNameColor }}>{p.nama||'—'}</span>
             {p.inaktif && (
               <span
                 title={`Tidak ada submit sejak ${p.lastAktifDate||'—'} (${p.gapHariAktif} hari lalu)`}
@@ -560,19 +569,28 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
 }
 
 // ── Row Pengawas ───────────────────────────────────────────────────────────
-function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS) }) {
+function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS), highlight = null }) {
   const [open, setOpen] = useState(false);
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
+  const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
+                 : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
+  const _hlBorder= highlight==='top' ? '4px solid #f97316'
+                 : highlight==='bot' ? '4px solid #f43f5e' : 'none';
+  const _hlHover = highlight==='top' ? 'rgba(249,115,22,0.27)'
+                 : highlight==='bot' ? 'rgba(244,63,94,0.24)' : 'var(--bg3)';
+  const _hlNameColor = highlight==='top' ? '#fb923c'
+                     : highlight==='bot' ? '#fb7185' : 'var(--text1)';
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
-        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
-        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
-        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s',
+          background: _hlBg, borderLeft: _hlBorder }}
+        onMouseEnter={e=>e.currentTarget.style.background=_hlHover}
+        onMouseLeave={e=>e.currentTarget.style.background=_hlBg}>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
           <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
-            <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</span>
+            <span style={{ fontSize:11,fontWeight:600,color:_hlNameColor }}>{p.nama||'—'}</span>
             {p.inaktif && (
               <span
                 title={`Tidak ada submit sejak ${p.lastAktifDate||'—'} (${p.gapHariAktif} hari lalu)`}
@@ -1511,6 +1529,15 @@ export function EvaluasiPage() {
     return 0;
   });
 
+  // ── Top 3 & Bottom 3 avgPerDay — dari seluruh filtered, otomatis update ─
+  const _byAvg      = [...filtered]
+    .filter(p => p.avgPerDay?.total != null)
+    .sort((a, b) => (b.avgPerDay?.total ?? 0) - (a.avgPerDay?.total ?? 0));
+  const _top3Emails = new Set(_byAvg.slice(0, 3).map(p => p.email));
+  const _bot3Emails = new Set(
+    _byAvg.length > 3 ? _byAvg.slice(-3).map(p => p.email) : []
+  );
+
   const totalPages = Math.ceil(filtered.length/PAGE_SIZE);
   const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
@@ -1747,8 +1774,10 @@ export function EvaluasiPage() {
                 ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
-                      ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}/>
-                      : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}/>
+                      ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
+                          highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
+                      : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
+                          highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
                   )
               }
             </tbody>
