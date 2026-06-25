@@ -50,16 +50,16 @@ function countWorkingDays() {
   let count = 0;
   const d = new Date(start);
   while (d <= end) {
-    if (d.getDay() !== 0) count++; // 0 = Minggu
+    if (d.getDay() !== 0) count++;
     d.setDate(d.getDate() + 1);
   }
   return Math.max(1, count);
 }
 
-// ── Upload config: pakai memory storage (tidak perlu tulis ke disk) ─────────
+// ── Upload config: memory storage ────────────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 50 * 1024 * 1024 }, // maks 50 MB
+  limits:  { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file.originalname.match(/\.csv$/i)) {
       return cb(new Error('Hanya file CSV yang diperbolehkan'));
@@ -832,7 +832,6 @@ app.get('/api/health', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 // POST /api/upload/assignment
 // Upload CSV → hitung stats otomatis → simpan ke MongoDB
-// Hanya kepala, kasubbag, statistisi yang boleh upload
 // ══════════════════════════════════════════════════════════════════════════
 app.post(
   '/api/upload/assignment',
@@ -855,11 +854,11 @@ app.post(
         columns:          true,
         skip_empty_lines: true,
         trim:             true,
-        bom:              true,   // handle UTF-8 BOM
+        bom:              true,
       });
       if (!rows.length) return res.status(400).json({ error: 'CSV kosong atau tidak bisa dibaca.' });
 
-      // ── 2. Hitung stats ───────────────────────────────────────────────────
+      // ── 2. Setup ──────────────────────────────────────────────────────────
       const WORKING_DAYS = countWorkingDays();
       const snapshotTs   = new Date().toISOString();
 
@@ -879,7 +878,7 @@ app.post(
       }
       function statusOf(row) { return (row.assignmentStatusAlias || '').trim(); }
 
-      // Index baris per pencacah_uid
+      // ── 3. Index baris per pencacah_uid / pengawas_email / kecamatan ──────
       const byPcl = new Map();
       const byPws = new Map();
       const byKec = new Map();
@@ -904,22 +903,18 @@ app.post(
         byKec.get(kec).push(row);
       }
 
-      // Lookup pencacah_uid → email/nama/pengawas (dari baris role=Pengawas)
+      // Lookup pencacah_uid → email / nama / pengawas
       const pclInfo = new Map();
       for (const row of rows) {
         const pclRole = (row.currentUserSurveyRoleName || '').trim();
-        const pclUid  = (row.pencacah_currentUserId || '').trim();
-        const pclCurUid = (row.currentUserId || '').trim();
-
-        // Baris role=Pencacah → email pencacah adalah currentUserUsername
+        const pclUid  = (row.pencacah_currentUserId   || '').trim();
         if (pclRole === 'Pencacah' && pclUid && !pclInfo.has(pclUid)) {
           pclInfo.set(pclUid, {
-            email:    (row.currentUserUsername || '').trim(),
-            nama:     (row.currentUserFullname  || '').trim(),
+            email:     (row.currentUserUsername || '').trim(),
+            nama:      (row.currentUserFullname  || '').trim(),
             pws_email: null, pws_nama: null,
           });
         }
-        // Baris role=Pengawas → simpan email pengawas untuk tiap pencacah_uid
         if (pclRole === 'Pengawas' && pclUid) {
           if (!pclInfo.has(pclUid)) pclInfo.set(pclUid, { email: '', nama: '', pws_email: null, pws_nama: null });
           const info = pclInfo.get(pclUid);
@@ -930,11 +925,12 @@ app.post(
         }
       }
 
+      // ── 4. Helper functions ───────────────────────────────────────────────
       function countStatus(grp) {
         let approved = 0, submit = 0, reject = 0, draft = 0, open_ = 0;
         for (const r of grp) {
           const s = statusOf(r);
-          if (STATUS_DONE.has(s))   approved++;
+          if      (STATUS_DONE.has(s))   approved++;
           else if (STATUS_SUBMIT.has(s)) submit++;
           else if (STATUS_REJECT.has(s)) reject++;
           else if (STATUS_DRAFT.has(s))  draft++;
@@ -963,7 +959,7 @@ app.post(
 
       function buildAvgPerDay(counts, dailySeries) {
         const { approved, submit, reject, draft } = counts;
-        const worked    = approved + submit + reject + draft;
+        const worked     = approved + submit + reject + draft;
         const activeDays = dailySeries.filter(r =>
           (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
         ).length;
@@ -979,37 +975,33 @@ app.post(
         };
       }
 
-      // ── Pencacah rows ──────────────────────────────────────────────────────
+      // ── 5. Hitung Pencacah rows ───────────────────────────────────────────
       const pencacahRows = [];
       for (const [uid, grp] of byPcl) {
-        const info   = pclInfo.get(uid) || {};
-        const email  = info.email || '';
-        const nama   = info.nama  || email;
+        const info  = pclInfo.get(uid) || {};
+        const email = info.email || '';
+        const nama  = info.nama  || email;
         if (!email && !nama) continue;
 
         const counts = countStatus(grp);
         const daily  = buildDailySeries(grp);
         const avgPD  = buildAvgPerDay(counts, daily);
-        const kecDom = grp.map(r => (r.level3_name || '—').trim())
-                          .sort((a, b) =>
-                            grp.filter(r => r.level3_name === b).length -
-                            grp.filter(r => r.level3_name === a).length
-                          )[0] || '—';
 
-        // lastActive
-        const dates = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
-        const lastActive = dates.length ? new Date(Math.max(...dates)).toISOString() : null;
+        // Kecamatan dominan
+        const kecCount = {};
+        grp.forEach(r => { const k = (r.level3_name||'—').trim(); kecCount[k]=(kecCount[k]||0)+1; });
+        const kecDom = Object.entries(kecCount).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
 
-        // Inaktif detection
+        const dates    = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
+        const lastActive = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))).toISOString() : null;
+
         const aktifDates = grp
           .filter(r => STATUS_DONE.has(statusOf(r)) || STATUS_SUBMIT.has(statusOf(r)) || STATUS_REJECT.has(statusOf(r)))
           .map(r => parseDate(r.dateModified)).filter(Boolean);
-        const lastAktif  = aktifDates.length ? new Date(Math.max(...aktifDates)) : null;
+        const lastAktif    = aktifDates.length ? new Date(Math.max(...aktifDates.map(d=>d.getTime()))) : null;
         const lastAktifStr = lastAktif ? lastAktif.toISOString().slice(0, 10) : null;
-        const snapDate   = new Date(snapshotTs);
-        const gapHari    = lastAktif
-          ? Math.round((snapDate - lastAktif) / 86400000)
-          : null;
+        const snapDate     = new Date(snapshotTs);
+        const gapHari      = lastAktif ? Math.round((snapDate - lastAktif) / 86400000) : null;
 
         pencacahRows.push({
           email, nama, role: 'Pencacah',
@@ -1021,18 +1013,14 @@ app.post(
           lastAktifDate: lastAktifStr,
           gapHariAktif:  gapHari,
           inaktif:       gapHari !== null && gapHari >= 2,
-          pengawas: {
-            email: info.pws_email || null,
-            nama:  info.pws_nama  || null,
-          },
+          pengawas: { email: info.pws_email || null, nama: info.pws_nama || null },
           dailySeries: daily,
           avgPerDay:   avgPD,
           snapshotAt:  snapshotTs,
         });
       }
 
-      // ── Pengawas rows ──────────────────────────────────────────────────────
-      // Lookup pengawas_email → list pencacah di bawahnya
+      // ── 6. Hitung Pengawas rows ───────────────────────────────────────────
       const pgwToPcl = new Map();
       for (const pcl of pencacahRows) {
         const pgwEmail = pcl.pengawas?.email;
@@ -1044,10 +1032,9 @@ app.post(
 
       const pengawasRows = [];
       for (const [email, grp] of byPws) {
-        const nama = (grp[0]?.currentUserFullname || '').trim() || email;
+        const nama   = (grp[0]?.currentUserFullname || '').trim() || email;
         if (!email && !nama) continue;
 
-        // Hitung dari agregat pencacah di bawahnya (lebih akurat)
         const pclUnder = pgwToPcl.get(email) || [];
         let counts;
         if (pclUnder.length) {
@@ -1065,56 +1052,57 @@ app.post(
 
         const daily = buildDailySeries(grp);
         const avgPD = buildAvgPerDay(counts, daily);
-        const kecDom = grp.map(r => (r.level3_name || '—').trim())
-                          .sort()[0] || '—';
-        const dates = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
-        const lastActive = dates.length ? new Date(Math.max(...dates)).toISOString() : null;
+        const kecCount = {};
+        grp.forEach(r => { const k = (r.level3_name||'—').trim(); kecCount[k]=(kecCount[k]||0)+1; });
+        const kecDom = Object.entries(kecCount).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
+        const dates  = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
+        const lastActive = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))).toISOString() : null;
 
         pengawasRows.push({
           email, nama, role: 'Pengawas',
           kecamatan: kecDom,
           ...counts,
-          pctApproved:  counts.total > 0 ? sr(counts.approved / counts.total * 100, 1) : 0,
+          pctApproved: counts.total > 0 ? sr(counts.approved / counts.total * 100, 1) : 0,
           lastActive,
-          dailySeries:  daily,
-          avgPerDay:    avgPD,
-          snapshotAt:   snapshotTs,
+          dailySeries: daily,
+          avgPerDay:   avgPD,
+          snapshotAt:  snapshotTs,
         });
       }
 
-      // ── Per kecamatan ──────────────────────────────────────────────────────
+      // ── 7. Per kecamatan ──────────────────────────────────────────────────
       const kecList = [];
       for (const [kec, grp] of byKec) {
         kecList.push({ kecamatan: kec, ...countStatus(grp) });
       }
 
-      // ── Summary global ─────────────────────────────────────────────────────
-      const globalAppr  = rows.filter(r => STATUS_DONE.has(statusOf(r))).length;
-      const globalSub   = rows.filter(r => STATUS_SUBMIT.has(statusOf(r))).length;
-      const globalRej   = rows.filter(r => STATUS_REJECT.has(statusOf(r))).length;
-      const globalDraft = rows.filter(r => STATUS_DRAFT.has(statusOf(r))).length;
-      const globalOpen  = rows.filter(r => STATUS_OPEN.has(statusOf(r))).length;
+      // ── 8. Summary global ─────────────────────────────────────────────────
+      const globalAppr   = rows.filter(r => STATUS_DONE.has(statusOf(r))).length;
+      const globalSub    = rows.filter(r => STATUS_SUBMIT.has(statusOf(r))).length;
+      const globalRej    = rows.filter(r => STATUS_REJECT.has(statusOf(r))).length;
+      const globalDraft  = rows.filter(r => STATUS_DRAFT.has(statusOf(r))).length;
+      const globalOpen   = rows.filter(r => STATUS_OPEN.has(statusOf(r))).length;
       const globalWorked = globalAppr + globalSub + globalRej + globalDraft;
 
-      const globalDaily = buildDailySeries(rows);
+      const globalDaily      = buildDailySeries(rows);
       const globalActiveDays = globalDaily.filter(r =>
-        (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
+        (r.approved||0)+(r.submitted||0)+(r.rejected||0)+(r.draft||0) > 0
       ).length;
 
       const summary = {
-        totalAssignment:  rows.length,
-        totalPencacah:    pencacahRows.length,
-        totalPengawas:    pengawasRows.length,
-        totalKecamatan:   kecList.length,
-        approved:         globalAppr,
-        submit:           globalSub,
-        reject:           globalRej,
-        draft:            globalDraft,
-        open:             globalOpen,
-        workingDays:      WORKING_DAYS,
-        pendataanStart:   PENDATAAN_START.toISOString().slice(0, 10),
-        snapshotAt:       snapshotTs,
-        generatedAt:      snapshotTs,
+        totalAssignment: rows.length,
+        totalPencacah:   pencacahRows.length,
+        totalPengawas:   pengawasRows.length,
+        totalKecamatan:  kecList.length,
+        approved:        globalAppr,
+        submit:          globalSub,
+        reject:          globalRej,
+        draft:           globalDraft,
+        open:            globalOpen,
+        workingDays:     WORKING_DAYS,
+        pendataanStart:  PENDATAAN_START.toISOString().slice(0, 10),
+        snapshotAt:      snapshotTs,
+        generatedAt:     snapshotTs,
         avgPerDay: {
           approved:       sr(globalAppr   / WORKING_DAYS),
           submitted:      sr(globalSub    / WORKING_DAYS),
@@ -1128,7 +1116,7 @@ app.post(
         dailySeries: globalDaily,
       };
 
-      // ── 3. Simpan ke MongoDB ───────────────────────────────────────────────
+      // ── 9. Simpan ke MongoDB ──────────────────────────────────────────────
       const col_pcl  = db.collection('assignment_pencacah');
       const col_pws  = db.collection('assignment_pengawas');
       const col_kec  = db.collection('assignment_kecamatan');
@@ -1136,103 +1124,86 @@ app.post(
       const col_det  = db.collection('assignment_detail');
       const col_stat = db.collection('statistik_se2026');
 
-      // Upsert pencacah (by email)
-      const pclOps = pencacahRows.map(r => ({
-        updateOne: {
-          filter:  { email: r.email },
-          update:  { $set: r },
-          upsert:  true,
-        },
-      }));
-      if (pclOps.length) await col_pcl.bulkWrite(pclOps, { ordered: false });
-
-      // Upsert pengawas (by email)
-      const pwsOps = pengawasRows.map(r => ({
-        updateOne: {
-          filter:  { email: r.email },
-          update:  { $set: r },
-          upsert:  true,
-        },
-      }));
-      if (pwsOps.length) await col_pws.bulkWrite(pwsOps, { ordered: false });
-
-      // Upsert kecamatan (by kecamatan)
-      const kecOps = kecList.map(r => ({
-        updateOne: {
-          filter:  { kecamatan: r.kecamatan },
-          update:  { $set: r },
-          upsert:  true,
-        },
-      }));
-      if (kecOps.length) await col_kec.bulkWrite(kecOps, { ordered: false });
-
-      // Build detail list (per baris CSV)
-      const detailList = rows.map(r => {
-        const pclUid   = (r.pencacah_currentUserId || '').trim();
-        const info     = pclInfo.get(pclUid) || {};
-        return {
-          assignmentId:   r.assignment_id  || null,
-          pencacahEmail:  info.email        || (r.currentUserUsername || '').trim(),
-          email:          (r.currentUserUsername || '').trim(),
-          nama:           (r.currentUserFullname  || '').trim(),
-          role:           (r.currentUserSurveyRoleName || '').trim(),
-          kecamatan:      (r.level3_name || '—').trim(),
-          desa:           (r.level4_name || '—').trim(),
-          slsName:        (r.level5_name || '—').trim(),
-          slsCode:        (r.level5_fullCode || '').trim(),
-          subSlsName:     (r.level6_name || '—').trim(),
-          subSlsCode:     (r.level6_fullCode || '').trim(),
-          status:         statusOf(r),
-          isListing:      r.listing === 'true' || r.listing === '1',
-          sampleType:     r.sampleType ? parseInt(r.sampleType) || null : null,
-          dateCreated:    parseDate(r.dateCreated)  ? parseDate(r.dateCreated).toISOString()  : null,
-          dateModified:   parseDate(r.dateModified) ? parseDate(r.dateModified).toISOString() : null,
-          snapshotAt:     snapshotTs,
-        };
-      });
-
-      // Upsert detail by assignmentId (skip duplikat, replace yang sudah ada)
+      // Upsert pencacah by email
+      if (pencacahRows.length) {
+        await col_pcl.bulkWrite(
+          pencacahRows.map(r => ({ updateOne: { filter: { email: r.email }, update: { $set: r }, upsert: true } })),
+          { ordered: false }
+        );
+      }
+      // Upsert pengawas by email
+      if (pengawasRows.length) {
+        await col_pws.bulkWrite(
+          pengawasRows.map(r => ({ updateOne: { filter: { email: r.email }, update: { $set: r }, upsert: true } })),
+          { ordered: false }
+        );
+      }
+      // Upsert kecamatan by kecamatan
+      if (kecList.length) {
+        await col_kec.bulkWrite(
+          kecList.map(r => ({ updateOne: { filter: { kecamatan: r.kecamatan }, update: { $set: r }, upsert: true } })),
+          { ordered: false }
+        );
+      }
+      // Upsert detail by assignmentId
+      const detailList = rows
+        .filter(r => r.assignment_id)
+        .map(r => {
+          const pclUid  = (r.pencacah_currentUserId || '').trim();
+          const info    = pclInfo.get(pclUid) || {};
+          return {
+            assignmentId:  r.assignment_id,
+            pencacahEmail: info.email || (r.currentUserUsername || '').trim(),
+            email:         (r.currentUserUsername || '').trim(),
+            nama:          (r.currentUserFullname  || '').trim(),
+            role:          (r.currentUserSurveyRoleName || '').trim(),
+            kecamatan:     (r.level3_name || '—').trim(),
+            desa:          (r.level4_name || '—').trim(),
+            slsName:       (r.level5_name || '—').trim(),
+            slsCode:       (r.level5_fullCode || '').trim(),
+            subSlsName:    (r.level6_name || '—').trim(),
+            subSlsCode:    (r.level6_fullCode || '').trim(),
+            status:        statusOf(r),
+            isListing:     r.listing === 'true' || r.listing === '1',
+            sampleType:    r.sampleType ? (parseInt(r.sampleType) || null) : null,
+            dateCreated:   parseDate(r.dateCreated)  ? parseDate(r.dateCreated).toISOString()  : null,
+            dateModified:  parseDate(r.dateModified) ? parseDate(r.dateModified).toISOString() : null,
+            snapshotAt:    snapshotTs,
+          };
+        });
       if (detailList.length) {
-        const detOps = detailList
-          .filter(d => d.assignmentId)
-          .map(d => ({
-            updateOne: {
-              filter: { assignmentId: d.assignmentId },
-              update: { $set: d },
-              upsert: true,
-            },
-          }));
-        if (detOps.length) await col_det.bulkWrite(detOps, { ordered: false });
+        await col_det.bulkWrite(
+          detailList.map(d => ({ updateOne: { filter: { assignmentId: d.assignmentId }, update: { $set: d }, upsert: true } })),
+          { ordered: false }
+        );
       }
 
-      // Insert snapshot (satu dokumen per upload)
+      // Insert snapshot
       await col_snap.insertOne({
-        snapshotAt:            snapshotTs,
-        uploadedAt:            snapshotTs,
-        uploadedBy:            req.user.username,
-        filename:              req.file.originalname,
-        totalRows:             rows.length,
+        snapshotAt:   snapshotTs,
+        uploadedAt:   snapshotTs,
+        uploadedBy:   req.user.username,
+        filename:     req.file.originalname,
+        totalRows:    rows.length,
         summary,
-        gradeDistPencacah:     {},
-        gradeDistPengawas:     {},
       });
 
-      // Update statistik_utama — field assignmentSummary (dipakai /api/evaluasi)
+      // Update statistik_utama
       await col_stat.updateOne(
         { _id: 'statistik_utama' },
         { $set: { assignmentSummary: summary } },
-        { upsert: true },
+        { upsert: true }
       );
 
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(\`[UPLOAD] \${req.user.username} upload \${req.file.originalname} → \${rows.length} rows, \${WORKING_DAYS} hari kerja, \${elapsed}s\`);
+      console.log('[UPLOAD] ' + req.user.username + ' upload ' + req.file.originalname + ' -> ' + rows.length + ' rows, ' + WORKING_DAYS + ' hari kerja, ' + elapsed + 's');
 
       res.json({
-        ok:           true,
-        totalRows:    rows.length,
-        workingDays:  WORKING_DAYS,
-        snapshotAt:   snapshotTs,
-        elapsed:      \`\${elapsed}s\`,
+        ok:          true,
+        totalRows:   rows.length,
+        workingDays: WORKING_DAYS,
+        snapshotAt:  snapshotTs,
+        elapsed:     elapsed + 's',
         summary: {
           approved:  globalAppr,
           submitted: globalSub,
@@ -1247,8 +1218,7 @@ app.post(
       });
 
     } catch (err) {
-      console.error('[UPLOAD ERROR]', err);
-      // Multer file size error
+      console.error('[UPLOAD ERROR]', err.message);
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'File terlalu besar (maks 50 MB).' });
       }
