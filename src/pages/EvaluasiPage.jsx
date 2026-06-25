@@ -789,16 +789,13 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
     k.n ? (k.scoreSum/k.n).toFixed(1) : 0,
   ]);
 
-  // Gabung 3 sheet dalam 1 CSV dengan separator baris kosong
+  // Gabung 2 sheet dalam 1 CSV dengan separator baris kosong
   const csv = [
     `=== DATA ${roleLabel.toUpperCase()} ===`,
     rows([headers1, ...data1]),
     '',
     '=== RINGKASAN PER KECAMATAN ===',
     rows([headers2, ...data2]),
-    '',
-    '=== DISTRIBUSI GRADE ===',
-    rows([headers3, ...data3]),
   ].join('\n');
 
   // Download dengan BOM UTF-8 agar nama Indonesia terbaca di Excel
