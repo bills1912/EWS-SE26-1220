@@ -700,6 +700,79 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
 // Rate limit untuk semua endpoint API (kecuali health)
 app.use('/api', rateLimitMiddleware(RATE_MAX_API));
 
+// ── GET /api/evaluasi/inaktif ────────────────────────────────────────────────
+// Deteksi otomatis pencacah yang tidak ada submit/approved dalam N hari terakhir
+// Query param: days (default 2), minProgress (default 0)
+app.get('/api/evaluasi/inaktif', verifyToken, async (req, res) => {
+  try {
+    const threshold    = Math.max(1, parseInt(req.query.days || '2'));
+    const minProgress  = parseFloat(req.query.minProgress || '0');
+
+    // Ambil semua pencacah dari MongoDB
+    const pencacah = await db.collection('assignment_pencacah')
+      .find({}, { projection: {
+        email:1, nama:1, kecamatan:1, pengawas:1,
+        progressScore:1, submit:1, approved:1, reject:1, draft:1, total:1,
+        dailySeries:1, snapshotAt:1, lastActive:1,
+      }})
+      .toArray();
+
+    const results = [];
+
+    for (const p of pencacah) {
+      const snap  = p.snapshotAt ? p.snapshotAt.slice(0,10) : new Date().toISOString().slice(0,10);
+      const snapDt = new Date(snap + 'T00:00:00Z');
+      const ds     = p.dailySeries || [];
+
+      // Tanggal terakhir ada submit/approved/rejected
+      let lastAktifDate = null;
+      for (const e of ds) {
+        const hasActivity = (e.submitted || e.approved || e.rejected || 0) > 0;
+        if (!hasActivity) continue;
+        if (!lastAktifDate || e.date > lastAktifDate) lastAktifDate = e.date;
+      }
+
+      let gapHari = 99;
+      if (lastAktifDate) {
+        const lastDt = new Date(lastAktifDate + 'T00:00:00Z');
+        gapHari = Math.round((snapDt - lastDt) / (1000 * 60 * 60 * 24));
+      }
+
+      const progress = p.progressScore ?? 0;
+      if (gapHari < threshold) continue;
+      if (progress < minProgress) continue;
+
+      results.push({
+        email:         p.email,
+        nama:          p.nama,
+        kecamatan:     p.kecamatan,
+        pengawas:      p.pengawas?.nama || '—',
+        pengawasEmail: p.pengawas?.email || '—',
+        progressScore: progress,
+        submit:        p.submit || 0,
+        approved:      p.approved || 0,
+        reject:        p.reject || 0,
+        total:         p.total || 0,
+        lastAktifDate: lastAktifDate || '—',
+        gapHari,
+        snapshotAt:    snap,
+      });
+    }
+
+    // Urutkan: yang progressScore tinggi tapi inaktif lama di atas
+    results.sort((a, b) =>
+      b.progressScore - a.progressScore || b.gapHari - a.gapHari
+    );
+
+    res.json({
+      threshold,
+      total:   results.length,
+      data:    results,
+      snap:    results[0]?.snapshotAt || '',
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.command({ ping: 1 });
