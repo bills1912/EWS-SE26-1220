@@ -720,42 +720,51 @@ app.get('/api/evaluasi/inaktif', verifyToken, async (req, res) => {
     const results = [];
 
     for (const p of pencacah) {
-      const snap  = p.snapshotAt ? p.snapshotAt.slice(0,10) : new Date().toISOString().slice(0,10);
+      const snap   = p.snapshotAt ? p.snapshotAt.slice(0,10) : new Date().toISOString().slice(0,10);
       const snapDt = new Date(snap + 'T00:00:00Z');
       const ds     = p.dailySeries || [];
 
-      // Tanggal terakhir ada submit/approved/rejected
-      let lastAktifDate = null;
+      // ── Cari tanggal terakhir ada SUBMIT atau DRAFT (bukan approved)
+      // Karena yang dimonitor: apakah pencacah masih aktif mengisi di lapangan
+      let lastSubmitDraftDate = null;
       for (const e of ds) {
-        const hasActivity = (e.submitted || e.approved || e.rejected || 0) > 0;
-        if (!hasActivity) continue;
-        if (!lastAktifDate || e.date > lastAktifDate) lastAktifDate = e.date;
+        const hasWork = (e.submitted || e.draft || 0) > 0;
+        if (!hasWork) continue;
+        if (!lastSubmitDraftDate || e.date > lastSubmitDraftDate) lastSubmitDraftDate = e.date;
       }
 
       let gapHari = 99;
-      if (lastAktifDate) {
-        const lastDt = new Date(lastAktifDate + 'T00:00:00Z');
+      if (lastSubmitDraftDate) {
+        const lastDt = new Date(lastSubmitDraftDate + 'T00:00:00Z');
         gapHari = Math.round((snapDt - lastDt) / (1000 * 60 * 60 * 24));
       }
 
+      // Tandai apakah belum pernah submit maupun draft sama sekali
+      const neverSubmit = (p.submit || 0) === 0 && (p.draft || 0) === 0;
+
       const progress = p.progressScore ?? 0;
-      if (gapHari < threshold) continue;
+
+      // Masuk list jika: gap >= threshold ATAU belum pernah submit/draft sama sekali
+      const masukList = gapHari >= threshold || neverSubmit;
+      if (!masukList) continue;
       if (progress < minProgress) continue;
 
       results.push({
-        email:         p.email,
-        nama:          p.nama,
-        kecamatan:     p.kecamatan,
-        pengawas:      p.pengawas?.nama || '—',
-        pengawasEmail: p.pengawas?.email || '—',
-        progressScore: progress,
-        submit:        p.submit || 0,
-        approved:      p.approved || 0,
-        reject:        p.reject || 0,
-        total:         p.total || 0,
-        lastAktifDate: lastAktifDate || '—',
+        email:              p.email,
+        nama:               p.nama,
+        kecamatan:          p.kecamatan,
+        pengawas:           p.pengawas?.nama  || '—',
+        pengawasEmail:      p.pengawas?.email || '—',
+        progressScore:      progress,
+        submit:             p.submit   || 0,
+        draft:              p.draft    || 0,
+        approved:           p.approved || 0,
+        reject:             p.reject   || 0,
+        total:              p.total    || 0,
+        lastSubmitDraftDate: lastSubmitDraftDate || '—',
         gapHari,
-        snapshotAt:    snap,
+        neverSubmit,        // flag: belum pernah submit/draft sama sekali
+        snapshotAt:         snap,
       });
     }
 
