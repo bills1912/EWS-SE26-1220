@@ -413,14 +413,12 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       : (latestSnap?.summary || {});
 
     // ── Rekalkulasi avgPerDay dengan hari kerja hari ini ────────────────
-    // Angka ini selalu fresh setiap request, tidak bergantung pada nilai
-    // yang tersimpan di MongoDB (yang mungkin dihitung di hari berbeda)
+    // Selalu fresh setiap request — tidak bergantung nilai tersimpan di MongoDB
     const WORKING_DAYS = countWorkingDays();
     const appr  = rawSummary.approved || 0;
     const sub   = rawSummary.submit   || 0;
     const rej   = rawSummary.reject   || 0;
     const draft = rawSummary.draft    || 0;
-    const worked = appr + sub + rej + draft;
 
     // Hitung activeDays dari dailySeries jika tersedia
     const dailySeries = rawSummary.dailySeries || [];
@@ -428,26 +426,101 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
     ).length;
 
+    // Pencacah: avgPerDay = submit + draft  |  progress = submit + draft + approved + rejected
+    // Pengawas: avgPerDay = approved + rejected  |  progress = approved + rejected
+    const pclAvgTotal  = sub + draft;                    // yg sedang dikerjakan pencacah
+    const pwsAvgTotal  = appr + rej;                     // yg sudah diproses pengawas
+    const pclProgress  = sub + draft + appr + rej;       // total sudah disentuh pencacah
+    const pwsProgress  = appr + rej;                     // total sudah diproses pengawas
+
     const summary = {
       ...rawSummary,
       workingDays:    WORKING_DAYS,
       pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
+      // avgPerDay global (untuk chart aktivitas harian)
       avgPerDay: {
-        approved:       sr(appr   / WORKING_DAYS),
-        submitted:      sr(sub    / WORKING_DAYS),
-        rejected:       sr(rej    / WORKING_DAYS),
-        draft:          sr(draft  / WORKING_DAYS),
-        total:          sr(worked / WORKING_DAYS),
+        approved:       sr(appr  / WORKING_DAYS),
+        submitted:      sr(sub   / WORKING_DAYS),
+        rejected:       sr(rej   / WORKING_DAYS),
+        draft:          sr(draft / WORKING_DAYS),
+        total:          sr((appr + sub + rej + draft) / WORKING_DAYS),
         workingDays:    WORKING_DAYS,
         activeDays,
         pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
       },
+      // avgPerDay per peran — dipakai EvaluasiPage
+      avgPerDayPencacah: {
+        total:       sr(pclAvgTotal / WORKING_DAYS),
+        submitted:   sr(sub         / WORKING_DAYS),
+        draft:       sr(draft       / WORKING_DAYS),
+        workingDays: WORKING_DAYS,
+        activeDays,
+      },
+      avgPerDayPengawas: {
+        total:       sr(pwsAvgTotal / WORKING_DAYS),
+        approved:    sr(appr        / WORKING_DAYS),
+        rejected:    sr(rej         / WORKING_DAYS),
+        workingDays: WORKING_DAYS,
+        activeDays,
+      },
+      // progress global per peran
+      progressPencacah: rawSummary.totalAssignment
+        ? sr(pclProgress / rawSummary.totalAssignment * 100, 1) : 0,
+      progressPengawas: rawSummary.totalAssignment
+        ? sr(pwsProgress / rawSummary.totalAssignment * 100, 1) : 0,
     };
+
+    // Rekalkulasi avgPerDay & progressScore per individu sesuai peran
+    const pencacahFixed = (pencacah || []).map(p => {
+      const pSub   = p.submit   || 0;
+      const pDraft = p.draft    || 0;
+      const pAppr  = p.approved || 0;
+      const pRej   = p.reject   || 0;
+      const pTotal = p.total    || 0;
+      // avgPerDay pencacah = submit + draft
+      const pclAvg = sr((pSub + pDraft) / WORKING_DAYS);
+      // progress pencacah = (submit+draft+approved+rejected) / total
+      const pclProg = pTotal > 0 ? sr((pSub + pDraft + pAppr + pRej) / pTotal * 100, 1) : 0;
+      return {
+        ...p,
+        progressScore: pclProg,
+        avgPerDay: {
+          ...(p.avgPerDay || {}),
+          total:       pclAvg,
+          submitted:   sr(pSub   / WORKING_DAYS),
+          draft:       sr(pDraft / WORKING_DAYS),
+          approved:    sr(pAppr  / WORKING_DAYS),
+          rejected:    sr(pRej   / WORKING_DAYS),
+          workingDays: WORKING_DAYS,
+        },
+      };
+    });
+
+    const pengawasFixed = (pengawas || []).map(p => {
+      const pAppr  = p.approved || 0;
+      const pRej   = p.reject   || 0;
+      const pTotal = p.total    || 0;
+      // avgPerDay pengawas = approved + rejected
+      const pwsAvg = sr((pAppr + pRej) / WORKING_DAYS);
+      // progress pengawas = (approved+rejected) / total
+      const pwsProg = pTotal > 0 ? sr((pAppr + pRej) / pTotal * 100, 1) : 0;
+      return {
+        ...p,
+        progressScore: pwsProg,
+        avgPerDay: {
+          ...(p.avgPerDay || {}),
+          total:       pwsAvg,
+          approved:    sr(pAppr / WORKING_DAYS),
+          rejected:    sr(pRej  / WORKING_DAYS),
+          workingDays: WORKING_DAYS,
+        },
+      };
+    });
 
     res.json({
       summary,
-      pencacah:  pencacah  || [],
-      pengawas:  pengawas  || [],
+      pencacah:  pencacahFixed,
+      pengawas:  pengawasFixed,
       kecamatan: kecamatan || [],
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
