@@ -9,7 +9,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
   Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
-  Star, Inbox,
+  Star, Inbox, Columns,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -20,6 +20,155 @@ const TOKEN_KEY = 'ews_token';
 const BASE      = () => (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 const PAGE_SIZE = 20;
 const DETAIL_PAGE_SIZE = 25;
+
+// ── Definisi semua kolom yang bisa di-toggle ──────────────────────────────
+const ALL_COLS_PENCACAH = [
+  { key:'kecamatan', label:'Kecamatan',  always: false },
+  { key:'pengawas',  label:'Pengawas',   always: false },
+  { key:'total',     label:'Total',      always: false },
+  { key:'submit',    label:'Submit',     always: false },
+  { key:'approved',  label:'Approved',   always: false },
+  { key:'rejected',  label:'Rejected',   always: false },
+  { key:'draft',     label:'Draft',      always: false },
+  { key:'open',      label:'Open',       always: false },
+  { key:'progress',  label:'Progress',   always: false },
+  { key:'avgPerDay', label:'Avg/Hari',   always: false },
+];
+const ALL_COLS_PENGAWAS = [
+  { key:'kecamatan', label:'Kecamatan',  always: false },
+  { key:'total',     label:'Total',      always: false },
+  { key:'submit',    label:'Pending',    always: false },
+  { key:'approved',  label:'Approved',   always: false },
+  { key:'rejected',  label:'Ditolak',    always: false },
+  { key:'draft',     label:'Draft',      always: false },
+  { key:'open',      label:'Open',       always: false },
+  { key:'progress',  label:'Progress',   always: false },
+  { key:'avgPerDay', label:'Avg/Hari',   always: false },
+];
+const DEFAULT_COLS = ['kecamatan','pengawas','total','submit','approved','rejected','draft','open','progress'];
+const LS_KEY_COL   = 'ews_evaluasi_cols';
+
+function loadSavedCols() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_COL);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set(DEFAULT_COLS);
+}
+
+// ── ColumnToggle dropdown ──────────────────────────────────────────────────
+function ColumnToggle({ cols, visible, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Tutup saat klik luar
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const toggle = (key) => {
+    const next = new Set(visible);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    // Simpan ke localStorage
+    try { localStorage.setItem(LS_KEY_COL, JSON.stringify([...next])); } catch {}
+    onChange(next);
+  };
+
+  const toggleAll = () => {
+    const allKeys = cols.map(c => c.key);
+    const allOn   = allKeys.every(k => visible.has(k));
+    const next    = allOn ? new Set() : new Set(allKeys);
+    try { localStorage.setItem(LS_KEY_COL, JSON.stringify([...next])); } catch {}
+    onChange(next);
+  };
+
+  const reset = () => {
+    const next = new Set(DEFAULT_COLS);
+    try { localStorage.setItem(LS_KEY_COL, JSON.stringify([...next])); } catch {}
+    onChange(next);
+  };
+
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Pilih kolom yang ditampilkan"
+        style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px',
+          fontSize:11, fontWeight:600, borderRadius:8, cursor:'pointer',
+          background:'var(--bg3)', border:'1px solid var(--border)',
+          color:'var(--text2)', transition:'border-color .15s' }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--orange3)'}
+        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+        <Columns size={12} strokeWidth={2} color="var(--text3)"/>
+        Kolom
+        <span style={{ fontSize:9, fontFamily:'var(--mono)', color:'var(--orange3)',
+          background:'var(--orange-dim2)', padding:'1px 5px', borderRadius:4 }}>
+          {visible.size}/{cols.length}
+        </span>
+        <ChevronDown size={9} style={{ marginLeft:1,
+          transform: open ? 'rotate(180deg)' : 'none', transition:'transform .15s' }}/>
+      </button>
+
+      {open && (
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:1100,
+          background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:10,
+          minWidth:200, boxShadow:'0 8px 28px rgba(0,0,0,0.28)',
+          animation:'fadeSlideDown .12s ease', overflow:'hidden' }}>
+          {/* Header */}
+          <div style={{ padding:'10px 14px 8px', borderBottom:'1px solid var(--border)',
+            display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:10, fontWeight:700, color:'var(--text3)',
+              textTransform:'uppercase', letterSpacing:'0.07em' }}>Tampilkan Kolom</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={toggleAll}
+                style={{ fontSize:9, padding:'2px 7px', borderRadius:4, cursor:'pointer',
+                  background:'var(--bg4)', border:'1px solid var(--border)',
+                  color:'var(--text3)', fontWeight:600 }}>
+                {cols.every(c => visible.has(c.key)) ? 'Nonaktifkan Semua' : 'Aktifkan Semua'}
+              </button>
+              <button onClick={reset}
+                style={{ fontSize:9, padding:'2px 7px', borderRadius:4, cursor:'pointer',
+                  background:'var(--orange-dim2)', border:'1px solid var(--orange3)',
+                  color:'var(--orange3)', fontWeight:600 }}>
+                Reset
+              </button>
+            </div>
+          </div>
+          {/* List kolom */}
+          <div style={{ padding:'6px 0', maxHeight:320, overflowY:'auto' }}>
+            {cols.map(c => {
+              const on = visible.has(c.key);
+              return (
+                <label key={c.key}
+                  style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 14px',
+                    cursor:'pointer', fontSize:12, color: on ? 'var(--text1)' : 'var(--text4)',
+                    transition:'background .1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {/* Custom checkbox */}
+                  <span style={{ width:15, height:15, borderRadius:4, flexShrink:0, display:'flex',
+                    alignItems:'center', justifyContent:'center', fontSize:10,
+                    border: `1.5px solid ${on ? 'var(--orange3)' : 'var(--border)'}`,
+                    background: on ? 'var(--orange)' : 'var(--bg3)',
+                    color:'#fff', transition:'all .1s' }}>
+                    {on ? '✓' : ''}
+                  </span>
+                  <input type="checkbox" checked={on} onChange={() => toggle(c.key)}
+                    style={{ display:'none' }}/>
+                  <span style={{ fontWeight: on ? 600 : 400 }}>{c.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 async function apiFetch(path) {
   const res = await fetch(`${BASE()}${path}`, {
@@ -257,7 +406,7 @@ function Mini({ label, value, color, icon: Icon, animate=false }) {
 }
 
 // ── Row Pencacah ───────────────────────────────────────────────────────────
-function PencacahRow({ p, rank, filterKec, filterDesa }) {
+function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS) }) {
   const [open, setOpen] = useState(false);
   const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
   return (
@@ -282,8 +431,9 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
           </div>
           <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
+        {visibleCols.has('kecamatan') && <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>}
         {/* Pengawas */}
+        {visibleCols.has('pengawas') && (
         <td style={{ padding:'9px 8px' }}>
           <div style={{ fontSize:10,fontWeight:600,color:'var(--text2)',whiteSpace:'nowrap',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis' }}>
             {p.pengawas?.nama||'—'}
@@ -292,25 +442,26 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
             {p.pengawas?.email||''}
           </div>
         </td>
-        {/* Total = semua assignment yg ditugaskan */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>
-        {/* Submit = submitted tapi belum diapprove */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:p.submit>0?600:400 }}>{p.submit||0}</td>
-        {/* Approved */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>
-        {/* Rejected */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>
-        {/* Draft = sedang dikerjakan belum submit */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>
-        {/* Open/belum disentuh */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>
-        {/* Progress */}
+        )}
+        {visibleCols.has('total')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>}
+        {visibleCols.has('submit')   && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:p.submit>0?600:400 }}>{p.submit||0}</td>}
+        {visibleCols.has('approved') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>}
+        {visibleCols.has('rejected') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>}
+        {visibleCols.has('draft')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>}
+        {visibleCols.has('open')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>}
+        {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
             <div style={{ flex:1 }}><ProgressBar pct={p.progressScore ?? p.pctApproved ?? 0} color={fc} height={4}/></div>
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
+        )}
+        {visibleCols.has('avgPerDay') && (
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10,color:'var(--orange3)',textAlign:'right' }}>
+          {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
+        </td>
+        )}
         {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
@@ -409,7 +560,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
 }
 
 // ── Row Pengawas ───────────────────────────────────────────────────────────
-function PengawasRow({ p, rank, filterKec, filterDesa }) {
+function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS) }) {
   const [open, setOpen] = useState(false);
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
   return (
@@ -434,20 +585,26 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
           </div>
           <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>
-        {/* Submit = yg masih menunggu diapprove */}
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:p.submit>0?600:400 }}>{p.submit||0}</td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>
-        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>
+        {visibleCols.has('kecamatan') && <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>}
+        {visibleCols.has('total')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{p.total}</td>}
+        {visibleCols.has('submit')   && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:p.submit>0?600:400 }}>{p.submit||0}</td>}
+        {visibleCols.has('approved') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',fontWeight:600,textAlign:'right' }}>{p.approved}</td>}
+        {visibleCols.has('rejected') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{p.reject||0}</td>}
+        {visibleCols.has('draft')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>}
+        {visibleCols.has('open')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>}
+        {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
             <div style={{ flex:1 }}><ProgressBar pct={p.progressScore ?? p.pctApproved ?? 0} color={fc} height={4}/></div>
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
           </div>
         </td>
+        )}
+        {visibleCols.has('avgPerDay') && (
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10,color:'var(--orange3)',textAlign:'right' }}>
+          {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
+        </td>
+        )}
         {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
@@ -1170,6 +1327,7 @@ export function EvaluasiPage() {
   const [filterDesa,setFilterDesa]= useState('');
   const [desaList,  setDesaList]  = useState([]);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols());
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -1482,6 +1640,11 @@ export function EvaluasiPage() {
                     borderRadius:8,color:'var(--text1)',outline:'none',
                     fontFamily:'var(--font)',width:180 }}/>
               </div>
+              {/* Column toggle */}
+              <ColumnToggle
+                cols={isPengawas ? ALL_COLS_PENGAWAS : ALL_COLS_PENCACAH}
+                visible={visibleCols}
+                onChange={setVisibleCols}/>
               {/* Export dropdown */}
               <div style={{ position:'relative' }}>
                 <button onClick={() => setShowExportMenu(v => !v)}
@@ -1566,16 +1729,16 @@ export function EvaluasiPage() {
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
                 <H label="#"/>
                 <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
-                <H label="Kecamatan" col="kecamatan"/>
-                {!isPengawas && <H label="Pengawas" col="pengawas"/>}
-                <H label="Total"   col="total"     right/>
-                <H label="Submit"  col="submit"   right/>
-                <H label="Approved" col="approved" right/>
-                <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>
-                <H label="Draft"    col="draft"     right/>
-                <H label="Open"     col="open"    right/>
-                <H label="Progress" col="pct"/>
-
+                {visibleCols.has('kecamatan') && <H label="Kecamatan" col="kecamatan"/>}
+                {!isPengawas && visibleCols.has('pengawas') && <H label="Pengawas" col="pengawas"/>}
+                {visibleCols.has('total')    && <H label="Total"    col="total"   right/>}
+                {visibleCols.has('submit')   && <H label="Submit"   col="submit"  right/>}
+                {visibleCols.has('approved') && <H label="Approved" col="approved" right/>}
+                {visibleCols.has('rejected') && <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>}
+                {visibleCols.has('draft')    && <H label="Draft"    col="draft"   right/>}
+                {visibleCols.has('open')     && <H label="Open"     col="open"    right/>}
+                {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
+                {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
                 <th style={{ width:24 }}/>
               </tr>
             </thead>
@@ -1584,8 +1747,8 @@ export function EvaluasiPage() {
                 ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
-                      ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa}/>
-                      : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa}/>
+                      ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}/>
+                      : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}/>
                   )
               }
             </tbody>
