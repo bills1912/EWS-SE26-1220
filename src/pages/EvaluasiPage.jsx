@@ -8,8 +8,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
-  Shield, ChevronLeft, ChevronRight, FileText, Printer, Download,
-  Star, AlertCircle, Inbox,
+  Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
+  Star,  Inbox,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -268,7 +268,18 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
-          <div style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</div>
+          <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
+            <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</span>
+            {p.inaktif && (
+              <span
+                title={`Tidak ada submit sejak ${p.lastAktifDate||'—'} (${p.gapHariAktif} hari lalu)`}
+                style={{ fontSize:8,fontWeight:700,padding:'1px 5px',borderRadius:4,
+                  background:'rgba(244,63,94,0.12)',color:'#f43f5e',whiteSpace:'nowrap',
+                  border:'1px solid rgba(244,63,94,0.3)',cursor:'default' }}>
+                {p.gapHariAktif}h idle
+              </span>
+            )}
+          </div>
           <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
@@ -312,6 +323,21 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
           <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
+            {p.inaktif && (
+              <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'8px 12px',
+                             background:'rgba(244,63,94,0.06)',border:'1px solid rgba(244,63,94,0.2)',
+                             borderRadius:8 }}>
+                <span style={{ fontSize:14 }}>⚠️</span>
+                <div>
+                  <span style={{ fontSize:10,fontWeight:700,color:'#f43f5e' }}>
+                    Tidak ada submit selama {p.gapHariAktif} hari
+                  </span>
+                  <span style={{ fontSize:9,color:'var(--text4)',marginLeft:8 }}>
+                    Terakhir aktif: {p.lastAktifDate||'—'} · Pengawas mohon lakukan pengecekan
+                  </span>
+                </div>
+              </div>
+            )}
             {p.pengawas?.nama && (
               <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'7px 12px',
                              background:'rgba(27,63,139,0.06)',border:'1px solid rgba(27,63,139,0.15)',
@@ -392,7 +418,18 @@ function PengawasRow({ p, rank, filterKec, filterDesa }) {
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
         <td style={{ padding:'9px 8px' }}>
-          <div style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</div>
+          <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
+            <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{p.nama||'—'}</span>
+            {p.inaktif && (
+              <span
+                title={`Tidak ada submit sejak ${p.lastAktifDate||'—'} (${p.gapHariAktif} hari lalu)`}
+                style={{ fontSize:8,fontWeight:700,padding:'1px 5px',borderRadius:4,
+                  background:'rgba(244,63,94,0.12)',color:'#f43f5e',whiteSpace:'nowrap',
+                  border:'1px solid rgba(244,63,94,0.3)',cursor:'default' }}>
+                {p.gapHariAktif}h idle
+              </span>
+            )}
+          </div>
           <div style={{ fontSize:9,color:'var(--text3)',fontFamily:'var(--mono)' }}>{p.email}</div>
         </td>
         <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{p.kecamatan}</td>
@@ -601,7 +638,7 @@ async function generatePDF({ activeTab, filtered, summary }) {
         { h:'Rejected', w:16, key: p => p.reject||0,                 align:'right', color: RED },
         { h:'Draft',    w:14, key: p => p.draft||0,                  align:'right', color: BLUE },
         { h:'Open',     w:14, key: p => p.open||0,                   align:'right' },
-        { h:'Progress', w:22, key: p => `${(p.progressScore??p.pctApproved??0).toFixed(1)}%`, align:'right' },
+        // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
         { h:'Avg/Hari', w:20, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ]
     : [
@@ -615,7 +652,7 @@ async function generatePDF({ activeTab, filtered, summary }) {
         { h:'Rejected', w:14, key: p => p.reject||0,                 align:'right', color: RED },
         { h:'Draft',    w:12, key: p => p.draft||0,                  align:'right', color: BLUE },
         { h:'Open',     w:12, key: p => p.open||0,                   align:'right' },
-        { h:'Progress', w:20, key: p => `${(p.progressScore??p.pctApproved??0).toFixed(1)}%`, align:'right' },
+        // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
         { h:'Avg/Hari', w:18, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ];
 
@@ -685,7 +722,7 @@ async function generatePDF({ activeTab, filtered, summary }) {
   doc.setDrawColor(...MGRAY); doc.line(M, y, W - M, y); y += 4;
   setTxt([156,163,175]); setFont(6.5);
   doc.text(
-    'Progress = (Approved+Submit+Rejected+Draft)/Total. Avg/Hari = total dikerjakan / hari kalender sejak 15 Juni.',
+    'Avg/Hari = total tugas dikerjakan (approved+submit+rejected+draft) / hari kalender sejak 15 Juni.',
     M, y
   );
 
@@ -715,7 +752,9 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
     'No','Nama','Email','Kecamatan',
     ...(!isPengawas ? ['Pengawas (PML)','Email Pengawas'] : []),
     'Total','Approved','Submit',
-    'Rejected','Draft','Open','Progress (%)','Avg per Hari (total)',
+    'Rejected','Draft','Open','Avg per Hari (total)',
+    // KOLOM PROGRESS — dikecualikan dari export (tidak ditampilkan ke petugas)
+    // 'Progress (%)',
     // KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
     // 'Perf Score','Grade','Keterangan Grade',
   ];
@@ -726,7 +765,8 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
       i+1, p.nama||'', p.email||'', p.kecamatan||'',
       ...(!isPengawas ? [p.pengawas?.nama||'—', p.pengawas?.email||'—'] : []),
       p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
-      (p.progressScore ?? p.pctApproved ?? 0).toFixed(1), +avgT||'',
+      // Progress dihapus dari export
+      +avgT||'',
 
     ];
   });
@@ -770,6 +810,190 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
   URL.revokeObjectURL(url);
 }
 
+
+// ── InaktifSection — pencacah belum submit N hari ─────────────────────────
+function InaktifSection({ threshold = 2 }) {
+  const [data,    setData]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [days,    setDays]    = useState(threshold);
+  const [snap,    setSnap]    = useState('');
+
+  const load = async (d) => {
+    setLoading(true);
+    try {
+      const r = await apiFetch(`/api/evaluasi/inaktif?days=${d}`);
+      setData(r.data || []);
+      setSnap(r.snap || '');
+    } catch { setData([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(days); }, []);
+
+  const PCT_COLOR = (pct) =>
+    pct >= 50 ? '#10b981' : pct >= 20 ? '#f59e0b' : '#f43f5e';
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap' }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:11,color:'var(--text4)',marginBottom:2 }}>
+            Data per snapshot: <b style={{ color:'var(--text2)' }}>{snap||'—'}</b>
+            {' · '}Otomatis diperbarui setiap kali data di-upload ke MongoDB
+          </div>
+          <div style={{ fontSize:10,color:'var(--text4)' }}>
+            Menampilkan pencacah yang tidak ada submit/approved/rejected dalam N hari terakhir
+          </div>
+        </div>
+
+        {/* Threshold selector */}
+        <div style={{ display:'flex',alignItems:'center',gap:6 }}>
+          <span style={{ fontSize:11,color:'var(--text3)' }}>Tidak aktif selama</span>
+          {[1,2,3,5,7].map(n => (
+            <button key={n} onClick={() => { setDays(n); load(n); }}
+              style={{ padding:'4px 10px',fontSize:11,fontWeight:days===n?700:400,
+                borderRadius:6,border:`1px solid ${days===n?'#f43f5e':'var(--border)'}`,
+                background:days===n?'rgba(244,63,94,0.1)':'var(--bg3)',
+                color:days===n?'#f43f5e':'var(--text3)',cursor:'pointer' }}>
+              {n}h
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary */}
+      {!loading && (
+        <div style={{ display:'flex',gap:10,marginBottom:14 }}>
+          <div style={{ padding:'10px 16px',background:'rgba(244,63,94,0.07)',
+            border:'1px solid rgba(244,63,94,0.2)',borderRadius:8,minWidth:140 }}>
+            <div style={{ fontSize:24,fontWeight:800,color:'#f43f5e',fontFamily:'var(--mono)' }}>
+              {data.length}
+            </div>
+            <div style={{ fontSize:9,color:'var(--text4)',marginTop:2 }}>
+              pencacah tidak aktif &gt;= {days} hari
+            </div>
+          </div>
+          {data.length > 0 && (
+            <div style={{ padding:'10px 16px',background:'var(--bg3)',
+              border:'1px solid var(--border)',borderRadius:8,flex:1 }}>
+              <div style={{ fontSize:9,color:'var(--text4)',fontWeight:700,textTransform:'uppercase',
+                letterSpacing:'0.07em',marginBottom:6 }}>Distribusi per kecamatan</div>
+              {Object.entries(
+                data.reduce((acc, p) => {
+                  acc[p.kecamatan] = (acc[p.kecamatan]||0) + 1;
+                  return acc;
+                }, {})
+              ).sort((a,b) => b[1]-a[1]).map(([kec,n]) => (
+                <span key={kec} style={{ display:'inline-flex',alignItems:'center',gap:4,
+                  marginRight:8,marginBottom:4,padding:'2px 8px',borderRadius:99,
+                  background:'var(--bg4)',fontSize:10,color:'var(--text2)' }}>
+                  {kec} <b style={{ color:'#f43f5e' }}>{n}</b>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tabel */}
+      {loading ? (
+        <div style={{ textAlign:'center',padding:'32px',color:'var(--text4)' }}>
+          Memuat data...
+        </div>
+      ) : data.length === 0 ? (
+        <div style={{ textAlign:'center',padding:'40px 0' }}>
+          <div style={{ fontSize:32,marginBottom:8 }}>✅</div>
+          <div style={{ fontSize:13,fontWeight:600,color:'#10b981' }}>
+            Semua pencacah aktif dalam {days} hari terakhir
+          </div>
+          <div style={{ fontSize:11,color:'var(--text4)',marginTop:4 }}>
+            Berdasarkan snapshot {snap}
+          </div>
+        </div>
+      ) : (
+        <div style={{ overflowX:'auto',borderRadius:8,border:'1px solid var(--border)' }}>
+          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:11 }}>
+            <thead>
+              <tr style={{ background:'#f43f5e',borderBottom:'1px solid var(--border)' }}>
+                {['#','Nama Pencacah','Kecamatan','Pengawas (PML)',
+                  'Total','Submit','Approved','Progress','Terakhir Aktif','Idle'].map(h => (
+                  <th key={h} style={{ padding:'8px 10px',fontSize:8,fontWeight:700,
+                    color:'#fff',textAlign:'left',textTransform:'uppercase',
+                    letterSpacing:'0.07em',whiteSpace:'nowrap' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((p, i) => (
+                <tr key={p.email}
+                  style={{ borderBottom:'1px solid var(--border)',
+                    background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.018)' }}
+                  onMouseEnter={e => e.currentTarget.style.background='var(--bg3)'}
+                  onMouseLeave={e => e.currentTarget.style.background=
+                    i%2===0?'transparent':'rgba(255,255,255,0.018)'}
+                >
+                  <td style={{ padding:'8px 10px',color:'var(--text4)',fontSize:10,
+                    fontFamily:'var(--mono)' }}>{i+1}</td>
+                  <td style={{ padding:'8px 10px',minWidth:160 }}>
+                    <div style={{ fontWeight:600,color:'var(--text1)' }}>{p.nama}</div>
+                    <div style={{ fontSize:9,color:'var(--text4)',fontFamily:'var(--mono)' }}>
+                      {p.email}
+                    </div>
+                  </td>
+                  <td style={{ padding:'8px 10px',color:'var(--text3)',whiteSpace:'nowrap' }}>
+                    {p.kecamatan}
+                  </td>
+                  <td style={{ padding:'8px 10px',minWidth:130 }}>
+                    <div style={{ fontSize:10,fontWeight:600,color:'var(--blue3)' }}>
+                      {p.pengawas}
+                    </div>
+                    <div style={{ fontSize:8,color:'var(--text4)',fontFamily:'var(--mono)' }}>
+                      {p.pengawasEmail}
+                    </div>
+                  </td>
+                  <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
+                    fontSize:10 }}>{p.total}</td>
+                  <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
+                    fontSize:10,color:'#f59e0b',fontWeight:p.submit>0?600:400 }}>{p.submit}</td>
+                  <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
+                    fontSize:10,color:'#10b981',fontWeight:600 }}>{p.approved}</td>
+                  <td style={{ padding:'8px 10px',minWidth:90 }}>
+                    <div style={{ display:'flex',alignItems:'center',gap:6 }}>
+                      <div style={{ flex:1,height:4,background:'var(--bg4)',borderRadius:99,
+                        overflow:'hidden' }}>
+                        <div style={{ height:'100%',borderRadius:99,
+                          width:`${Math.min(p.progressScore||0,100)}%`,
+                          background:PCT_COLOR(p.progressScore) }}/>
+                      </div>
+                      <span style={{ fontSize:9,fontFamily:'var(--mono)',fontWeight:600,
+                        color:PCT_COLOR(p.progressScore),width:36,textAlign:'right' }}>
+                        {(p.progressScore||0).toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding:'8px 10px',fontSize:10,color:'var(--text3)',
+                    fontFamily:'var(--mono)',whiteSpace:'nowrap' }}>
+                    {p.lastAktifDate}
+                  </td>
+                  <td style={{ padding:'8px 10px',textAlign:'center' }}>
+                    <span style={{ padding:'2px 8px',borderRadius:99,fontSize:10,fontWeight:700,
+                      background:'rgba(244,63,94,0.12)',color:'#f43f5e',
+                      border:'1px solid rgba(244,63,94,0.25)' }}>
+                      {p.gapHari}h
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 export function EvaluasiPage() {
@@ -946,6 +1170,11 @@ export function EvaluasiPage() {
       <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
         <SumCard label="Total Assignment" value={summary.totalAssignment||0} color="var(--text1)" icon={BarChart2}
           sub={`${summary.totalKecamatan||0} kecamatan · ${pencacah.length} pencacah`}/>
+        {(summary.totalInaktif2Hari > 0) && (
+          <SumCard label="Tidak Aktif 2+ Hari" value={summary.totalInaktif2Hari||0}
+            color="#f43f5e" icon={AlertCircle}
+            sub={`pencacah belum submit ${summary.totalInaktif2Hari||0} orang`}/>
+        )}
         <SumCard label="Total Approved"   value={summary.approved||0} color="#10b981" icon={CheckCircle}
           sub={`${summary.totalAssignment?Math.round((summary.approved||0)/summary.totalAssignment*100):0}% dari total`}/>
         <SumCard label="Menunggu Approve" value={summary.submit||0}   color="#f59e0b" icon={Clock}
@@ -958,110 +1187,118 @@ export function EvaluasiPage() {
 
       {/* Tabel */}
       <Card>
-        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8 }}>
-          {/* Tab */}
-          <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:9,padding:3,gap:2 }}>
+        {/* ── Baris atas: Tab + Filter/Export ─────────────────────────────── */}
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',
+                      marginBottom:14,flexWrap:'wrap',gap:8 }}>
+          {/* Tab buttons */}
+          <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',
+                        borderRadius:9,padding:3,gap:2 }}>
             {[
               { key:'pencacah', label:`📋 Pencacah (${countPcl})`, color:'var(--orange3)' },
-              { key:'pengawas', label:`🛡 Pengawas (${countPws})`,  color:'var(--blue3)' },
+              { key:'pengawas', label:`🛡 Pengawas (${countPws})`,  color:'var(--blue3)'  },
+              { key:'inaktif',  label:'⚠ Tidak Aktif',              color:'#f43f5e'       },
             ].map(t => (
-              <button key={t.key} onClick={() => {
-                  setActiveTab(t.key);
-                  window.location.hash = t.key;
-                }}
-                style={{ padding:'6px 16px',fontSize:12,fontWeight:activeTab===t.key?600:400,
+              <button key={t.key}
+                onClick={() => { setActiveTab(t.key); window.location.hash = t.key; }}
+                style={{ padding:'6px 16px',fontSize:12,
+                         fontWeight:activeTab===t.key?600:400,
                          borderRadius:7,border:'none',cursor:'pointer',
                          background:activeTab===t.key?'var(--bg5)':'transparent',
-                         color:activeTab===t.key?t.color:'var(--text3)',transition:'all .15s' }}>
+                         color:activeTab===t.key?t.color
+                              :t.key==='inaktif'?'#f43f5e':'var(--text3)',
+                         transition:'all .15s' }}>
                 {t.label}
               </button>
             ))}
           </div>
 
-          {/* Filter bar */}
-          <div style={{ display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
-            {selectedKec!=='all' && <Badge variant="info"><MapPin size={9}/> {selectedKec}</Badge>}
-            <DesaFilter value={filterDesa} onChange={val=>{setFilterDesa(val);setPage(1);}} desaList={desaList}/>
-            <div style={{ position:'relative' }}>
-              <Search size={11} style={{ position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',pointerEvents:'none' }}/>
-              <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
-                placeholder="Cari nama / email…"
-                style={{ padding:'6px 10px 6px 26px',fontSize:11,background:'var(--bg3)',
-                         border:'1px solid var(--border)',borderRadius:8,color:'var(--text1)',
-                         outline:'none',fontFamily:'var(--font)',width:180 }}/>
-            </div>
-            {/* Export dropdown */}
-            <div style={{ position:'relative' }}>
-              <button
-                onClick={() => setShowExportMenu(v => !v)}
-                style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
-                  fontSize:11,fontWeight:600,borderRadius:8,cursor:'pointer',
-                  background:'var(--orange)',color:'#fff',border:'none',
-                  boxShadow:'0 1px 4px rgba(232,84,28,0.3)',transition:'opacity .15s' }}
-                onMouseEnter={e=>e.currentTarget.style.opacity='0.88'}
-                onMouseLeave={e=>e.currentTarget.style.opacity='1'}
-              >
-                <Download size={12} strokeWidth={2}/> Export
-                <ChevronDown size={10} style={{ marginLeft:2,
-                  transform: showExportMenu ? 'rotate(180deg)' : 'none',
-                  transition:'transform .15s' }}/>
-              </button>
-
-              {showExportMenu && (
-                <>
-                  {/* Overlay untuk tutup saat klik luar */}
-                  <div onClick={() => setShowExportMenu(false)}
-                    style={{ position:'fixed',inset:0,zIndex:999 }}/>
-                  <div style={{
-                    position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:1000,
-                    background:'var(--bg2)', border:'1px solid var(--border2)',
-                    borderRadius:10, overflow:'hidden', minWidth:180,
-                    boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
-                    animation:'fadeSlideDown .12s ease',
-                  }}>
-                    <button
-                      onClick={() => {
-                        setShowExportMenu(false);
-                        generatePDF({ activeTab, filtered, summary }).catch(e => alert('Error: '+e.message));
-                      }}
-                      style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
-                        padding:'10px 14px',background:'none',border:'none',
-                        cursor:'pointer',fontSize:12,color:'var(--text1)',
-                        borderBottom:'1px solid var(--border)',textAlign:'left' }}
-                      onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
-                      onMouseLeave={e=>e.currentTarget.style.background='none'}
-                    >
-                      <Printer size={13} color="var(--orange3)"/>
-                      <div>
-                        <div style={{ fontWeight:600 }}>Export PDF</div>
-                        <div style={{ fontSize:10,color:'var(--text4)' }}>Download HTML · buka lalu Ctrl+P untuk cetak</div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportMenu(false);
-                        generateExcel({ activeTab, filtered, summary,
-                          isPengawas: activeTab === 'pengawas' });
-                      }}
-                      style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
-                        padding:'10px 14px',background:'none',border:'none',
-                        cursor:'pointer',fontSize:12,color:'var(--text1)',textAlign:'left' }}
-                      onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
-                      onMouseLeave={e=>e.currentTarget.style.background='none'}
-                    >
-                      <FileText size={13} color="var(--blue3)"/>
-                      <div>
-                        <div style={{ fontWeight:600 }}>Export Excel (CSV)</div>
-                        <div style={{ fontSize:10,color:'var(--text4)' }}>3 tabel: data, per kecamatan, grade</div>
-                      </div>
-                    </button>
-                  </div>
-                </>
+          {/* Filter + Export (hanya tab pencacah/pengawas) */}
+          {activeTab !== 'inaktif' && (
+            <div style={{ display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
+              {selectedKec!=='all' && (
+                <Badge variant="info"><MapPin size={9}/> {selectedKec}</Badge>
               )}
+              <DesaFilter value={filterDesa}
+                onChange={val=>{setFilterDesa(val);setPage(1);}}
+                desaList={desaList}/>
+              <div style={{ position:'relative' }}>
+                <Search size={11} style={{ position:'absolute',left:8,top:'50%',
+                  transform:'translateY(-50%)',color:'var(--text3)',pointerEvents:'none' }}/>
+                <input value={search}
+                  onChange={e=>{setSearch(e.target.value);setPage(1);}}
+                  placeholder="Cari nama / email…"
+                  style={{ padding:'6px 10px 6px 26px',fontSize:11,
+                    background:'var(--bg3)',border:'1px solid var(--border)',
+                    borderRadius:8,color:'var(--text1)',outline:'none',
+                    fontFamily:'var(--font)',width:180 }}/>
+              </div>
+              {/* Export dropdown */}
+              <div style={{ position:'relative' }}>
+                <button onClick={() => setShowExportMenu(v => !v)}
+                  style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+                    fontSize:11,fontWeight:600,borderRadius:8,cursor:'pointer',
+                    background:'var(--orange)',color:'#fff',border:'none',
+                    boxShadow:'0 1px 4px rgba(232,84,28,0.3)',transition:'opacity .15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.opacity='0.88'}
+                  onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
+                  <Download size={12} strokeWidth={2}/> Export
+                  <ChevronDown size={10} style={{ marginLeft:2,
+                    transform:showExportMenu?'rotate(180deg)':'none',
+                    transition:'transform .15s' }}/>
+                </button>
+                {showExportMenu && (
+                  <>
+                    <div onClick={()=>setShowExportMenu(false)}
+                      style={{ position:'fixed',inset:0,zIndex:999 }}/>
+                    <div style={{ position:'absolute',top:'calc(100% + 6px)',right:0,
+                      zIndex:1000,background:'var(--bg2)',border:'1px solid var(--border2)',
+                      borderRadius:10,overflow:'hidden',minWidth:180,
+                      boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
+                      animation:'fadeSlideDown .12s ease' }}>
+                      <button onClick={()=>{ setShowExportMenu(false);
+                        generatePDF({activeTab,filtered,summary}).catch(e=>alert('Error: '+e.message)); }}
+                        style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                          padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
+                          fontSize:12,color:'var(--text1)',borderBottom:'1px solid var(--border)',
+                          textAlign:'left' }}
+                        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                        <Printer size={13} color="var(--orange3)"/>
+                        <div>
+                          <div style={{ fontWeight:600 }}>Export PDF</div>
+                          <div style={{ fontSize:10,color:'var(--text4)' }}>Download langsung .pdf</div>
+                        </div>
+                      </button>
+                      <button onClick={()=>{ setShowExportMenu(false);
+                        generateExcel({activeTab,filtered,summary,isPengawas:activeTab==='pengawas'}); }}
+                        style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                          padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
+                          fontSize:12,color:'var(--text1)',textAlign:'left' }}
+                        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                        <FileText size={13} color="var(--blue3)"/>
+                        <div>
+                          <div style={{ fontWeight:600 }}>Export Excel (CSV)</div>
+                          <div style={{ fontSize:10,color:'var(--text4)' }}>Tabel data + ringkasan kecamatan</div>
+                        </div>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
+        {/* Tidak Aktif Section */}
+        {activeTab === 'inaktif' && (
+          <div style={{ marginTop:8 }}>
+            <InaktifSection threshold={2}/>
+          </div>
+        )}
+
+        {/* Tabel + Paginator */}
+        {activeTab !== 'inaktif' && <>
         {/* Keterangan kolom */}
         <div style={{ fontSize:10,color:'var(--text4)',marginBottom:10,padding:'7px 10px',
                        background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:7,
@@ -1112,6 +1349,7 @@ export function EvaluasiPage() {
           {(summary?.totalAssignment||0).toLocaleString('id')} total assignment ·
           Skor dihitung relatif terhadap peers di snapshot ini
         </div>
+      </>}
       </Card>
     </div>
   );
