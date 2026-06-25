@@ -18,6 +18,8 @@
  *   GET  /api/petugas           → semua role
  *   GET  /api/kecamatan         → semua role
  *   GET  /api/health            → public
+ *   POST /api/upload/assignment → kepala, kasubbag, statistisi
+ *                                  Upload CSV assignment → hitung stats → simpan ke MongoDB
  */
 
 const express      = require('express');
@@ -25,6 +27,8 @@ const cors         = require('cors');
 const jwt          = require('jsonwebtoken');
 const bcrypt       = require('bcryptjs');
 const { MongoClient } = require('mongodb');
+const multer           = require('multer');
+const { parse: csvParse } = require('csv-parse/sync');
 
 const URI         = process.env.MONGO_URI  || 'mongodb+srv://ricardozalukhu1925:kuran1925@cluster0.lhmox.mongodb.net/?appName=Cluster0';
 const DB_NAME     = process.env.DB_NAME    || 'ews_se2026';
@@ -34,6 +38,35 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
+
+// ── Konfigurasi pendataan ─────────────────────────────────────────────────
+const PENDATAAN_START = new Date('2026-06-15T00:00:00+07:00');
+
+/** Hitung hari kerja Senin–Sabtu dari PENDATAAN_START s.d. sekarang */
+function countWorkingDays() {
+  const start = new Date(PENDATAAN_START);
+  const end   = new Date();
+  end.setHours(23, 59, 59, 999);
+  let count = 0;
+  const d = new Date(start);
+  while (d <= end) {
+    if (d.getDay() !== 0) count++; // 0 = Minggu
+    d.setDate(d.getDate() + 1);
+  }
+  return Math.max(1, count);
+}
+
+// ── Upload config: pakai memory storage (tidak perlu tulis ke disk) ─────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 50 * 1024 * 1024 }, // maks 50 MB
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.match(/\.csv$/i)) {
+      return cb(new Error('Hanya file CSV yang diperbolehkan'));
+    }
+    cb(null, true);
+  },
+});
 
 // ── Role definitions ──────────────────────────────────────────────────────
 // Level akses: semakin tinggi angka, semakin banyak yang bisa diakses
@@ -794,6 +827,435 @@ app.get('/api/health', async (req, res) => {
     res.json({ status: 'ok', db: DB_NAME, totalRecords: total, ts: new Date().toISOString() });
   } catch (err) { res.status(503).json({ status: 'error', error: err.message }); }
 });
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// POST /api/upload/assignment
+// Upload CSV → hitung stats otomatis → simpan ke MongoDB
+// Hanya kepala, kasubbag, statistisi yang boleh upload
+// ══════════════════════════════════════════════════════════════════════════
+app.post(
+  '/api/upload/assignment',
+  verifyToken,
+  (req, res, next) => {
+    const allowed = ['kepala', 'kasubbag', 'statistisi'];
+    if (!allowed.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Hanya kepala/kasubbag/statistisi yang boleh upload.' });
+    }
+    next();
+  },
+  upload.single('file'),
+  async (req, res) => {
+    const t0 = Date.now();
+    try {
+      if (!req.file) return res.status(400).json({ error: 'File CSV tidak ditemukan dalam request.' });
+
+      // ── 1. Parse CSV ──────────────────────────────────────────────────────
+      const rows = csvParse(req.file.buffer, {
+        columns:          true,
+        skip_empty_lines: true,
+        trim:             true,
+        bom:              true,   // handle UTF-8 BOM
+      });
+      if (!rows.length) return res.status(400).json({ error: 'CSV kosong atau tidak bisa dibaca.' });
+
+      // ── 2. Hitung stats ───────────────────────────────────────────────────
+      const WORKING_DAYS = countWorkingDays();
+      const snapshotTs   = new Date().toISOString();
+
+      const STATUS_DONE   = new Set(['APPROVED BY Pengawas', 'COMPLETED BY Admin Kabupaten']);
+      const STATUS_SUBMIT = new Set(['SUBMITTED BY Pencacah']);
+      const STATUS_REJECT = new Set(['REJECTED BY Pengawas', 'REVOKED BY Pengawas']);
+      const STATUS_DRAFT  = new Set(['DRAFT']);
+      const STATUS_OPEN   = new Set(['OPEN', 'SUBMITTED RESPONDENT']);
+
+      function parseDate(s) {
+        if (!s || s.trim() === '') return null;
+        try { return new Date(s.trim()); } catch { return null; }
+      }
+      function sr(v, n = 2) {
+        if (v == null || !isFinite(v)) return null;
+        return Math.round(v * Math.pow(10, n)) / Math.pow(10, n);
+      }
+      function statusOf(row) { return (row.assignmentStatusAlias || '').trim(); }
+
+      // Index baris per pencacah_uid
+      const byPcl = new Map();
+      const byPws = new Map();
+      const byKec = new Map();
+
+      for (const row of rows) {
+        const pclUid  = (row.pencacah_currentUserId || '').trim();
+        const pclRole = (row.currentUserSurveyRoleName || '').trim();
+        const kec     = (row.level3_name || '—').trim();
+
+        if (pclUid) {
+          if (!byPcl.has(pclUid)) byPcl.set(pclUid, []);
+          byPcl.get(pclUid).push(row);
+        }
+        if (pclRole === 'Pengawas') {
+          const email = (row.currentUserUsername || '').trim();
+          if (email) {
+            if (!byPws.has(email)) byPws.set(email, []);
+            byPws.get(email).push(row);
+          }
+        }
+        if (!byKec.has(kec)) byKec.set(kec, []);
+        byKec.get(kec).push(row);
+      }
+
+      // Lookup pencacah_uid → email/nama/pengawas (dari baris role=Pengawas)
+      const pclInfo = new Map();
+      for (const row of rows) {
+        const pclRole = (row.currentUserSurveyRoleName || '').trim();
+        const pclUid  = (row.pencacah_currentUserId || '').trim();
+        const pclCurUid = (row.currentUserId || '').trim();
+
+        // Baris role=Pencacah → email pencacah adalah currentUserUsername
+        if (pclRole === 'Pencacah' && pclUid && !pclInfo.has(pclUid)) {
+          pclInfo.set(pclUid, {
+            email:    (row.currentUserUsername || '').trim(),
+            nama:     (row.currentUserFullname  || '').trim(),
+            pws_email: null, pws_nama: null,
+          });
+        }
+        // Baris role=Pengawas → simpan email pengawas untuk tiap pencacah_uid
+        if (pclRole === 'Pengawas' && pclUid) {
+          if (!pclInfo.has(pclUid)) pclInfo.set(pclUid, { email: '', nama: '', pws_email: null, pws_nama: null });
+          const info = pclInfo.get(pclUid);
+          if (!info.pws_email) {
+            info.pws_email = (row.currentUserUsername || '').trim();
+            info.pws_nama  = (row.currentUserFullname  || '').trim();
+          }
+        }
+      }
+
+      function countStatus(grp) {
+        let approved = 0, submit = 0, reject = 0, draft = 0, open_ = 0;
+        for (const r of grp) {
+          const s = statusOf(r);
+          if (STATUS_DONE.has(s))   approved++;
+          else if (STATUS_SUBMIT.has(s)) submit++;
+          else if (STATUS_REJECT.has(s)) reject++;
+          else if (STATUS_DRAFT.has(s))  draft++;
+          else if (STATUS_OPEN.has(s))   open_++;
+        }
+        return { approved, submit, reject, draft, open: open_, total: grp.length };
+      }
+
+      function buildDailySeries(grp) {
+        const byDate = new Map();
+        for (const r of grp) {
+          const d = parseDate(r.dateModified);
+          if (!d) continue;
+          const key = d.toISOString().slice(0, 10);
+          if (!byDate.has(key)) byDate.set(key, { date: key, approved: 0, submitted: 0, rejected: 0, draft: 0, open: 0 });
+          const e = byDate.get(key);
+          const s = statusOf(r);
+          if      (STATUS_DONE.has(s))   e.approved++;
+          else if (STATUS_SUBMIT.has(s)) e.submitted++;
+          else if (STATUS_REJECT.has(s)) e.rejected++;
+          else if (STATUS_DRAFT.has(s))  e.draft++;
+          else if (STATUS_OPEN.has(s))   e.open++;
+        }
+        return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+      }
+
+      function buildAvgPerDay(counts, dailySeries) {
+        const { approved, submit, reject, draft } = counts;
+        const worked    = approved + submit + reject + draft;
+        const activeDays = dailySeries.filter(r =>
+          (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
+        ).length;
+        return {
+          approved:       sr(approved / WORKING_DAYS),
+          submitted:      sr(submit   / WORKING_DAYS),
+          rejected:       sr(reject   / WORKING_DAYS),
+          draft:          sr(draft    / WORKING_DAYS),
+          total:          sr(worked   / WORKING_DAYS),
+          workingDays:    WORKING_DAYS,
+          activeDays,
+          pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
+        };
+      }
+
+      // ── Pencacah rows ──────────────────────────────────────────────────────
+      const pencacahRows = [];
+      for (const [uid, grp] of byPcl) {
+        const info   = pclInfo.get(uid) || {};
+        const email  = info.email || '';
+        const nama   = info.nama  || email;
+        if (!email && !nama) continue;
+
+        const counts = countStatus(grp);
+        const daily  = buildDailySeries(grp);
+        const avgPD  = buildAvgPerDay(counts, daily);
+        const kecDom = grp.map(r => (r.level3_name || '—').trim())
+                          .sort((a, b) =>
+                            grp.filter(r => r.level3_name === b).length -
+                            grp.filter(r => r.level3_name === a).length
+                          )[0] || '—';
+
+        // lastActive
+        const dates = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
+        const lastActive = dates.length ? new Date(Math.max(...dates)).toISOString() : null;
+
+        // Inaktif detection
+        const aktifDates = grp
+          .filter(r => STATUS_DONE.has(statusOf(r)) || STATUS_SUBMIT.has(statusOf(r)) || STATUS_REJECT.has(statusOf(r)))
+          .map(r => parseDate(r.dateModified)).filter(Boolean);
+        const lastAktif  = aktifDates.length ? new Date(Math.max(...aktifDates)) : null;
+        const lastAktifStr = lastAktif ? lastAktif.toISOString().slice(0, 10) : null;
+        const snapDate   = new Date(snapshotTs);
+        const gapHari    = lastAktif
+          ? Math.round((snapDate - lastAktif) / 86400000)
+          : null;
+
+        pencacahRows.push({
+          email, nama, role: 'Pencacah',
+          kecamatan: kecDom,
+          ...counts,
+          pctApproved:   counts.total > 0 ? sr(counts.approved / counts.total * 100, 1) : 0,
+          progressScore: counts.total > 0 ? sr((counts.approved + counts.submit + counts.reject + counts.draft) / counts.total * 100, 1) : 0,
+          lastActive,
+          lastAktifDate: lastAktifStr,
+          gapHariAktif:  gapHari,
+          inaktif:       gapHari !== null && gapHari >= 2,
+          pengawas: {
+            email: info.pws_email || null,
+            nama:  info.pws_nama  || null,
+          },
+          dailySeries: daily,
+          avgPerDay:   avgPD,
+          snapshotAt:  snapshotTs,
+        });
+      }
+
+      // ── Pengawas rows ──────────────────────────────────────────────────────
+      // Lookup pengawas_email → list pencacah di bawahnya
+      const pgwToPcl = new Map();
+      for (const pcl of pencacahRows) {
+        const pgwEmail = pcl.pengawas?.email;
+        if (pgwEmail) {
+          if (!pgwToPcl.has(pgwEmail)) pgwToPcl.set(pgwEmail, []);
+          pgwToPcl.get(pgwEmail).push(pcl);
+        }
+      }
+
+      const pengawasRows = [];
+      for (const [email, grp] of byPws) {
+        const nama = (grp[0]?.currentUserFullname || '').trim() || email;
+        if (!email && !nama) continue;
+
+        // Hitung dari agregat pencacah di bawahnya (lebih akurat)
+        const pclUnder = pgwToPcl.get(email) || [];
+        let counts;
+        if (pclUnder.length) {
+          counts = {
+            approved: pclUnder.reduce((s, p) => s + p.approved, 0),
+            submit:   pclUnder.reduce((s, p) => s + p.submit,   0),
+            reject:   pclUnder.reduce((s, p) => s + p.reject,   0),
+            draft:    pclUnder.reduce((s, p) => s + p.draft,    0),
+            open:     pclUnder.reduce((s, p) => s + p.open,     0),
+            total:    pclUnder.reduce((s, p) => s + p.total,    0),
+          };
+        } else {
+          counts = countStatus(grp);
+        }
+
+        const daily = buildDailySeries(grp);
+        const avgPD = buildAvgPerDay(counts, daily);
+        const kecDom = grp.map(r => (r.level3_name || '—').trim())
+                          .sort()[0] || '—';
+        const dates = grp.map(r => parseDate(r.dateModified)).filter(Boolean);
+        const lastActive = dates.length ? new Date(Math.max(...dates)).toISOString() : null;
+
+        pengawasRows.push({
+          email, nama, role: 'Pengawas',
+          kecamatan: kecDom,
+          ...counts,
+          pctApproved:  counts.total > 0 ? sr(counts.approved / counts.total * 100, 1) : 0,
+          lastActive,
+          dailySeries:  daily,
+          avgPerDay:    avgPD,
+          snapshotAt:   snapshotTs,
+        });
+      }
+
+      // ── Per kecamatan ──────────────────────────────────────────────────────
+      const kecList = [];
+      for (const [kec, grp] of byKec) {
+        kecList.push({ kecamatan: kec, ...countStatus(grp) });
+      }
+
+      // ── Summary global ─────────────────────────────────────────────────────
+      const globalAppr  = rows.filter(r => STATUS_DONE.has(statusOf(r))).length;
+      const globalSub   = rows.filter(r => STATUS_SUBMIT.has(statusOf(r))).length;
+      const globalRej   = rows.filter(r => STATUS_REJECT.has(statusOf(r))).length;
+      const globalDraft = rows.filter(r => STATUS_DRAFT.has(statusOf(r))).length;
+      const globalOpen  = rows.filter(r => STATUS_OPEN.has(statusOf(r))).length;
+      const globalWorked = globalAppr + globalSub + globalRej + globalDraft;
+
+      const globalDaily = buildDailySeries(rows);
+      const globalActiveDays = globalDaily.filter(r =>
+        (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
+      ).length;
+
+      const summary = {
+        totalAssignment:  rows.length,
+        totalPencacah:    pencacahRows.length,
+        totalPengawas:    pengawasRows.length,
+        totalKecamatan:   kecList.length,
+        approved:         globalAppr,
+        submit:           globalSub,
+        reject:           globalRej,
+        draft:            globalDraft,
+        open:             globalOpen,
+        workingDays:      WORKING_DAYS,
+        pendataanStart:   PENDATAAN_START.toISOString().slice(0, 10),
+        snapshotAt:       snapshotTs,
+        generatedAt:      snapshotTs,
+        avgPerDay: {
+          approved:       sr(globalAppr   / WORKING_DAYS),
+          submitted:      sr(globalSub    / WORKING_DAYS),
+          rejected:       sr(globalRej    / WORKING_DAYS),
+          draft:          sr(globalDraft  / WORKING_DAYS),
+          total:          sr(globalWorked / WORKING_DAYS),
+          workingDays:    WORKING_DAYS,
+          activeDays:     globalActiveDays,
+          pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
+        },
+        dailySeries: globalDaily,
+      };
+
+      // ── 3. Simpan ke MongoDB ───────────────────────────────────────────────
+      const col_pcl  = db.collection('assignment_pencacah');
+      const col_pws  = db.collection('assignment_pengawas');
+      const col_kec  = db.collection('assignment_kecamatan');
+      const col_snap = db.collection('assignment_snapshots');
+      const col_det  = db.collection('assignment_detail');
+      const col_stat = db.collection('statistik_se2026');
+
+      // Upsert pencacah (by email)
+      const pclOps = pencacahRows.map(r => ({
+        updateOne: {
+          filter:  { email: r.email },
+          update:  { $set: r },
+          upsert:  true,
+        },
+      }));
+      if (pclOps.length) await col_pcl.bulkWrite(pclOps, { ordered: false });
+
+      // Upsert pengawas (by email)
+      const pwsOps = pengawasRows.map(r => ({
+        updateOne: {
+          filter:  { email: r.email },
+          update:  { $set: r },
+          upsert:  true,
+        },
+      }));
+      if (pwsOps.length) await col_pws.bulkWrite(pwsOps, { ordered: false });
+
+      // Upsert kecamatan (by kecamatan)
+      const kecOps = kecList.map(r => ({
+        updateOne: {
+          filter:  { kecamatan: r.kecamatan },
+          update:  { $set: r },
+          upsert:  true,
+        },
+      }));
+      if (kecOps.length) await col_kec.bulkWrite(kecOps, { ordered: false });
+
+      // Build detail list (per baris CSV)
+      const detailList = rows.map(r => {
+        const pclUid   = (r.pencacah_currentUserId || '').trim();
+        const info     = pclInfo.get(pclUid) || {};
+        return {
+          assignmentId:   r.assignment_id  || null,
+          pencacahEmail:  info.email        || (r.currentUserUsername || '').trim(),
+          email:          (r.currentUserUsername || '').trim(),
+          nama:           (r.currentUserFullname  || '').trim(),
+          role:           (r.currentUserSurveyRoleName || '').trim(),
+          kecamatan:      (r.level3_name || '—').trim(),
+          desa:           (r.level4_name || '—').trim(),
+          slsName:        (r.level5_name || '—').trim(),
+          slsCode:        (r.level5_fullCode || '').trim(),
+          subSlsName:     (r.level6_name || '—').trim(),
+          subSlsCode:     (r.level6_fullCode || '').trim(),
+          status:         statusOf(r),
+          isListing:      r.listing === 'true' || r.listing === '1',
+          sampleType:     r.sampleType ? parseInt(r.sampleType) || null : null,
+          dateCreated:    parseDate(r.dateCreated)  ? parseDate(r.dateCreated).toISOString()  : null,
+          dateModified:   parseDate(r.dateModified) ? parseDate(r.dateModified).toISOString() : null,
+          snapshotAt:     snapshotTs,
+        };
+      });
+
+      // Upsert detail by assignmentId (skip duplikat, replace yang sudah ada)
+      if (detailList.length) {
+        const detOps = detailList
+          .filter(d => d.assignmentId)
+          .map(d => ({
+            updateOne: {
+              filter: { assignmentId: d.assignmentId },
+              update: { $set: d },
+              upsert: true,
+            },
+          }));
+        if (detOps.length) await col_det.bulkWrite(detOps, { ordered: false });
+      }
+
+      // Insert snapshot (satu dokumen per upload)
+      await col_snap.insertOne({
+        snapshotAt:            snapshotTs,
+        uploadedAt:            snapshotTs,
+        uploadedBy:            req.user.username,
+        filename:              req.file.originalname,
+        totalRows:             rows.length,
+        summary,
+        gradeDistPencacah:     {},
+        gradeDistPengawas:     {},
+      });
+
+      // Update statistik_utama — field assignmentSummary (dipakai /api/evaluasi)
+      await col_stat.updateOne(
+        { _id: 'statistik_utama' },
+        { $set: { assignmentSummary: summary } },
+        { upsert: true },
+      );
+
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      console.log(\`[UPLOAD] \${req.user.username} upload \${req.file.originalname} → \${rows.length} rows, \${WORKING_DAYS} hari kerja, \${elapsed}s\`);
+
+      res.json({
+        ok:           true,
+        totalRows:    rows.length,
+        workingDays:  WORKING_DAYS,
+        snapshotAt:   snapshotTs,
+        elapsed:      \`\${elapsed}s\`,
+        summary: {
+          approved:  globalAppr,
+          submitted: globalSub,
+          rejected:  globalRej,
+          draft:     globalDraft,
+          open:      globalOpen,
+          avgPerDay: summary.avgPerDay,
+        },
+        pencacah:  pencacahRows.length,
+        pengawas:  pengawasRows.length,
+        kecamatan: kecList.length,
+      });
+
+    } catch (err) {
+      console.error('[UPLOAD ERROR]', err);
+      // Multer file size error
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File terlalu besar (maks 50 MB).' });
+      }
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 // ── Start ─────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
