@@ -9,7 +9,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
   Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
-  Star,  Inbox,
+  Star, Inbox,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -330,10 +330,12 @@ function PencacahRow({ p, rank, filterKec, filterDesa }) {
                 <span style={{ fontSize:14 }}>⚠️</span>
                 <div>
                   <span style={{ fontSize:10,fontWeight:700,color:'#f43f5e' }}>
-                    Tidak ada submit selama {p.gapHariAktif} hari
+                    {p.submit===0 && p.draft===0
+                      ? 'Belum pernah ada submit maupun draft!'
+                      : `Tidak ada submit/draft selama ${p.gapHariAktif} hari`}
                   </span>
                   <span style={{ fontSize:9,color:'var(--text4)',marginLeft:8 }}>
-                    Terakhir aktif: {p.lastAktifDate||'—'} · Pengawas mohon lakukan pengecekan
+                    Terakhir submit/draft: {p.lastAktifDate||'—'} · Pengawas mohon lakukan pengecekan
                   </span>
                 </div>
               </div>
@@ -812,26 +814,88 @@ function generateExcel({ activeTab, filtered, summary, isPengawas }) {
 
 
 // ── InaktifSection — pencacah belum submit N hari ─────────────────────────
-function InaktifSection({ threshold = 2 }) {
+function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
   const [data,    setData]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [days,    setDays]    = useState(threshold);
   const [snap,    setSnap]    = useState('');
+  const [filter,  setFilter]  = useState('all'); // 'all' | 'never' | 'gap'
+  const [search,    setSearch]    = useState('');
+  const [page,      setPage]      = useState(1);
+  const [sortBy,    setSortBy]    = useState('progressScore');
+  const [sortDir,   setSortDir]   = useState('desc');
+  const PAGE_SIZE = 10;
+
+  const toggleSortI = (col) => {
+    if (sortBy === col) setSortDir(d => d==='desc'?'asc':'desc');
+    else { setSortBy(col); setSortDir('desc'); }
+    setPage(1);
+  };
+  const SII = ({ col }) => col
+    ? sortBy===col
+      ? <span style={{ fontSize:8,color:'#f43f5e',marginLeft:3 }}>{sortDir==='desc'?'▼':'▲'}</span>
+      : <span style={{ fontSize:8,color:'var(--text4)',marginLeft:3,opacity:0.45 }}>⇅</span>
+    : null;
+  const HI = ({ label, col, right }) => (
+    <th onClick={col?()=>toggleSortI(col):undefined}
+      style={{ padding:'8px 10px',fontSize:8,fontWeight:700,color:'#fff',
+               textAlign:right?'right':'left',textTransform:'uppercase',
+               letterSpacing:'0.07em',whiteSpace:'nowrap',
+               cursor:col?'pointer':'default',userSelect:'none' }}>
+      {label}<SII col={col}/>
+    </th>
+  );
 
   const load = async (d) => {
     setLoading(true);
     try {
-      const r = await apiFetch(`/api/evaluasi/inaktif?days=${d}`);
+      const r = await apiFetch(`/api/evaluasi/inaktif?days=${d}${kecamatan!=='all'?'&kec='+encodeURIComponent(kecamatan):''}`);
       setData(r.data || []);
       setSnap(r.snap || '');
     } catch { setData([]); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(days); }, []);
+  useEffect(() => { load(days); }, [kecamatan]);
+
+  // Reset page saat filter/search berubah
+  useEffect(() => { setPage(1); }, [filter, search, days, sortBy, sortDir, kecamatan]);
 
   const PCT_COLOR = (pct) =>
     pct >= 50 ? '#10b981' : pct >= 20 ? '#f59e0b' : '#f43f5e';
+
+  const displayed = data.filter(p => {
+    const matchFilter =
+      filter === 'all'   ? true :
+      filter === 'never' ? p.neverSubmit :
+                           !p.neverSubmit;
+    if (!matchFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (p.nama||'').toLowerCase().includes(q)
+          || (p.email||'').toLowerCase().includes(q)
+          || (p.kecamatan||'').toLowerCase().includes(q)
+          || (p.pengawas||'').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  // Sort untuk tab tidak aktif
+  const sortedInaktif = [...displayed].sort((a,b) => {
+    const d = sortDir==='desc'?-1:1;
+    if (sortBy==='progressScore') return d*((b.progressScore??0)-(a.progressScore??0));
+    if (sortBy==='gapHari')       return d*((b.gapHari??0)-(a.gapHari??0));
+    if (sortBy==='submit')        return d*((b.submit??0)-(a.submit??0));
+    if (sortBy==='approved')      return d*((b.approved??0)-(a.approved??0));
+    if (sortBy==='total')         return d*((b.total??0)-(a.total??0));
+    if (sortBy==='nama')          return d*(a.nama||'').localeCompare(b.nama||'','id');
+    if (sortBy==='kecamatan')     return d*(a.kecamatan||'').localeCompare(b.kecamatan||'','id');
+    if (sortBy==='pengawas')      return d*(a.pengawas||'').localeCompare(b.pengawas||'','id');
+    if (sortBy==='lastSubmitDraftDate') return d*(a.lastSubmitDraftDate||'').localeCompare(b.lastSubmitDraftDate||'');
+    return 0;
+  });
+  const totalPages = Math.ceil(sortedInaktif.length / PAGE_SIZE);
+  const paginated  = sortedInaktif.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
   return (
     <div>
@@ -842,36 +906,87 @@ function InaktifSection({ threshold = 2 }) {
             Data per snapshot: <b style={{ color:'var(--text2)' }}>{snap||'—'}</b>
             {' · '}Otomatis diperbarui setiap kali data di-upload ke MongoDB
           </div>
-          <div style={{ fontSize:10,color:'var(--text4)' }}>
-            Menampilkan pencacah yang tidak ada submit/approved/rejected dalam N hari terakhir
+          <div style={{ fontSize:10,color:'var(--text4)',display:'flex',gap:8,
+            flexWrap:'wrap',alignItems:'center' }}>
+            <span>Pencacah tidak ada submit/draft dalam N hari terakhir</span>
+            {kecamatan !== 'all' && (
+              <span style={{ fontWeight:700,color:'var(--orange3)',padding:'1px 8px',
+                borderRadius:5,background:'var(--orange-dim2)',fontSize:10 }}>
+                🗂 {kecamatan}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Threshold selector */}
-        <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <span style={{ fontSize:11,color:'var(--text3)' }}>Tidak aktif selama</span>
-          {[1,2,3,5,7].map(n => (
-            <button key={n} onClick={() => { setDays(n); load(n); }}
-              style={{ padding:'4px 10px',fontSize:11,fontWeight:days===n?700:400,
-                borderRadius:6,border:`1px solid ${days===n?'#f43f5e':'var(--border)'}`,
-                background:days===n?'rgba(244,63,94,0.1)':'var(--bg3)',
-                color:days===n?'#f43f5e':'var(--text3)',cursor:'pointer' }}>
-              {n}h
-            </button>
-          ))}
+        <div style={{ display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' }}>
+          {/* Threshold selector */}
+          <div style={{ display:'flex',alignItems:'center',gap:6 }}>
+            <span style={{ fontSize:11,color:'var(--text3)' }}>Idle selama</span>
+            {[1,2,3,5,7].map(n => (
+              <button key={n} onClick={() => { setDays(n); load(n); }}
+                style={{ padding:'4px 10px',fontSize:11,fontWeight:days===n?700:400,
+                  borderRadius:6,border:`1px solid ${days===n?'#f43f5e':'var(--border)'}`,
+                  background:days===n?'rgba(244,63,94,0.1)':'var(--bg3)',
+                  color:days===n?'#f43f5e':'var(--text3)',cursor:'pointer' }}>
+                {n}h
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div style={{ position:'relative' }}>
+            <Search size={11} style={{ position:'absolute',left:8,top:'50%',
+              transform:'translateY(-50%)',color:'var(--text4)',pointerEvents:'none' }}/>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari nama / email / kecamatan…"
+              style={{ padding:'5px 10px 5px 26px',fontSize:11,background:'var(--bg3)',
+                border:'1px solid var(--border)',borderRadius:7,color:'var(--text1)',
+                outline:'none',fontFamily:'var(--font)',width:220 }}/>
+            {search && (
+              <button onClick={()=>setSearch('')}
+                style={{ position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',
+                  background:'none',border:'none',cursor:'pointer',color:'var(--text4)',
+                  fontSize:14,lineHeight:1 }}>×</button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Summary */}
       {!loading && (
-        <div style={{ display:'flex',gap:10,marginBottom:14 }}>
+        <div style={{ display:'flex',gap:10,marginBottom:14,flexWrap:'wrap' }}>
+          {/* Total */}
           <div style={{ padding:'10px 16px',background:'rgba(244,63,94,0.07)',
-            border:'1px solid rgba(244,63,94,0.2)',borderRadius:8,minWidth:140 }}>
+            border:'1px solid rgba(244,63,94,0.2)',borderRadius:8,minWidth:130 }}>
             <div style={{ fontSize:24,fontWeight:800,color:'#f43f5e',fontFamily:'var(--mono)' }}>
               {data.length}
             </div>
+            <div style={{ fontSize:9,color:'var(--text4)',marginTop:2 }}>total perlu perhatian</div>
+          </div>
+          {/* Belum pernah submit/draft */}
+          <div style={{ padding:'10px 16px',background:'rgba(239,68,68,0.07)',
+            border:'1px solid rgba(239,68,68,0.25)',borderRadius:8,minWidth:130,cursor:'pointer',
+            outline:filter==='never'?'2px solid #ef4444':'none' }}
+            onClick={()=>setFilter(f=>f==='never'?'all':'never')}>
+            <div style={{ fontSize:24,fontWeight:800,color:'#ef4444',fontFamily:'var(--mono)' }}>
+              {data.filter(p=>p.neverSubmit).length}
+            </div>
             <div style={{ fontSize:9,color:'var(--text4)',marginTop:2 }}>
-              pencacah tidak aktif &gt;= {days} hari
+              ⛔ belum pernah submit/draft
+            </div>
+          </div>
+          {/* Tidak submit N hari */}
+          <div style={{ padding:'10px 16px',background:'rgba(251,146,60,0.07)',
+            border:'1px solid rgba(251,146,60,0.25)',borderRadius:8,minWidth:130,cursor:'pointer',
+            outline:filter==='gap'?'2px solid #fb923c':'none' }}
+            onClick={()=>setFilter(f=>f==='gap'?'all':'gap')}>
+            <div style={{ fontSize:24,fontWeight:800,color:'#fb923c',fontFamily:'var(--mono)' }}>
+              {data.filter(p=>!p.neverSubmit).length}
+            </div>
+            <div style={{ fontSize:9,color:'var(--text4)',marginTop:2 }}>
+              ⚠ tidak submit/draft {days}+ hari
             </div>
           </div>
           {data.length > 0 && (
@@ -901,11 +1016,13 @@ function InaktifSection({ threshold = 2 }) {
         <div style={{ textAlign:'center',padding:'32px',color:'var(--text4)' }}>
           Memuat data...
         </div>
-      ) : data.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div style={{ textAlign:'center',padding:'40px 0' }}>
           <div style={{ fontSize:32,marginBottom:8 }}>✅</div>
           <div style={{ fontSize:13,fontWeight:600,color:'#10b981' }}>
-            Semua pencacah aktif dalam {days} hari terakhir
+            {filter==='all'
+              ? `Semua pencacah sudah submit/draft dalam ${days} hari terakhir`
+              : 'Tidak ada pencacah di kategori ini'}
           </div>
           <div style={{ fontSize:11,color:'var(--text4)',marginTop:4 }}>
             Berdasarkan snapshot {snap}
@@ -916,18 +1033,22 @@ function InaktifSection({ threshold = 2 }) {
           <table style={{ width:'100%',borderCollapse:'collapse',fontSize:11 }}>
             <thead>
               <tr style={{ background:'#f43f5e',borderBottom:'1px solid var(--border)' }}>
-                {['#','Nama Pencacah','Kecamatan','Pengawas (PML)',
-                  'Total','Submit','Approved','Progress','Terakhir Aktif','Idle'].map(h => (
-                  <th key={h} style={{ padding:'8px 10px',fontSize:8,fontWeight:700,
-                    color:'#fff',textAlign:'left',textTransform:'uppercase',
-                    letterSpacing:'0.07em',whiteSpace:'nowrap' }}>
-                    {h}
-                  </th>
-                ))}
+                <HI label="#"/>
+                <HI label="Nama"            col="nama"/>
+                <HI label="Kecamatan"       col="kecamatan"/>
+                <HI label="Pengawas (PML)"  col="pengawas"/>
+                <HI label="Total"           col="total"              right/>
+                <HI label="Submit"          col="submit"             right/>
+                <HI label="Draft"                                    right/>
+                <HI label="Approved"        col="approved"           right/>
+                <HI label="Terakhir"        col="lastSubmitDraftDate"/>
+                <HI label="Status"          col="gapHari"/>
               </tr>
             </thead>
             <tbody>
-              {data.map((p, i) => (
+              {paginated.map((p, i) => {
+                const globalIdx = (page-1)*PAGE_SIZE + i;
+                return (
                 <tr key={p.email}
                   style={{ borderBottom:'1px solid var(--border)',
                     background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.018)' }}
@@ -936,7 +1057,7 @@ function InaktifSection({ threshold = 2 }) {
                     i%2===0?'transparent':'rgba(255,255,255,0.018)'}
                 >
                   <td style={{ padding:'8px 10px',color:'var(--text4)',fontSize:10,
-                    fontFamily:'var(--mono)' }}>{i+1}</td>
+                    fontFamily:'var(--mono)' }}>{globalIdx+1}</td>
                   <td style={{ padding:'8px 10px',minWidth:160 }}>
                     <div style={{ fontWeight:600,color:'var(--text1)' }}>{p.nama}</div>
                     <div style={{ fontSize:9,color:'var(--text4)',fontFamily:'var(--mono)' }}>
@@ -957,40 +1078,79 @@ function InaktifSection({ threshold = 2 }) {
                   <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
                     fontSize:10 }}>{p.total}</td>
                   <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
-                    fontSize:10,color:'#f59e0b',fontWeight:p.submit>0?600:400 }}>{p.submit}</td>
+                    fontSize:10,color:p.submit===0?'var(--text4)':'#f59e0b',
+                    fontWeight:p.submit>0?600:400 }}>{p.submit}</td>
+                  <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
+                    fontSize:10,color:p.draft>0?'var(--blue3)':'var(--text4)',
+                    fontWeight:p.draft>0?600:400 }}>{p.draft||0}</td>
                   <td style={{ padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',
                     fontSize:10,color:'#10b981',fontWeight:600 }}>{p.approved}</td>
-                  <td style={{ padding:'8px 10px',minWidth:90 }}>
-                    <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-                      <div style={{ flex:1,height:4,background:'var(--bg4)',borderRadius:99,
-                        overflow:'hidden' }}>
-                        <div style={{ height:'100%',borderRadius:99,
-                          width:`${Math.min(p.progressScore||0,100)}%`,
-                          background:PCT_COLOR(p.progressScore) }}/>
-                      </div>
-                      <span style={{ fontSize:9,fontFamily:'var(--mono)',fontWeight:600,
-                        color:PCT_COLOR(p.progressScore),width:36,textAlign:'right' }}>
-                        {(p.progressScore||0).toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
                   <td style={{ padding:'8px 10px',fontSize:10,color:'var(--text3)',
                     fontFamily:'var(--mono)',whiteSpace:'nowrap' }}>
-                    {p.lastAktifDate}
+                    {p.lastSubmitDraftDate||'—'}
                   </td>
-                  <td style={{ padding:'8px 10px',textAlign:'center' }}>
-                    <span style={{ padding:'2px 8px',borderRadius:99,fontSize:10,fontWeight:700,
-                      background:'rgba(244,63,94,0.12)',color:'#f43f5e',
-                      border:'1px solid rgba(244,63,94,0.25)' }}>
-                      {p.gapHari}h
-                    </span>
+                  <td style={{ padding:'8px 10px',textAlign:'center',whiteSpace:'nowrap' }}>
+                    {p.neverSubmit
+                      ? <span style={{ padding:'2px 8px',borderRadius:99,fontSize:9,fontWeight:700,
+                          background:'rgba(239,68,68,0.12)',color:'#ef4444',
+                          border:'1px solid rgba(239,68,68,0.3)' }}>
+                          ⛔ Belum pernah
+                        </span>
+                      : <span style={{ padding:'2px 8px',borderRadius:99,fontSize:9,fontWeight:700,
+                          background:'rgba(251,146,60,0.12)',color:'#fb923c',
+                          border:'1px solid rgba(251,146,60,0.25)' }}>
+                          ⚠ {p.gapHari} hari idle
+                        </span>
+                    }
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Paginator + info */}
+        {sortedInaktif.length > 0 && (
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',
+            marginTop:12,flexWrap:'wrap',gap:8 }}>
+            <div style={{ fontSize:10,color:'var(--text4)' }}>
+              {search
+                ? `${sortedInaktif.length} hasil untuk "${search}"`
+                : `${sortedInaktif.length} pencacah perlu perhatian`
+              }{sortedInaktif.length > PAGE_SIZE && ` · hal. ${page} / ${totalPages}`}
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display:'flex',alignItems:'center',gap:4 }}>
+                <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
+                  style={{ padding:'4px 10px',fontSize:11,borderRadius:6,cursor:'pointer',
+                    border:'1px solid var(--border)',background:'var(--bg3)',
+                    color:page===1?'var(--text4)':'var(--text2)' }}>‹</button>
+                {Array.from({length:totalPages},(_,i)=>i+1)
+                  .filter(n=>n===1||n===totalPages||Math.abs(n-page)<=1)
+                  .reduce((acc,n,i,arr)=>{
+                    if(i>0&&n-arr[i-1]>1) acc.push('…');
+                    acc.push(n); return acc;
+                  },[])
+                  .map((n,i)=> n==='…'
+                    ? <span key={`e${i}`} style={{ padding:'0 4px',color:'var(--text4)',fontSize:11 }}>…</span>
+                    : <button key={n} onClick={()=>setPage(n)}
+                        style={{ padding:'4px 10px',fontSize:11,borderRadius:6,cursor:'pointer',
+                          border:`1px solid ${page===n?'#f43f5e':'var(--border)'}`,
+                          background:page===n?'rgba(244,63,94,0.1)':'var(--bg3)',
+                          color:page===n?'#f43f5e':'var(--text2)',fontWeight:page===n?700:400 }}>
+                        {n}
+                      </button>
+                  )}
+                <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
+                  style={{ padding:'4px 10px',fontSize:11,borderRadius:6,cursor:'pointer',
+                    border:'1px solid var(--border)',background:'var(--bg3)',
+                    color:page===totalPages?'var(--text4)':'var(--text2)' }}>›</button>
+              </div>
+            )}
+          </div>
+        )}
     </div>
   );
 }
@@ -1129,18 +1289,70 @@ export function EvaluasiPage() {
     }).filter(p=>p.total>0);
   }
 
+  // ── Summary dinamis berdasarkan filter aktif ────────────────────────────
+  const isFiltered = selectedKec !== 'all' || !!filterDesa;
+  const filteredSummary = isFiltered ? {
+    total:    filtered.reduce((a,p)=>a+(p.total||0),    0),
+    approved: filtered.reduce((a,p)=>a+(p.approved||0), 0),
+    submit:   filtered.reduce((a,p)=>a+(p.submit||0),   0),
+    reject:   filtered.reduce((a,p)=>a+(p.reject||0),   0),
+    draft:    filtered.reduce((a,p)=>a+(p.draft||0),    0),
+    open:     filtered.reduce((a,p)=>a+(p.open||0),     0),
+    count:    filtered.length,
+  } : null;
+
+  // ── Per-desa breakdown saat desa dipilih ─────────────────────────────────
+  const desaSummary = filterDesa ? (() => {
+    // Kumpulkan semua data untuk desa yang dipilih dari semua pencacah
+    const rows = [];
+    for (const p of (isPengawas ? pengawas : pencacah)) {
+      const dd = (p.perDesa||[]).filter(d =>
+        d.desa.toLowerCase() === filterDesa.toLowerCase() &&
+        (selectedKec === 'all' || d.kecamatan.toLowerCase() === selectedKec.toLowerCase())
+      );
+      if (dd.length === 0) continue;
+      const tot  = dd.reduce((a,d)=>a+d.total,    0);
+      const appr = dd.reduce((a,d)=>a+d.approved, 0);
+      const sub  = dd.reduce((a,d)=>a+d.submit,   0);
+      const rej  = dd.reduce((a,d)=>a+d.reject,   0);
+      const dr   = dd.reduce((a,d)=>a+(d.draft||0),0);
+      const op   = dd.reduce((a,d)=>a+d.open,     0);
+      if (tot === 0) continue;
+      rows.push({ nama:p.nama, email:p.email, total:tot,
+                  approved:appr, submit:sub, reject:rej, draft:dr, open:op });
+    }
+    const totAll  = rows.reduce((a,r)=>a+r.total,    0);
+    const apprAll = rows.reduce((a,r)=>a+r.approved, 0);
+    const subAll  = rows.reduce((a,r)=>a+r.submit,   0);
+    const rejAll  = rows.reduce((a,r)=>a+r.reject,   0);
+    const drAll   = rows.reduce((a,r)=>a+r.draft,    0);
+    return { rows, total:totAll, approved:apprAll, submit:subAll,
+             reject:rejAll, draft:drAll, desa:filterDesa };
+  })() : null;
+
   // Sort
   filtered = [...filtered].sort((a,b) => {
     const d = sortDir==='desc'?-1:1;
-    if (sortBy==='approved')  return d*(b.approved-a.approved);
+    // Numerik
     if (sortBy==='total')     return d*(b.total-a.total);
-    if (sortBy==='pct')       return d*((b.progressScore != null ? b.progressScore : b.pctApproved || 0) - (a.progressScore != null ? a.progressScore : a.pctApproved || 0));
+    if (sortBy==='approved')  return d*(b.approved-a.approved);
+    if (sortBy==='submit')    return d*(b.submit-a.submit);
+    if (sortBy==='reject')    return d*((b.reject??0)-(a.reject??0));
+    if (sortBy==='draft')     return d*((b.draft??0)-(a.draft??0));
+    if (sortBy==='open')      return d*((b.open??0)-(a.open??0));
+    if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
+    if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
     if (sortBy==='kecepatan') return d*((b.kecepatan??0)-(a.kecepatan??0));
     if (sortBy==='perfScore') return d*((b.perfScore??0)-(a.perfScore??0));
+    // Grade (A > B > C > D)
     if (sortBy==='grade') {
       const ord={A:0,B:1,C:2,D:3};
       return d*((ord[a.grade]??4)-(ord[b.grade]??4));
     }
+    // String
+    if (sortBy==='nama')      return d*(a.nama||'').localeCompare(b.nama||'', 'id');
+    if (sortBy==='kecamatan') return d*(a.kecamatan||'').localeCompare(b.kecamatan||'', 'id');
+    if (sortBy==='pengawas')  return d*(a.pengawas?.nama||'').localeCompare(b.pengawas?.nama||'', 'id');
     return 0;
   });
 
@@ -1151,8 +1363,10 @@ export function EvaluasiPage() {
     if (sortBy===col) setSortDir(d=>d==='desc'?'asc':'desc');
     else { setSortBy(col); setSortDir('desc'); }
   };
-  const SI = ({ col }) => sortBy===col
-    ? <span style={{ fontSize:8,color:'var(--orange3)' }}>{sortDir==='desc'?'▼':'▲'}</span>
+  const SI = ({ col }) => col
+    ? sortBy===col
+      ? <span style={{ fontSize:8,color:'var(--orange3)',marginLeft:3 }}>{sortDir==='desc'?'▼':'▲'}</span>
+      : <span style={{ fontSize:8,color:'var(--text4)',marginLeft:3,opacity:0.45 }}>⇅</span>
     : null;
   const H = ({ label, col, right }) => (
     <th onClick={col?()=>toggleSort(col):undefined}
@@ -1167,22 +1381,61 @@ export function EvaluasiPage() {
     <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
 
       {/* Summary cards dengan animasi */}
+      {/* Label filter aktif */}
+      {isFiltered && (
+        <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:-4 }}>
+          <span style={{ fontSize:10,color:'var(--text4)' }}>Menampilkan data untuk:</span>
+          {selectedKec !== 'all' && (
+            <span style={{ fontSize:10,fontWeight:700,color:'var(--orange3)',
+              padding:'2px 8px',borderRadius:6,background:'var(--orange-dim2)' }}>
+              🗂 {selectedKec}
+            </span>
+          )}
+          {filterDesa && (
+            <span style={{ fontSize:10,fontWeight:700,color:'var(--blue3)',
+              padding:'2px 8px',borderRadius:6,background:'rgba(27,63,139,0.1)' }}>
+              📍 {filterDesa}
+            </span>
+          )}
+          <span style={{ fontSize:10,color:'var(--text4)' }}>
+            ({filteredSummary?.count||0} petugas · {(filteredSummary?.total||0).toLocaleString('id')} tugas)
+          </span>
+        </div>
+      )}
+
+      {/* Summary cards — ikut filter jika ada */}
       <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
-        <SumCard label="Total Assignment" value={summary.totalAssignment||0} color="var(--text1)" icon={BarChart2}
-          sub={`${summary.totalKecamatan||0} kecamatan · ${pencacah.length} pencacah`}/>
-        {(summary.totalInaktif2Hari > 0) && (
-          <SumCard label="Tidak Aktif 2+ Hari" value={summary.totalInaktif2Hari||0}
-            color="#f43f5e" icon={AlertCircle}
-            sub={`pencacah belum submit ${summary.totalInaktif2Hari||0} orang`}/>
-        )}
-        <SumCard label="Total Approved"   value={summary.approved||0} color="#10b981" icon={CheckCircle}
-          sub={`${summary.totalAssignment?Math.round((summary.approved||0)/summary.totalAssignment*100):0}% dari total`}/>
-        <SumCard label="Menunggu Approve" value={summary.submit||0}   color="#f59e0b" icon={Clock}
+        <SumCard label={isFiltered?'Total Tugas (Filter)':'Total Assignment'}
+          value={(filteredSummary?.total ?? summary.totalAssignment) || 0}
+          color="var(--text1)" icon={BarChart2}
+          sub={isFiltered
+            ? `${filteredSummary?.count||0} petugas di filter ini`
+            : `${summary.totalKecamatan||0} kecamatan · ${pencacah.length} pencacah`}/>
+
+        <SumCard label="Total Approved"
+          value={(filteredSummary?.approved ?? summary.approved) || 0}
+          color="#10b981" icon={CheckCircle}
+          sub={(() => {
+            const tot  = filteredSummary?.total  ?? summary.totalAssignment;
+            const appr = filteredSummary?.approved ?? summary.approved;
+            return `${tot ? Math.round(appr/tot*100) : 0}% dari total`;
+          })()}/>
+        <SumCard label="Menunggu Approve"
+          value={(filteredSummary?.submit ?? summary.submit) || 0}
+          color="#f59e0b" icon={Clock}
           sub="sudah submit, belum diapprove"/>
-        <SumCard label="Total Draft"      value={summary.draft||0}    color="var(--blue3)" icon={FileText}
+        <SumCard label="Total Draft"
+          value={(filteredSummary?.draft ?? summary.draft) || 0}
+          color="var(--blue3)" icon={FileText}
           sub="sedang diisi, belum disubmit"/>
-        <SumCard label="Total Rejected"   value={summary.reject||0}   color="#f43f5e" icon={XCircle}
-          sub={`${summary.totalAssignment?Math.round((summary.reject||0)/summary.totalAssignment*100):0}% dari total`}/>
+        <SumCard label="Total Rejected"
+          value={(filteredSummary?.reject ?? summary.reject) || 0}
+          color="#f43f5e" icon={XCircle}
+          sub={(() => {
+            const tot = filteredSummary?.total ?? summary.totalAssignment;
+            const rej = filteredSummary?.reject ?? summary.reject;
+            return `${tot ? Math.round(rej/tot*100) : 0}% dari total`;
+          })()}/>
       </div>
 
       {/* Tabel */}
@@ -1293,7 +1546,7 @@ export function EvaluasiPage() {
         {/* Tidak Aktif Section */}
         {activeTab === 'inaktif' && (
           <div style={{ marginTop:8 }}>
-            <InaktifSection threshold={2}/>
+            <InaktifSection threshold={2} kecamatan={selectedKec}/>
           </div>
         )}
 
@@ -1315,15 +1568,15 @@ export function EvaluasiPage() {
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
                 <H label="#"/>
-                <H label={isPengawas?'Pengawas':'Pencacah'}/>
-                <H label="Kecamatan"/>
-                {!isPengawas && <H label="Pengawas"/>}
+                <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
+                <H label="Kecamatan" col="kecamatan"/>
+                {!isPengawas && <H label="Pengawas" col="pengawas"/>}
                 <H label="Total"   col="total"     right/>
-                <H label="Submit"  right/>
+                <H label="Submit"  col="submit"   right/>
                 <H label="Approved" col="approved" right/>
-                <H label={isPengawas ? 'Pending' : 'Rejected'} right/>
+                <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>
                 <H label="Draft"    col="draft"     right/>
-                <H label="Open"     right/>
+                <H label="Open"     col="open"    right/>
                 <H label="Progress" col="pct"/>
 
                 <th style={{ width:24 }}/>
@@ -1343,6 +1596,98 @@ export function EvaluasiPage() {
         </div>
 
         <Paginator page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onChange={p=>setPage(p)}/>
+
+        {/* ── Ringkasan per Desa (muncul jika filterDesa dipilih) ──────── */}
+        {desaSummary && (
+          <div style={{ marginTop:16,padding:'14px 16px',background:'var(--bg3)',
+            border:'1px solid var(--border)',borderRadius:10 }}>
+            <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:12 }}>
+              <MapPin size={12} color="var(--blue3)"/>
+              <span style={{ fontSize:11,fontWeight:700,color:'var(--text1)' }}>
+                Ringkasan Desa: {desaSummary.desa}
+              </span>
+              <span style={{ fontSize:10,color:'var(--text4)' }}>
+                · {desaSummary.rows.length} petugas · {(desaSummary.total).toLocaleString('id')} total tugas
+              </span>
+            </div>
+
+            {/* Mini stat row */}
+            <div style={{ display:'flex',gap:10,marginBottom:14,flexWrap:'wrap' }}>
+              {[
+                { label:'Total',    val:desaSummary.total,    color:'var(--text2)' },
+                { label:'Approved', val:desaSummary.approved, color:'#10b981' },
+                { label:'Submit',   val:desaSummary.submit,   color:'#f59e0b' },
+                { label:'Rejected', val:desaSummary.reject,   color:'#f43f5e' },
+                { label:'Draft',    val:desaSummary.draft,    color:'var(--blue3)' },
+              ].map(s => (
+                <div key={s.label} style={{ padding:'8px 14px',background:'var(--bg2)',
+                  border:'1px solid var(--border)',borderRadius:8,minWidth:80,textAlign:'center' }}>
+                  <div style={{ fontSize:16,fontWeight:800,color:s.color,fontFamily:'var(--mono)' }}>
+                    {s.val.toLocaleString('id')}
+                  </div>
+                  <div style={{ fontSize:8,color:'var(--text4)',marginTop:2,textTransform:'uppercase',
+                    letterSpacing:'0.07em',fontWeight:700 }}>{s.label}</div>
+                </div>
+              ))}
+              {desaSummary.total > 0 && (
+                <div style={{ padding:'8px 14px',background:'var(--bg2)',
+                  border:'1px solid var(--border)',borderRadius:8,minWidth:80,textAlign:'center' }}>
+                  <div style={{ fontSize:16,fontWeight:800,
+                    color:desaSummary.approved/desaSummary.total>0.5?'#10b981':'#f59e0b',
+                    fontFamily:'var(--mono)' }}>
+                    {Math.round(desaSummary.approved/desaSummary.total*100)}%
+                  </div>
+                  <div style={{ fontSize:8,color:'var(--text4)',marginTop:2,textTransform:'uppercase',
+                    letterSpacing:'0.07em',fontWeight:700 }}>Progress</div>
+                </div>
+              )}
+            </div>
+
+            {/* Breakdown per petugas di desa ini */}
+            <div style={{ fontSize:9,color:'var(--text4)',fontWeight:700,
+              textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8 }}>
+              Breakdown per Petugas
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%',borderCollapse:'collapse',fontSize:11 }}>
+                <thead>
+                  <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                    {['Nama Petugas','Total','Approved','Submit','Rejected','Draft','Open'].map(h=>(
+                      <th key={h} style={{ padding:'6px 8px',textAlign:h==='Nama Petugas'?'left':'right',
+                        fontSize:8,fontWeight:700,color:'var(--text4)',textTransform:'uppercase',
+                        letterSpacing:'0.06em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {desaSummary.rows.map((r,i)=>(
+                    <tr key={r.email} style={{ borderBottom:'1px solid var(--border)',
+                      background:i%2===0?'transparent':'rgba(255,255,255,0.018)' }}>
+                      <td style={{ padding:'6px 8px' }}>
+                        <div style={{ fontWeight:600,color:'var(--text1)',fontSize:10 }}>{r.nama}</div>
+                        <div style={{ fontSize:8,color:'var(--text4)',fontFamily:'var(--mono)' }}>{r.email}</div>
+                      </td>
+                      {[
+                        [r.total,   'var(--text2)'],
+                        [r.approved,'#10b981'],
+                        [r.submit,  '#f59e0b'],
+                        [r.reject,  '#f43f5e'],
+                        [r.draft,   'var(--blue3)'],
+                        [r.open,    'var(--text4)'],
+                      ].map(([val,col],j)=>(
+                        <td key={j} style={{ padding:'6px 8px',textAlign:'right',
+                          fontFamily:'var(--mono)',fontSize:10,
+                          color:val>0?col:'var(--text4)',fontWeight:val>0&&j>0?600:400 }}>
+                          {val}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginTop:10,paddingTop:8,borderTop:'1px solid var(--border)',fontSize:9,color:'var(--text4)' }}>
           Data per {new Date(summary?.snapshotAt||Date.now()).toLocaleString('id-ID')} ·

@@ -707,10 +707,14 @@ app.get('/api/evaluasi/inaktif', verifyToken, async (req, res) => {
   try {
     const threshold    = Math.max(1, parseInt(req.query.days || '2'));
     const minProgress  = parseFloat(req.query.minProgress || '0');
+    const filterKec    = (req.query.kec || '').trim().toLowerCase();
 
-    // Ambil semua pencacah dari MongoDB
+    // Ambil pencacah dari MongoDB — filter kecamatan jika ada
+    const mongoQuery = filterKec
+      ? { kecamatan: { $regex: new RegExp('^' + filterKec + '$', 'i') } }
+      : {};
     const pencacah = await db.collection('assignment_pencacah')
-      .find({}, { projection: {
+      .find(mongoQuery, { projection: {
         email:1, nama:1, kecamatan:1, pengawas:1,
         progressScore:1, submit:1, approved:1, reject:1, draft:1, total:1,
         dailySeries:1, snapshotAt:1, lastActive:1,
@@ -775,9 +779,10 @@ app.get('/api/evaluasi/inaktif', verifyToken, async (req, res) => {
 
     res.json({
       threshold,
-      total:   results.length,
-      data:    results,
-      snap:    results[0]?.snapshotAt || '',
+      kecamatan: filterKec || 'all',
+      total:     results.length,
+      data:      results,
+      snap:      results[0]?.snapshotAt || '',
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
