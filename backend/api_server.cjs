@@ -35,19 +35,28 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Hari kerja otomatis (Senin–Sabtu, skip Minggu) sejak 15 Juni 2026 ──
-// Dipanggil fresh setiap REQUEST — bukan saat server start
-// sehingga nilai selalu sesuai hari ini tanpa perlu restart server
-const PENDATAAN_START = new Date('2026-06-15T00:00:00+07:00');
+// ── Hari kerja WIB (UTC+7), Senin–Sabtu, sejak 15 Juni 2026 ─────────────
+// PENTING: semua perbandingan tanggal pakai 'YYYY-MM-DD' string di WIB
+// agar tidak terpengaruh timezone server Railway yang UTC
+const PENDATAAN_START_STR = '2026-06-15'; // WIB
+
+function todayWIB() {
+  // Ambil tanggal hari ini dalam WIB (UTC+7) sebagai string YYYY-MM-DD
+  const now = new Date();
+  const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  return wib.toISOString().slice(0, 10);
+}
 
 function countWorkingDays() {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  let count = 0;
-  const d = new Date(PENDATAAN_START);
-  while (d <= end) {
-    if (d.getDay() !== 0) count++; // 0 = Minggu
-    d.setDate(d.getDate() + 1);
+  // Iterasi tanggal sebagai string YYYY-MM-DD — tidak ada konversi timezone
+  const endStr   = todayWIB();
+  let count      = 0;
+  let cur        = new Date(PENDATAAN_START_STR + 'T12:00:00Z'); // noon UTC agar stabil
+  const endDate  = new Date(endStr             + 'T12:00:00Z');
+  while (cur <= endDate) {
+    // getUTCDay() aman karena pakai noon UTC — tidak akan bergeser hari
+    if (cur.getUTCDay() !== 0) count++; // 0 = Minggu
+    cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return Math.max(1, count);
 }
@@ -408,16 +417,14 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       db.collection('assignment_snapshots').findOne({}, { sort: { snapshotAt: -1 }, projection: { summary: 1, _id: 0 } }).catch(() => null),
     ]);
 
-    // Ambil summary dari MongoDB sebagai base data
     const assignSummary = statDoc?.assignmentSummary;
     const rawSummary = (assignSummary && assignSummary.totalAssignment)
       ? assignSummary
       : (latestSnap?.summary || {});
 
-    // ── Rekalkulasi workingDays & avgPerDay FRESH setiap request ─────────
-    // countWorkingDays() dipanggil di sini (bukan saat start server)
-    // sehingga nilai bertambah otomatis setiap hari tanpa restart
+    // ── Rekalkulasi FRESH setiap request, pakai WIB bukan UTC server ─────
     const WORKING_DAYS = countWorkingDays();
+    const todayStr     = todayWIB();
     const appr  = rawSummary.approved || 0;
     const sub   = rawSummary.submit   || 0;
     const rej   = rawSummary.reject   || 0;
@@ -428,12 +435,11 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
     ).length;
 
-    // Pencacah: avgPerDay = submit + draft
-    // Pengawas: avgPerDay = approved + rejected
     const summary = {
       ...rawSummary,
       workingDays:    WORKING_DAYS,
-      pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
+      todayWIB:       todayStr,
+      pendataanStart: PENDATAAN_START_STR,
       avgPerDay: {
         approved:       sr(appr  / WORKING_DAYS),
         submitted:      sr(sub   / WORKING_DAYS),
@@ -442,7 +448,6 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         total:          sr((appr + sub + rej + draft) / WORKING_DAYS),
         workingDays:    WORKING_DAYS,
         activeDays,
-        pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
       },
       avgPerDayPencacah: {
         total:       sr((sub + draft) / WORKING_DAYS),
@@ -458,7 +463,7 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       },
     };
 
-    // Rekalkulasi avgPerDay & progressScore per individu
+    // Rekalkulasi per individu
     const pencacahFixed = (pencacah || []).map(p => {
       const pSub   = p.submit   || 0;
       const pDraft = p.draft    || 0;
