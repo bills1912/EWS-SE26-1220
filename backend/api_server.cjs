@@ -35,7 +35,9 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Hari kerja otomatis (Senin–Sabtu, skip Minggu) sejak 15 Juni 2026 ────
+// ── Hari kerja otomatis (Senin–Sabtu, skip Minggu) sejak 15 Juni 2026 ──
+// Dipanggil fresh setiap REQUEST — bukan saat server start
+// sehingga nilai selalu sesuai hari ini tanpa perlu restart server
 const PENDATAAN_START = new Date('2026-06-15T00:00:00+07:00');
 
 function countWorkingDays() {
@@ -406,38 +408,32 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       db.collection('assignment_snapshots').findOne({}, { sort: { snapshotAt: -1 }, projection: { summary: 1, _id: 0 } }).catch(() => null),
     ]);
 
-    // Ambil summary dari MongoDB
+    // Ambil summary dari MongoDB sebagai base data
     const assignSummary = statDoc?.assignmentSummary;
     const rawSummary = (assignSummary && assignSummary.totalAssignment)
       ? assignSummary
       : (latestSnap?.summary || {});
 
-    // ── Rekalkulasi avgPerDay dengan hari kerja hari ini ────────────────
-    // Selalu fresh setiap request — tidak bergantung nilai tersimpan di MongoDB
+    // ── Rekalkulasi workingDays & avgPerDay FRESH setiap request ─────────
+    // countWorkingDays() dipanggil di sini (bukan saat start server)
+    // sehingga nilai bertambah otomatis setiap hari tanpa restart
     const WORKING_DAYS = countWorkingDays();
     const appr  = rawSummary.approved || 0;
     const sub   = rawSummary.submit   || 0;
     const rej   = rawSummary.reject   || 0;
     const draft = rawSummary.draft    || 0;
 
-    // Hitung activeDays dari dailySeries jika tersedia
     const dailySeries = rawSummary.dailySeries || [];
     const activeDays  = dailySeries.filter(r =>
       (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
     ).length;
 
-    // Pencacah: avgPerDay = submit + draft  |  progress = submit + draft + approved + rejected
-    // Pengawas: avgPerDay = approved + rejected  |  progress = approved + rejected
-    const pclAvgTotal  = sub + draft;                    // yg sedang dikerjakan pencacah
-    const pwsAvgTotal  = appr + rej;                     // yg sudah diproses pengawas
-    const pclProgress  = sub + draft + appr + rej;       // total sudah disentuh pencacah
-    const pwsProgress  = appr + rej;                     // total sudah diproses pengawas
-
+    // Pencacah: avgPerDay = submit + draft
+    // Pengawas: avgPerDay = approved + rejected
     const summary = {
       ...rawSummary,
       workingDays:    WORKING_DAYS,
       pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
-      // avgPerDay global (untuk chart aktivitas harian)
       avgPerDay: {
         approved:       sr(appr  / WORKING_DAYS),
         submitted:      sr(sub   / WORKING_DAYS),
@@ -448,49 +444,37 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         activeDays,
         pendataanStart: PENDATAAN_START.toISOString().slice(0, 10),
       },
-      // avgPerDay per peran — dipakai EvaluasiPage
       avgPerDayPencacah: {
-        total:       sr(pclAvgTotal / WORKING_DAYS),
-        submitted:   sr(sub         / WORKING_DAYS),
-        draft:       sr(draft       / WORKING_DAYS),
+        total:       sr((sub + draft) / WORKING_DAYS),
+        submitted:   sr(sub           / WORKING_DAYS),
+        draft:       sr(draft         / WORKING_DAYS),
         workingDays: WORKING_DAYS,
-        activeDays,
       },
       avgPerDayPengawas: {
-        total:       sr(pwsAvgTotal / WORKING_DAYS),
-        approved:    sr(appr        / WORKING_DAYS),
-        rejected:    sr(rej         / WORKING_DAYS),
+        total:       sr((appr + rej) / WORKING_DAYS),
+        approved:    sr(appr         / WORKING_DAYS),
+        rejected:    sr(rej          / WORKING_DAYS),
         workingDays: WORKING_DAYS,
-        activeDays,
       },
-      // progress global per peran
-      progressPencacah: rawSummary.totalAssignment
-        ? sr(pclProgress / rawSummary.totalAssignment * 100, 1) : 0,
-      progressPengawas: rawSummary.totalAssignment
-        ? sr(pwsProgress / rawSummary.totalAssignment * 100, 1) : 0,
     };
 
-    // Rekalkulasi avgPerDay & progressScore per individu sesuai peran
+    // Rekalkulasi avgPerDay & progressScore per individu
     const pencacahFixed = (pencacah || []).map(p => {
       const pSub   = p.submit   || 0;
       const pDraft = p.draft    || 0;
       const pAppr  = p.approved || 0;
       const pRej   = p.reject   || 0;
       const pTotal = p.total    || 0;
-      // avgPerDay pencacah = submit + draft
-      const pclAvg = sr((pSub + pDraft) / WORKING_DAYS);
-      // progress pencacah = (submit+draft+approved+rejected) / total
-      const pclProg = pTotal > 0 ? sr((pSub + pDraft + pAppr + pRej) / pTotal * 100, 1) : 0;
       return {
         ...p,
-        progressScore: pclProg,
+        progressScore: pTotal > 0 ? sr((pSub + pDraft + pAppr + pRej) / pTotal * 100, 1) : 0,
         avgPerDay: {
           ...(p.avgPerDay || {}),
-          total:       pclAvg,
-          submitted:   sr(pSub   / WORKING_DAYS),
-          draft:       sr(pDraft / WORKING_DAYS),
-          approved:    sr(pAppr  / WORKING_DAYS),
-          rejected:    sr(pRej   / WORKING_DAYS),
+          total:       sr((pSub + pDraft) / WORKING_DAYS),
+          submitted:   sr(pSub            / WORKING_DAYS),
+          draft:       sr(pDraft          / WORKING_DAYS),
+          approved:    sr(pAppr           / WORKING_DAYS),
+          rejected:    sr(pRej            / WORKING_DAYS),
           workingDays: WORKING_DAYS,
         },
       };
@@ -500,18 +484,14 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       const pAppr  = p.approved || 0;
       const pRej   = p.reject   || 0;
       const pTotal = p.total    || 0;
-      // avgPerDay pengawas = approved + rejected
-      const pwsAvg = sr((pAppr + pRej) / WORKING_DAYS);
-      // progress pengawas = (approved+rejected) / total
-      const pwsProg = pTotal > 0 ? sr((pAppr + pRej) / pTotal * 100, 1) : 0;
       return {
         ...p,
-        progressScore: pwsProg,
+        progressScore: pTotal > 0 ? sr((pAppr + pRej) / pTotal * 100, 1) : 0,
         avgPerDay: {
           ...(p.avgPerDay || {}),
-          total:       pwsAvg,
-          approved:    sr(pAppr / WORKING_DAYS),
-          rejected:    sr(pRej  / WORKING_DAYS),
+          total:       sr((pAppr + pRej) / WORKING_DAYS),
+          approved:    sr(pAppr          / WORKING_DAYS),
+          rejected:    sr(pRej           / WORKING_DAYS),
           workingDays: WORKING_DAYS,
         },
       };
