@@ -140,7 +140,7 @@ function AvgIndicator({ label, value, color, maxVal }) {
           transition: 'width 0.8s cubic-bezier(.22,.68,0,1.2)',
         }}/>
       </div>
-      <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 2 }}>per hari aktif</div>
+      <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 2 }}>per hari kerja</div>
     </div>
   );
 }
@@ -239,8 +239,9 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
 
   const activeDays = avgPerDay.activeDays || 0;
 
-  // Total rata-rata per hari aktif = jumlah semua status
-  const avgTotal = Math.round((
+  // avgTotal — pakai field .total dari backend (sudah dihitung dinamis per workingDays)
+  // Pencacah: total = (submit+draft)/workingDays | Pengawas: total = (approved+rejected)/workingDays
+  const avgTotal = avgPerDay.total ?? Math.round((
     (avgPerDay.approved  || 0) +
     (avgPerDay.submitted || 0) +
     (avgPerDay.rejected  || 0) +
@@ -261,6 +262,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
           <span style={{ fontSize: 9, color: 'var(--text4)' }}>
             {series[0]?.date} → {series[series.length-1]?.date}
             {activeDays > 0 && ` · ${activeDays} hari aktif`}
+            {avgPerDay.workingDays && ` · ${avgPerDay.workingDays} hari kerja`}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -286,7 +288,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
         <div style={{ fontSize: 9, color: 'var(--text4)', fontWeight: 700,
                        textTransform: 'uppercase', letterSpacing: '0.07em',
                        marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Minus size={10} strokeWidth={2.5}/> Rata-rata per hari aktif
+          <Minus size={10} strokeWidth={2.5}/> Rata-rata per hari kerja
           <span style={{ fontSize: 8, color: 'var(--text4)', fontWeight: 400,
                           background: 'var(--bg4)', padding: '1px 6px', borderRadius: 99 }}>
             Klik label untuk toggle garis referensi
@@ -301,7 +303,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9, color: 'var(--text4)', fontWeight: 700,
                            textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>
-              Total rata-rata per hari aktif
+              Total rata-rata per hari kerja
             </div>
             {/* Bar total */}
             <div style={{ height: 6, background: 'var(--bg4)', borderRadius: 99, overflow: 'hidden' }}>
@@ -313,7 +315,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
               }}/>
             </div>
             <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 3 }}>
-              approved + submitted + rejected + draft per hari aktif
+              approved + submitted + rejected + draft per hari kerja
             </div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -322,7 +324,7 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
               <ANum value={avgTotal}/>
             </div>
             <div style={{ fontSize: 8, color: 'var(--text4)', marginTop: 2 }}>
-              tugas/hari · {activeDays} hari aktif
+              tugas/hari · {avgPerDay.workingDays ?? activeDays} hari kerja
             </div>
           </div>
         </div>
