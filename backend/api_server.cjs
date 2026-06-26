@@ -913,3 +913,213 @@ app.listen(PORT, '0.0.0.0', () => {
 
 process.on('SIGINT',  async () => { if (client) await client.close(); process.exit(0); });
 process.on('SIGTERM', async () => { if (client) await client.close(); process.exit(0); });
+
+// ══════════════════════════════════════════════════════════════════════════
+// GET /api/anomali — generate anomali ON-THE-FLY dari isian_se2026
+// type: durasi | pendapatan | jumlahAk | kbli | all
+// ══════════════════════════════════════════════════════════════════════════
+
+function calcFence(sorted, mult) {
+  mult = mult || 1.5;
+  var n = sorted.length;
+  if (n < 4) return { lo: 0, hi: Infinity, q1: 0, q3: 0, med: 0, mean: 0, iqr: 0 };
+  var q1  = sorted[Math.floor(n / 4)];
+  var med = sorted[Math.floor(n / 2)];
+  var q3  = sorted[Math.floor(3 * n / 4)];
+  var iqr = q3 - q1;
+  var mean = sorted.reduce(function(a,b){ return a+b; }, 0) / n;
+  return { q1: q1, med: med, q3: q3, iqr: iqr, mean: mean,
+           lo: Math.max(0, q1 - mult * iqr), hi: q3 + mult * iqr };
+}
+
+function fmtCurrency(v) {
+  if (v >= 1e9) return 'Rp ' + (v/1e9).toFixed(1) + ' M';
+  if (v >= 1e6) return 'Rp ' + (v/1e6).toFixed(0) + ' jt';
+  return 'Rp ' + (v/1e3).toFixed(0) + ' rb';
+}
+
+app.get('/api/anomali', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    var type     = req.query.type  || 'all';
+    var fKec     = (req.query.kec  || '').trim();
+    var pg       = Math.max(1, parseInt(req.query.page  || '1'));
+    var lim      = Math.min(100, Math.max(1, parseInt(req.query.limit || '20')));
+    var STATUS_DONE = ['SUBMITTED','APPROVED','REJECTED'];
+
+    var baseMatch = { status: { $in: STATUS_DONE } };
+    if (fKec) baseMatch.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+    var docs = await db.collection('isian_se2026').find(baseMatch, {
+      projection: {
+        _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1,
+        petugas:1, status:1, mulai:1, selesai:1, durMenit:1,
+        jumlahAk:1, jumlahUsaha:1, namaUsaha:1, kbli:1,
+        nilaiPendapatanRaw:1, usaha:1,
+      }
+    }).toArray();
+
+    var results = [];
+
+    // 1. DURASI — anomali = TERLALU SINGKAT (outlier bawah)
+    if (type === 'all' || type === 'durasi') {
+      var durs = docs.map(function(r){ return r.durMenit; })
+                     .filter(function(d){ return d != null && d > 0; })
+                     .sort(function(a,b){ return a-b; });
+      var fDur = calcFence(durs);
+      var CRIT_DUR = 2;
+      docs.forEach(function(r) {
+        var dur = r.durMenit;
+        if (!dur || dur <= 0) return;
+        var sev = null;
+        if (dur <= CRIT_DUR) sev = 'crit';
+        else if (fDur.lo > CRIT_DUR && dur < fDur.lo) sev = 'warn';
+        if (!sev) return;
+        results.push({
+          id: r.id, no: r.no, namaKepala: r.namaKepala,
+          kecamatan: r.kecamatan, desa: r.desa,
+          petugas: r.petugas, status: r.status,
+          type: 'durasi', sev: sev, nilai: dur,
+          label: 'Durasi ' + dur + ' mnt (terlalu singkat)',
+          fenceLo: Math.round(fDur.lo), q1: fDur.q1, med: fDur.med, q3: fDur.q3,
+        });
+      });
+    }
+
+    // 2. PENDAPATAN — anomali = TERLALU TINGGI (outlier atas)
+    if (type === 'all' || type === 'pendapatan') {
+      var pends = docs.map(function(r){ return r.nilaiPendapatanRaw || 0; })
+                      .filter(function(v){ return v > 0; })
+                      .sort(function(a,b){ return a-b; });
+      var fPend = calcFence(pends);
+      var CRIT_PEND = 500000000;
+      docs.forEach(function(r) {
+        var val = r.nilaiPendapatanRaw || 0;
+        if (!val) return;
+        var sev = null;
+        if (val > CRIT_PEND) sev = 'crit';
+        else if (val > fPend.hi) sev = 'warn';
+        if (!sev) return;
+        results.push({
+          id: r.id, no: r.no, namaKepala: r.namaKepala,
+          kecamatan: r.kecamatan, desa: r.desa,
+          petugas: r.petugas, status: r.status,
+          type: 'pendapatan', sev: sev, nilai: val,
+          label: 'Pendapatan ' + fmtCurrency(val) + ' (outlier atas)',
+          namaUsaha: r.namaUsaha || '—',
+        });
+      });
+    }
+
+    // 3. JUMLAH AK — anomali = terlalu banyak
+    if (type === 'all' || type === 'jumlahAk') {
+      var aks = docs.map(function(r){ return parseInt(r.jumlahAk)||0; })
+                    .filter(function(v){ return v > 0; })
+                    .sort(function(a,b){ return a-b; });
+      var fAk = calcFence(aks);
+      var CRIT_AK = 15;
+      docs.forEach(function(r) {
+        var val = parseInt(r.jumlahAk) || 0;
+        if (!val) return;
+        var sev = null;
+        if (val >= CRIT_AK) sev = 'crit';
+        else if (val > fAk.hi) sev = 'warn';
+        if (!sev) return;
+        results.push({
+          id: r.id, no: r.no, namaKepala: r.namaKepala,
+          kecamatan: r.kecamatan, desa: r.desa,
+          petugas: r.petugas, status: r.status,
+          type: 'jumlahAk', sev: sev, nilai: val,
+          label: val + ' anggota keluarga',
+        });
+      });
+    }
+
+    // 4. KBLI KOSONG
+    if (type === 'all' || type === 'kbli') {
+      docs.forEach(function(r) {
+        var noKbli = (r.usaha || []).filter(function(u){
+          return u.namaUsaha && u.namaUsaha !== '—' && !u.kbli;
+        });
+        if (!noKbli.length) return;
+        results.push({
+          id: r.id, no: r.no, namaKepala: r.namaKepala,
+          kecamatan: r.kecamatan, desa: r.desa,
+          petugas: r.petugas, status: r.status,
+          type: 'kbli', sev: 'crit', nilai: noKbli.length,
+          label: noKbli.length + ' usaha tanpa KBLI',
+          usaha: noKbli.map(function(u){ return u.namaUsaha; }).join(', '),
+        });
+      });
+    }
+
+    results.sort(function(a,b) {
+      if (a.sev !== b.sev) return a.sev === 'crit' ? -1 : 1;
+      return b.nilai - a.nilai;
+    });
+
+    var total = results.length;
+    var byType = {};
+    results.forEach(function(r){ byType[r.type] = (byType[r.type]||0)+1; });
+
+    res.json({
+      total: total,
+      nCrit: results.filter(function(r){ return r.sev==='crit'; }).length,
+      nWarn: results.filter(function(r){ return r.sev==='warn'; }).length,
+      byType: byType,
+      totalPages: Math.ceil(total/lim),
+      page: pg,
+      data: results.slice((pg-1)*lim, pg*lim),
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/anomali/boxplot ──────────────────────────────────────────────
+// Distribusi durasi untuk boxplot — outlier = terlalu CEPAT (bawah)
+app.get('/api/anomali/boxplot', verifyToken, async function(req, res) {
+  try {
+    var fKec = (req.query.kec || '').trim();
+    var STATUS_DONE = ['SUBMITTED','APPROVED','REJECTED'];
+    var match = { status: { $in: STATUS_DONE }, durMenit: { $gt: 0 } };
+    if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+    var docs = await db.collection('isian_se2026')
+      .find(match, { projection: {
+        _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1,
+        petugas:1, status:1, durMenit:1
+      }}).toArray();
+
+    var sorted = docs.map(function(d){ return d.durMenit; })
+                     .sort(function(a,b){ return a-b; });
+    var n = sorted.length;
+    if (!n) return res.json({ stats: null, points: [] });
+
+    var fence  = calcFence(sorted);
+    var CRIT_MAX = 2;
+
+    var points = docs.map(function(r) {
+      var anomaly = null;
+      if (r.durMenit <= CRIT_MAX) anomaly = 'crit';
+      else if (fence.lo > CRIT_MAX && r.durMenit < fence.lo) anomaly = 'warn';
+      return {
+        id: r.id, no: r.no, namaKepala: r.namaKepala,
+        kecamatan: r.kecamatan, desa: r.desa,
+        petugas: r.petugas, status: r.status,
+        nilai: r.durMenit, anomaly: anomaly,
+      };
+    });
+
+    res.json({
+      stats: {
+        n: n, min: sorted[0], q1: fence.q1,
+        median: fence.med, q3: fence.q3, max: sorted[n-1],
+        mean: Math.round(fence.mean), iqr: fence.iqr,
+        fenceLo: Math.round(fence.lo),
+        fenceHi: Math.round(fence.hi),
+        critMax: CRIT_MAX,
+        nCrit: points.filter(function(p){ return p.anomaly==='crit'; }).length,
+        nWarn: points.filter(function(p){ return p.anomaly==='warn'; }).length,
+      },
+      points: points,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
