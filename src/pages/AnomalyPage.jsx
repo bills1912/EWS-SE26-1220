@@ -28,12 +28,27 @@ function Skeleton({ h = 80 }) {
 
 // ── Navigasi ke Responden dari outlier modal ─────────────────────────────
 function navigateToResponden(id, onClose) {
-  // Simpan target responden di sessionStorage
+  // Simpan target di sessionStorage — RespondenPage akan baca ini saat mount
   sessionStorage.setItem('ews_goto_responden', id);
-  // Dispatch custom event — App.jsx bisa listen dan pindah tab
+  // Dispatch event untuk App.jsx
   window.dispatchEvent(new CustomEvent('ews:goto', {
     detail: { tab: 'Responden', respondentId: id }
   }));
+  // Fallback: klik tab Responden secara programatik jika event tidak tertangkap
+  setTimeout(() => {
+    const tabs = document.querySelectorAll('[data-tab]');
+    tabs.forEach(t => {
+      if (t.getAttribute('data-tab') === 'Responden' ||
+          t.textContent?.trim() === 'Responden') {
+        t.click();
+      }
+    });
+    // Fallback kedua: cari tombol nav dengan teks Responden
+    const allBtns = document.querySelectorAll('button, a, [role="tab"]');
+    allBtns.forEach(b => {
+      if (b.textContent?.trim() === 'Responden') b.click();
+    });
+  }, 50);
   onClose();
 }
 

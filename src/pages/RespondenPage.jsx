@@ -314,6 +314,19 @@ export default function RespondenPage() {
     setCurrentPage(1);
   }, [globalKec]);
 
+  // Auto-search jika navigasi dari halaman lain (misal: outlier modal di AnomalyPage)
+  useEffect(() => {
+    const gotoId = sessionStorage.getItem('ews_goto_responden');
+    if (gotoId) {
+      sessionStorage.removeItem('ews_goto_responden');
+      setSearch(gotoId);
+      setCurrentPage(1);
+      setFilterStatus('all');
+      setFilterAnomaly('all');
+      setFilterKec('all');
+    }
+  }, []);
+
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
 

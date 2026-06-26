@@ -90,6 +90,22 @@ export default function App() {
     return () => window.removeEventListener('ews:unauthorized', handle);
   }, [logout]);
 
+  // Navigasi dari halaman lain (misal: klik "Lihat Responden" di outlier modal)
+  useEffect(() => {
+    const handle = (e) => {
+      const { tab: targetTab, respondentId } = e.detail || {};
+      if (targetTab && allowedTabs.includes(targetTab)) {
+        if (respondentId) {
+          sessionStorage.setItem('ews_goto_responden', respondentId);
+        }
+        setTab(targetTab);
+        window.location.hash = targetTab;
+      }
+    };
+    window.addEventListener('ews:goto', handle);
+    return () => window.removeEventListener('ews:goto', handle);
+  }, [allowedTabs]);
+
   if (loading) return <LoadingScreen/>;
   if (!isAuthenticated) return <LoginPage/>;
 
