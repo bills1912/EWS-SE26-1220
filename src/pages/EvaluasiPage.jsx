@@ -1412,8 +1412,10 @@ export function EvaluasiPage() {
   // Hitung jumlah hasil filter untuk masing-masing tab (untuk label tab)
   const countFiltered = (src) => src.filter(p => {
     if (selectedKec !== 'all') {
-      const ok = Object.keys(p.perKecamatan||{}).some(k => k.toLowerCase() === selectedKec.toLowerCase());
-      if (!ok) return false;
+      const kecLower  = selectedKec.toLowerCase();
+      const okViaKec  = (p.kecamatan||'').toLowerCase() === kecLower;
+      const okViaPKec = Object.keys(p.perKecamatan||{}).some(k => k.toLowerCase() === kecLower);
+      if (!okViaKec && !okViaPKec) return false;
     }
     if (filterDesa) {
       const ok = (p.perDesa||[]).some(d =>
@@ -1428,38 +1430,43 @@ export function EvaluasiPage() {
 
   // Filter
   let filtered = srcData.filter(p => {
-    if (selectedKec!=='all') {
-      const ok = Object.keys(p.perKecamatan||{}).some(k=>k.toLowerCase()===selectedKec.toLowerCase());
-      if (!ok) return false;
+    if (selectedKec !== 'all') {
+      // Pengawas: cukup bandingkan field kecamatan langsung (tidak punya perKecamatan multi-entry)
+      // Pencacah: bisa punya perKecamatan sebagai object multi-kecamatan
+      const kecLower = selectedKec.toLowerCase();
+      const okViaKec   = (p.kecamatan||'').toLowerCase() === kecLower;
+      const okViaPKec  = Object.keys(p.perKecamatan||{}).some(k => k.toLowerCase() === kecLower);
+      if (!okViaKec && !okViaPKec) return false;
     }
     if (filterDesa) {
-      const ok = (p.perDesa||[]).some(d=>
-        d.desa.toLowerCase()===filterDesa.toLowerCase() &&
-        (selectedKec==='all'||d.kecamatan.toLowerCase()===selectedKec.toLowerCase()));
+      const ok = (p.perDesa||[]).some(d =>
+        d.desa.toLowerCase() === filterDesa.toLowerCase() &&
+        (selectedKec === 'all' || d.kecamatan.toLowerCase() === selectedKec.toLowerCase()));
       if (!ok) return false;
     }
     if (search) {
       const q = search.toLowerCase();
-      return (p.nama||'').toLowerCase().includes(q)||(p.email||'').toLowerCase().includes(q);
+      return (p.nama||'').toLowerCase().includes(q) || (p.email||'').toLowerCase().includes(q);
     }
     return true;
   });
 
-  // Recompute jika filter aktif
-  if (selectedKec!=='all'||filterDesa) {
+  // Recompute angka jika filter aktif — HANYA untuk Pencacah yang punya perDesa
+  // Pengawas tidak di-recompute dari perDesa (struktur berbeda), angkanya sudah benar dari backend
+  if ((selectedKec !== 'all' || filterDesa) && !isPengawas) {
     filtered = filtered.map(p => {
-      let dd = p.perDesa||[];
-      if (selectedKec!=='all') dd=dd.filter(d=>d.kecamatan.toLowerCase()===selectedKec.toLowerCase());
-      if (filterDesa)          dd=dd.filter(d=>d.desa.toLowerCase()===filterDesa.toLowerCase());
-      const tot  = dd.reduce((a,d)=>a+d.total,   0);
-      const appr = dd.reduce((a,d)=>a+d.approved,0);
-      const sub  = dd.reduce((a,d)=>a+d.submit,  0);
-      const rej  = dd.reduce((a,d)=>a+d.reject,  0);
-      const dr   = dd.reduce((a,d)=>a+(d.draft||0),0);
-      const op   = dd.reduce((a,d)=>a+d.open,    0);
-      return { ...p,total:tot,approved:appr,submit:sub,reject:rej,draft:dr,open:op,
-               pctApproved:tot>0?Math.round(appr/tot*100*10)/10:0 };
-    }).filter(p=>p.total>0);
+      let dd = p.perDesa || [];
+      if (selectedKec !== 'all') dd = dd.filter(d => d.kecamatan.toLowerCase() === selectedKec.toLowerCase());
+      if (filterDesa)            dd = dd.filter(d => d.desa.toLowerCase()       === filterDesa.toLowerCase());
+      const tot  = dd.reduce((a,d) => a + d.total,        0);
+      const appr = dd.reduce((a,d) => a + d.approved,     0);
+      const sub  = dd.reduce((a,d) => a + d.submit,       0);
+      const rej  = dd.reduce((a,d) => a + d.reject,       0);
+      const dr   = dd.reduce((a,d) => a + (d.draft || 0), 0);
+      const op   = dd.reduce((a,d) => a + d.open,         0);
+      return { ...p, total:tot, approved:appr, submit:sub, reject:rej, draft:dr, open:op,
+               pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0 };
+    }).filter(p => p.total > 0);
   }
 
   // ── Summary dinamis berdasarkan filter aktif ────────────────────────────
