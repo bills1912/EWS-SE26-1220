@@ -1,5 +1,5 @@
 // src/pages/RespondenPage.jsx — versi data real dari MongoDB
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, X, AlertTriangle, CheckCircle, Clock,
@@ -35,6 +35,16 @@ function Field({ label, value, Icon, danger, mono }) {
 function Page0({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <style>{`
+        @keyframes rowHighlight {
+          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
+          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
+          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
+        }
+        .row-highlight {
+          animation: rowHighlight 3s ease forwards;
+        }
+      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Kepala Keluarga</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -168,6 +178,16 @@ function Page1({ r }) {
 function Page2({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <style>{`
+        @keyframes rowHighlight {
+          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
+          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
+          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
+        }
+        .row-highlight {
+          animation: rowHighlight 3s ease forwards;
+        }
+      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Kondisi Hunian</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -216,6 +236,16 @@ function Page2({ r }) {
 function Page3({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <style>{`
+        @keyframes rowHighlight {
+          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
+          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
+          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
+        }
+        .row-highlight {
+          animation: rowHighlight 3s ease forwards;
+        }
+      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Keuangan Keluarga</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -306,6 +336,8 @@ export default function RespondenPage() {
   const [filterKec, setFilterKec]         = useState('all');
   const [currentPage, setCurrentPage]     = useState(1);
   const [selected, setSelected]           = useState(null);
+  const [highlightId, setHighlightId]     = useState(null);
+  const rowRefs = useRef({});
 
   // Sync dengan global kecamatan filter dari Topbar
   const { selectedKec: globalKec } = useKecamatanCtx();
@@ -324,8 +356,20 @@ export default function RespondenPage() {
       setFilterStatus('all');
       setFilterAnomaly('all');
       setFilterKec('all');
+      setHighlightId(gotoId);
     }
   }, []);
+
+  // Scroll ke row yang di-highlight dan hapus highlight setelah 3 detik
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = rowRefs.current[highlightId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const timer = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightId]);
 
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
@@ -355,6 +399,16 @@ export default function RespondenPage() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <style>{`
+        @keyframes rowHighlight {
+          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
+          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
+          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
+        }
+        .row-highlight {
+          animation: rowHighlight 3s ease forwards;
+        }
+      `}</style>
       <Card>
         <SectionTitle icon={Users} right={<Badge variant="neutral">{loading?'…':total.toLocaleString('id')} records</Badge>}>
           Tabel pendataan responden
@@ -413,10 +467,16 @@ export default function RespondenPage() {
                   const hasCrit = r.flags?.some(f => f.sev==='crit');
                   const durColor = r.durMenit !== null && r.durMenit <= 2 ? '#f87171' : r.durMenit > 480 ? '#fbbf24' : 'var(--text2)';
                   return (
-                    <tr key={r.id} onClick={() => setSelected(r)}
-                      style={{ borderBottom:'1px solid var(--border)', background:r.anomaly?'rgba(244,63,94,0.02)':'transparent', cursor:'pointer', transition:'background .1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background='var(--bg3)'}
-                      onMouseLeave={e => e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'}>
+                    <tr key={r.id}
+                      ref={el => { if (el) rowRefs.current[r.id] = el; }}
+                      onClick={() => setSelected(r)}
+                      className={highlightId === r.id ? 'row-highlight' : ''}
+                      style={{ borderBottom:'1px solid var(--border)',
+                        background: highlightId === r.id ? 'rgba(232,84,28,0.35)'
+                          : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent',
+                        cursor:'pointer', transition:'background .1s' }}
+                      onMouseEnter={e => { if (highlightId !== r.id) e.currentTarget.style.background='var(--bg3)'; }}
+                      onMouseLeave={e => { if (highlightId !== r.id) e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'; }}>
                       <td style={{ padding:'9px 10px', fontSize:10, color:'var(--text4)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{r.id}</td>
                       <td style={{ padding:'9px 10px', whiteSpace:'nowrap' }}>
                         <div style={{ fontSize:12, fontWeight:600, color:'var(--text1)' }}>{r.namaKepala}</div>
