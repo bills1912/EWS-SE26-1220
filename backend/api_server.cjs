@@ -36,26 +36,20 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
 // ── Hari kerja WIB (UTC+7), Senin–Sabtu, sejak 15 Juni 2026 ─────────────
-// PENTING: semua perbandingan tanggal pakai 'YYYY-MM-DD' string di WIB
-// agar tidak terpengaruh timezone server Railway yang UTC
-const PENDATAAN_START_STR = '2026-06-15'; // WIB
+const PENDATAAN_START_STR = '2026-06-15';
 
 function todayWIB() {
-  // Ambil tanggal hari ini dalam WIB (UTC+7) sebagai string YYYY-MM-DD
-  const now = new Date();
-  const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
   return wib.toISOString().slice(0, 10);
 }
 
 function countWorkingDays() {
-  // Iterasi tanggal sebagai string YYYY-MM-DD — tidak ada konversi timezone
-  const endStr   = todayWIB();
-  let count      = 0;
-  let cur        = new Date(PENDATAAN_START_STR + 'T12:00:00Z'); // noon UTC agar stabil
-  const endDate  = new Date(endStr             + 'T12:00:00Z');
+  const endStr  = todayWIB();
+  let count     = 0;
+  let cur       = new Date(PENDATAAN_START_STR + 'T12:00:00Z');
+  const endDate = new Date(endStr + 'T12:00:00Z');
   while (cur <= endDate) {
-    // getUTCDay() aman karena pakai noon UTC — tidak akan bergeser hari
-    if (cur.getUTCDay() !== 0) count++; // 0 = Minggu
+    if (cur.getUTCDay() !== 0) count++;
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return Math.max(1, count);
@@ -419,85 +413,62 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
 
     const assignSummary = statDoc?.assignmentSummary;
     const rawSummary = (assignSummary && assignSummary.totalAssignment)
-      ? assignSummary
-      : (latestSnap?.summary || {});
+      ? assignSummary : (latestSnap?.summary || {});
 
-    // ── Rekalkulasi FRESH setiap request, pakai WIB bukan UTC server ─────
+    // Rekalkulasi FRESH setiap request — pakai WIB bukan UTC server
     const WORKING_DAYS = countWorkingDays();
-    const todayStr     = todayWIB();
     const appr  = rawSummary.approved || 0;
     const sub   = rawSummary.submit   || 0;
     const rej   = rawSummary.reject   || 0;
     const draft = rawSummary.draft    || 0;
-
     const dailySeries = rawSummary.dailySeries || [];
     const activeDays  = dailySeries.filter(r =>
-      (r.approved || 0) + (r.submitted || 0) + (r.rejected || 0) + (r.draft || 0) > 0
-    ).length;
+      (r.approved||0)+(r.submitted||0)+(r.rejected||0)+(r.draft||0) > 0).length;
 
     const summary = {
       ...rawSummary,
       workingDays:    WORKING_DAYS,
-      todayWIB:       todayStr,
+      todayWIB:       todayWIB(),
       pendataanStart: PENDATAAN_START_STR,
       avgPerDay: {
-        approved:       sr(appr  / WORKING_DAYS),
-        submitted:      sr(sub   / WORKING_DAYS),
-        rejected:       sr(rej   / WORKING_DAYS),
-        draft:          sr(draft / WORKING_DAYS),
-        total:          sr((appr + sub + rej + draft) / WORKING_DAYS),
-        workingDays:    WORKING_DAYS,
-        activeDays,
+        approved:  sr(appr  / WORKING_DAYS),
+        submitted: sr(sub   / WORKING_DAYS),
+        rejected:  sr(rej   / WORKING_DAYS),
+        draft:     sr(draft / WORKING_DAYS),
+        total:     sr((appr+sub+rej+draft) / WORKING_DAYS),
+        workingDays: WORKING_DAYS, activeDays,
       },
       avgPerDayPencacah: {
-        total:       sr((sub + draft) / WORKING_DAYS),
-        submitted:   sr(sub           / WORKING_DAYS),
-        draft:       sr(draft         / WORKING_DAYS),
+        total: sr((sub+draft) / WORKING_DAYS),
+        submitted: sr(sub / WORKING_DAYS), draft: sr(draft / WORKING_DAYS),
         workingDays: WORKING_DAYS,
       },
       avgPerDayPengawas: {
-        total:       sr((appr + rej) / WORKING_DAYS),
-        approved:    sr(appr         / WORKING_DAYS),
-        rejected:    sr(rej          / WORKING_DAYS),
+        total: sr((appr+rej) / WORKING_DAYS),
+        approved: sr(appr / WORKING_DAYS), rejected: sr(rej / WORKING_DAYS),
         workingDays: WORKING_DAYS,
       },
     };
 
     // Rekalkulasi per individu
     const pencacahFixed = (pencacah || []).map(p => {
-      const pSub   = p.submit   || 0;
-      const pDraft = p.draft    || 0;
-      const pAppr  = p.approved || 0;
-      const pRej   = p.reject   || 0;
-      const pTotal = p.total    || 0;
-      return {
-        ...p,
-        progressScore: pTotal > 0 ? sr((pSub + pDraft + pAppr + pRej) / pTotal * 100, 1) : 0,
-        avgPerDay: {
-          ...(p.avgPerDay || {}),
-          total:       sr((pSub + pDraft) / WORKING_DAYS),
-          submitted:   sr(pSub            / WORKING_DAYS),
-          draft:       sr(pDraft          / WORKING_DAYS),
-          approved:    sr(pAppr           / WORKING_DAYS),
-          rejected:    sr(pRej            / WORKING_DAYS),
-          workingDays: WORKING_DAYS,
+      const pS=p.submit||0, pD=p.draft||0, pA=p.approved||0, pR=p.reject||0, pT=p.total||0;
+      return { ...p,
+        progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
+        avgPerDay: { ...(p.avgPerDay||{}),
+          total: sr((pS+pD)/WORKING_DAYS), submitted: sr(pS/WORKING_DAYS),
+          draft: sr(pD/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
+          rejected: sr(pR/WORKING_DAYS), workingDays: WORKING_DAYS,
         },
       };
     });
-
     const pengawasFixed = (pengawas || []).map(p => {
-      const pAppr  = p.approved || 0;
-      const pRej   = p.reject   || 0;
-      const pTotal = p.total    || 0;
-      return {
-        ...p,
-        progressScore: pTotal > 0 ? sr((pAppr + pRej) / pTotal * 100, 1) : 0,
-        avgPerDay: {
-          ...(p.avgPerDay || {}),
-          total:       sr((pAppr + pRej) / WORKING_DAYS),
-          approved:    sr(pAppr          / WORKING_DAYS),
-          rejected:    sr(pRej           / WORKING_DAYS),
-          workingDays: WORKING_DAYS,
+      const pA=p.approved||0, pR=p.reject||0, pT=p.total||0;
+      return { ...p,
+        progressScore: pT>0 ? sr((pA+pR)/pT*100,1) : 0,
+        avgPerDay: { ...(p.avgPerDay||{}),
+          total: sr((pA+pR)/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
+          rejected: sr(pR/WORKING_DAYS), workingDays: WORKING_DAYS,
         },
       };
     });
@@ -577,10 +548,38 @@ app.get('/api/evaluasi/timeseries', verifyToken, async (req, res) => {
     const coll = role === 'Pengawas' ? 'assignment_pengawas' : 'assignment_pencacah';
     const doc = await db.collection(coll).findOne(
       { email },
-      { projection: { _id: 0, email: 1, nama: 1, dailySeries: 1, avgPerDay: 1 } }
+      { projection: { _id: 0, email: 1, nama: 1,
+          dailySeries: 1, approved: 1, submit: 1, reject: 1, draft: 1 } }
     );
     if (!doc) return res.status(404).json({ error: 'Petugas tidak ditemukan' });
-    res.json({ series: doc.dailySeries || [], avgPerDay: doc.avgPerDay || {} });
+
+    // Rekalkulasi avgPerDay DINAMIS — pakai workingDays hari ini (WIB)
+    const WORKING_DAYS = countWorkingDays();
+    const isPws = role === 'Pengawas';
+    const appr  = doc.approved || 0;
+    const sub   = doc.submit   || 0;
+    const rej   = doc.reject   || 0;
+    const draft = doc.draft    || 0;
+
+    const dailySeries = doc.dailySeries || [];
+    const activeDays  = dailySeries.filter(r =>
+      (r.approved||0)+(r.submitted||0)+(r.rejected||0)+(r.draft||0) > 0).length;
+
+    // Pencacah: avg = submit+draft | Pengawas: avg = approved+rejected
+    const avgPerDay = {
+      approved:    sr(appr  / WORKING_DAYS),
+      submitted:   sr(sub   / WORKING_DAYS),
+      rejected:    sr(rej   / WORKING_DAYS),
+      draft:       sr(draft / WORKING_DAYS),
+      total:       isPws
+        ? sr((appr+rej)   / WORKING_DAYS)
+        : sr((sub+draft)  / WORKING_DAYS),
+      workingDays: WORKING_DAYS,
+      activeDays,
+      todayWIB:    todayWIB(),
+    };
+
+    res.json({ series: dailySeries, avgPerDay });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
