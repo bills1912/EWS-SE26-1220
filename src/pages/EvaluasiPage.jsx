@@ -704,7 +704,7 @@ function SumCard({ label, value, sub, color, icon: Icon }) {
 }
 
 // ── Generate PDF Evaluasi (jsPDF — download langsung) ──────────────────────
-async function generatePDF({ activeTab, filtered, summary }) {
+async function generatePDF({ activeTab, filtered, summary, effectiveSummary }) {
   const isPengawas = activeTab === 'pengawas';
   const roleLabel  = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
@@ -782,15 +782,16 @@ async function generatePDF({ activeTab, filtered, summary }) {
   doc.setDrawColor(...MGRAY); doc.setLineWidth(0.3);
   doc.line(M, y, W - M, y); y += 6;
 
-  // Summary boxes
-  const s = summary || {};
+  // Summary boxes — pakai effectiveSummary jika ada (sudah terfilter kecamatan)
+  const s  = summary || {};
+  const es = effectiveSummary || {};
   const boxes = [
-    ['Total Assignment', (s.totalAssignment||0).toLocaleString('id'), DGRAY],
-    ['Approved',         (s.approved||0).toLocaleString('id'),        GREEN],
-    ['Submit',           (s.submit||0).toLocaleString('id'),           YELLOW],
-    ['Rejected',         (s.reject||0).toLocaleString('id'),           RED],
-    ['Draft',            (s.draft||0).toLocaleString('id'),            BLUE],
-    ['Open',             (s.open||0).toLocaleString('id'),             [156,163,175]],
+    ['Total Assignment', (es.total     ?? s.totalAssignment ?? 0).toLocaleString('id'), DGRAY],
+    ['Approved',         (es.approved  ?? s.approved        ?? 0).toLocaleString('id'), GREEN],
+    ['Submit',           (es.submit    ?? s.submit          ?? 0).toLocaleString('id'), YELLOW],
+    ['Rejected',         (es.reject    ?? s.reject          ?? 0).toLocaleString('id'), RED],
+    ['Draft',            (es.draft     ?? s.draft           ?? 0).toLocaleString('id'), BLUE],
+    ['Open',             (es.open      ?? s.open            ?? 0).toLocaleString('id'), [156,163,175]],
   ];
   const bW = COL / boxes.length;
   boxes.forEach(([label, val, color], i) => {
@@ -910,9 +911,10 @@ async function generatePDF({ activeTab, filtered, summary }) {
 
 
 // ── Generate Excel Evaluasi (CSV — tanpa library eksternal) ───────────────
-function generateExcel({ activeTab, filtered, summary, isPengawas }) {
+function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas }) {
   const roleLabel   = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap        = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
+  const es          = effectiveSummary || {};
   const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
 
   // Escape nilai agar aman di CSV
@@ -1703,7 +1705,7 @@ export function EvaluasiPage() {
                       boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
                       animation:'fadeSlideDown .12s ease' }}>
                       <button onClick={()=>{ setShowExportMenu(false);
-                        generatePDF({activeTab,filtered,summary}).catch(e=>alert('Error: '+e.message)); }}
+                        generatePDF({activeTab,filtered,summary,effectiveSummary:filteredSummary??summary}).catch(e=>alert('Error: '+e.message)); }}
                         style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                           padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
                           fontSize:12,color:'var(--text1)',borderBottom:'1px solid var(--border)',
@@ -1717,7 +1719,7 @@ export function EvaluasiPage() {
                         </div>
                       </button>
                       <button onClick={()=>{ setShowExportMenu(false);
-                        generateExcel({activeTab,filtered,summary,isPengawas:activeTab==='pengawas'}); }}
+                        generateExcel({activeTab,filtered,summary,effectiveSummary:filteredSummary??summary,isPengawas:activeTab==='pengawas'}); }}
                         style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                           padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
                           fontSize:12,color:'var(--text1)',textAlign:'left' }}
