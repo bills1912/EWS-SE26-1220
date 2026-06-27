@@ -357,6 +357,8 @@ export default function RespondenPage() {
       setFilterAnomaly('all');
       setFilterKec('all');
       setHighlightId(gotoId);
+      // Scroll ke atas dulu agar tabel terlihat, lalu highlight row target
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
