@@ -1,5 +1,5 @@
 // src/pages/RespondenPage.jsx — versi data real dari MongoDB
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, X, AlertTriangle, CheckCircle, Clock,
@@ -35,16 +35,6 @@ function Field({ label, value, Icon, danger, mono }) {
 function Page0({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-      <style>{`
-        @keyframes rowHighlight {
-          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
-          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
-          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
-        }
-        .row-highlight {
-          animation: rowHighlight 3s ease forwards;
-        }
-      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Kepala Keluarga</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -178,16 +168,6 @@ function Page1({ r }) {
 function Page2({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-      <style>{`
-        @keyframes rowHighlight {
-          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
-          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
-          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
-        }
-        .row-highlight {
-          animation: rowHighlight 3s ease forwards;
-        }
-      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Kondisi Hunian</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -203,9 +183,44 @@ function Page2({ r }) {
           <Field label="Air Minum"           value={r.airMinum}           Icon={Droplets}/>
           <Field label="Penerangan"          value={r.penerangan}         Icon={Zap}/>
           <Field label="Tempat BAB"          value={r.tempatBAB}          Icon={Home}/>
+          <Field label="Jenis Kloset"        value={r.jenisKloset}        Icon={Home}/>
           <Field label="Pembuangan Tinja"    value={r.buangTinja}         Icon={Home}/>
         </div>
       </div>
+
+      {/* ── Meteran PLN ─────────────────────────────────────────────── */}
+      {r.meteranPLN && r.meteranPLN.length > 0 && (
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)',
+            textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>
+            Meteran Listrik ({r.jumlahMeteran || r.meteranPLN.length} Meteran)
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px,1fr))', gap:8 }}>
+            {r.meteranPLN.map((m, i) => (
+              <div key={i} style={{ background:'var(--bg3)', borderRadius:10,
+                padding:'12px 14px', border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:9, fontWeight:700, color:'var(--text4)',
+                  textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>
+                  {m.jenisMeteran || 'Meteran'}{r.meteranPLN.length > 1 ? ` #${i+1}` : ''}
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color:'var(--text1)',
+                  fontFamily:'var(--mono)', letterSpacing:'0.04em', marginBottom:4 }}>
+                  {m.nomorMeteran || '—'}
+                </div>
+                {m.dayaTerpasang && m.dayaTerpasang !== '—' && (
+                  <div style={{ display:'inline-flex', alignItems:'center', gap:4,
+                    padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:700,
+                    background:'rgba(249,115,22,0.12)', color:'#f97316',
+                    border:'1px solid rgba(249,115,22,0.2)', marginTop:2 }}>
+                    ⚡ {m.dayaTerpasang}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {r.asetRumahTangga && (
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Aset Rumah Tangga</div>
@@ -236,16 +251,6 @@ function Page2({ r }) {
 function Page3({ r }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-      <style>{`
-        @keyframes rowHighlight {
-          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
-          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
-          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
-        }
-        .row-highlight {
-          animation: rowHighlight 3s ease forwards;
-        }
-      `}</style>
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Keuangan Keluarga</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -336,8 +341,6 @@ export default function RespondenPage() {
   const [filterKec, setFilterKec]         = useState('all');
   const [currentPage, setCurrentPage]     = useState(1);
   const [selected, setSelected]           = useState(null);
-  const [highlightId, setHighlightId]     = useState(null);
-  const rowRefs = useRef({});
 
   // Sync dengan global kecamatan filter dari Topbar
   const { selectedKec: globalKec } = useKecamatanCtx();
@@ -345,33 +348,6 @@ export default function RespondenPage() {
     setFilterKec(globalKec);
     setCurrentPage(1);
   }, [globalKec]);
-
-  // Auto-search jika navigasi dari halaman lain (misal: outlier modal di AnomalyPage)
-  useEffect(() => {
-    const gotoId = sessionStorage.getItem('ews_goto_responden');
-    if (gotoId) {
-      sessionStorage.removeItem('ews_goto_responden');
-      setSearch(gotoId);
-      setCurrentPage(1);
-      setFilterStatus('all');
-      setFilterAnomaly('all');
-      setFilterKec('all');
-      setHighlightId(gotoId);
-      // Scroll ke atas dulu agar tabel terlihat, lalu highlight row target
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
-
-  // Scroll ke row yang di-highlight dan hapus highlight setelah 3 detik
-  useEffect(() => {
-    if (!highlightId) return;
-    const el = rowRefs.current[highlightId];
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const timer = setTimeout(() => setHighlightId(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [highlightId]);
 
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
@@ -401,16 +377,6 @@ export default function RespondenPage() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-      <style>{`
-        @keyframes rowHighlight {
-          0%   { background: rgba(232,84,28,0.35); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.6); }
-          60%  { background: rgba(232,84,28,0.18); box-shadow: inset 0 0 0 2px rgba(232,84,28,0.3); }
-          100% { background: rgba(232,84,28,0.04); box-shadow: none; }
-        }
-        .row-highlight {
-          animation: rowHighlight 3s ease forwards;
-        }
-      `}</style>
       <Card>
         <SectionTitle icon={Users} right={<Badge variant="neutral">{loading?'…':total.toLocaleString('id')} records</Badge>}>
           Tabel pendataan responden
@@ -469,16 +435,10 @@ export default function RespondenPage() {
                   const hasCrit = r.flags?.some(f => f.sev==='crit');
                   const durColor = r.durMenit !== null && r.durMenit <= 2 ? '#f87171' : r.durMenit > 480 ? '#fbbf24' : 'var(--text2)';
                   return (
-                    <tr key={r.id}
-                      ref={el => { if (el) rowRefs.current[r.id] = el; }}
-                      onClick={() => setSelected(r)}
-                      className={highlightId === r.id ? 'row-highlight' : ''}
-                      style={{ borderBottom:'1px solid var(--border)',
-                        background: highlightId === r.id ? 'rgba(232,84,28,0.35)'
-                          : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent',
-                        cursor:'pointer', transition:'background .1s' }}
-                      onMouseEnter={e => { if (highlightId !== r.id) e.currentTarget.style.background='var(--bg3)'; }}
-                      onMouseLeave={e => { if (highlightId !== r.id) e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'; }}>
+                    <tr key={r.id} onClick={() => setSelected(r)}
+                      style={{ borderBottom:'1px solid var(--border)', background:r.anomaly?'rgba(244,63,94,0.02)':'transparent', cursor:'pointer', transition:'background .1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background='var(--bg3)'}
+                      onMouseLeave={e => e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'}>
                       <td style={{ padding:'9px 10px', fontSize:10, color:'var(--text4)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{r.id}</td>
                       <td style={{ padding:'9px 10px', whiteSpace:'nowrap' }}>
                         <div style={{ fontSize:12, fontWeight:600, color:'var(--text1)' }}>{r.namaKepala}</div>
