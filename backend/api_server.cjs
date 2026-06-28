@@ -43,13 +43,22 @@ function todayWIB() {
   return wib.toISOString().slice(0, 10);
 }
 
+// Libur nasional yang jatuh dalam periode SE2026 (YYYY-MM-DD)
+// Tambahkan jika ada libur nasional lain selama pendataan berlangsung
+const LIBUR_NASIONAL = new Set([
+  // '2026-07-17', // contoh: tambahkan libur nasional jika ada
+]);
+
 function countWorkingDays() {
+  // SE2026: pendataan berlangsung 7 hari seminggu (Senin–Minggu)
+  // Hanya libur nasional yang di-skip
   const endStr  = todayWIB();
   let count     = 0;
   let cur       = new Date(PENDATAAN_START_STR + 'T12:00:00Z');
   const endDate = new Date(endStr + 'T12:00:00Z');
   while (cur <= endDate) {
-    if (cur.getUTCDay() !== 0) count++;
+    const dateStr = cur.toISOString().slice(0, 10);
+    if (!LIBUR_NASIONAL.has(dateStr)) count++;
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return Math.max(1, count);
