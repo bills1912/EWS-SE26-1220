@@ -1341,7 +1341,9 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
     const tab      = req.query.tab      || 'usaha';
     const codes    = req.query.codes    ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
     const fKec     = (req.query.kec     || '').trim();
-    const fKategori= (req.query.kategori|| '').trim().toUpperCase();
+    const fKategori= req.query.kategori
+      ? req.query.kategori.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean)
+      : [];
     const pg    = Math.max(1, parseInt(req.query.page  || '1'));
     const lim   = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
 
@@ -1362,13 +1364,13 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
 
     const results = [];
     for (const r of docs) {
-      // Filter kategori KBLI — hanya untuk tab usaha
-      if (tab === 'usaha' && fKategori) {
+      // Filter kategori KBLI — hanya untuk tab usaha (multi select)
+      if (tab === 'usaha' && fKategori.length > 0) {
         const usahaList = r.usaha || [];
         const hasKategori = usahaList.some(u => {
-          const kat = (u.kategori || '').toUpperCase().trim();
-          const kbli = (u.kbli || '').toUpperCase().trim();
-          return kat === fKategori || kbli.startsWith(fKategori);
+          const kat  = (u.kategori || '').toUpperCase().trim();
+          const kbli = (u.kbli     || '').toUpperCase().trim();
+          return fKategori.some(k => kat === k || kbli.startsWith(k));
         });
         if (!hasKategori) continue;
       }
