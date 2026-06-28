@@ -1338,9 +1338,10 @@ const ANOMALI_DEF_MISSING = { M1:'Missing Pendapatan', M2:'Missing Pengeluaran',
 
 app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(req, res) {
   try {
-    const tab   = req.query.tab    || 'usaha';
-    const codes = req.query.codes  ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
-    const fKec  = (req.query.kec  || '').trim();
+    const tab      = req.query.tab      || 'usaha';
+    const codes    = req.query.codes    ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    const fKec     = (req.query.kec     || '').trim();
+    const fKategori= (req.query.kategori|| '').trim().toUpperCase();
     const pg    = Math.max(1, parseInt(req.query.page  || '1'));
     const lim   = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
 
@@ -1361,6 +1362,17 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
 
     const results = [];
     for (const r of docs) {
+      // Filter kategori KBLI — hanya untuk tab usaha
+      if (tab === 'usaha' && fKategori) {
+        const usahaList = r.usaha || [];
+        const hasKategori = usahaList.some(u => {
+          const kat = (u.kategori || '').toUpperCase().trim();
+          const kbli = (u.kbli || '').toUpperCase().trim();
+          return kat === fKategori || kbli.startsWith(fKategori);
+        });
+        if (!hasKategori) continue;
+      }
+
       let flags = tab === 'usaha' ? checkAnomaliUsaha(r)
                : tab === 'keluarga' ? checkAnomaliKeluarga(r)
                : checkMissingValue(r);
