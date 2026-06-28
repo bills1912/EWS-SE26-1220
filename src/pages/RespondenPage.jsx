@@ -183,8 +183,12 @@ function Page2({ r }) {
           <Field label="Air Minum"           value={r.airMinum}           Icon={Droplets}/>
           <Field label="Penerangan"          value={r.penerangan}         Icon={Zap}/>
           <Field label="Tempat BAB"          value={r.tempatBAB}          Icon={Home}/>
-          <Field label="Jenis Kloset"        value={r.jenisKloset}        Icon={Home}/>
-          <Field label="Pembuangan Tinja"    value={r.buangTinja}         Icon={Home}/>
+          {r.jenisKloset && r.jenisKloset !== '—' && (
+            <Field label="Jenis Kloset"      value={r.jenisKloset}        Icon={Home}/>
+          )}
+          {r.buangTinja && r.buangTinja !== '—' && (
+            <Field label="Pembuangan Tinja"  value={r.buangTinja}         Icon={Home}/>
+          )}
         </div>
       </div>
 
