@@ -13,6 +13,7 @@ import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { CrosscheckTable } from '../components/CrosscheckTable.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
+import { AnomalyDetailTable } from '../components/AnomalyDetailTable.jsx';
 
 const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
 
@@ -24,32 +25,6 @@ function Skeleton({ h = 80 }) {
       backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite',
     }}/>
   );
-}
-
-// ── Navigasi ke Responden dari outlier modal ─────────────────────────────
-function navigateToResponden(id, onClose) {
-  // Simpan target di sessionStorage — RespondenPage akan baca ini saat mount
-  sessionStorage.setItem('ews_goto_responden', id);
-  // Dispatch event untuk App.jsx
-  window.dispatchEvent(new CustomEvent('ews:goto', {
-    detail: { tab: 'Responden', respondentId: id }
-  }));
-  // Fallback: klik tab Responden secara programatik jika event tidak tertangkap
-  setTimeout(() => {
-    const tabs = document.querySelectorAll('[data-tab]');
-    tabs.forEach(t => {
-      if (t.getAttribute('data-tab') === 'Responden' ||
-          t.textContent?.trim() === 'Responden') {
-        t.click();
-      }
-    });
-    // Fallback kedua: cari tombol nav dengan teks Responden
-    const allBtns = document.querySelectorAll('button, a, [role="tab"]');
-    allBtns.forEach(b => {
-      if (b.textContent?.trim() === 'Responden') b.click();
-    });
-  }, 50);
-  onClose();
 }
 
 // ── Outlier modal ──────────────────────────────────────────────────────────
@@ -100,19 +75,7 @@ function OutlierModal({ outlier, metricLabel, unit, onClose }) {
             )}
           </div>
         </div>
-        <div style={{ padding:'12px 22px 18px', borderTop:'1px solid var(--border)',
-          display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
-          <button
-            onClick={() => navigateToResponden(outlier.id, onClose)}
-            style={{ padding:'7px 16px', borderRadius:8, fontSize:12, fontWeight:600,
-              cursor:'pointer', background:'var(--orange3)', border:'none', color:'#fff',
-              display:'flex', alignItems:'center', gap:6 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-            Lihat Responden
-          </button>
+        <div style={{ padding:'12px 22px 18px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end' }}>
           <button onClick={onClose} style={{ padding:'7px 16px', borderRadius:8, fontSize:12, fontWeight:500,
             cursor:'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)' }}>
             Tutup
@@ -168,21 +131,8 @@ function BoxPlot({ data }) {
             onMouseMove={e=>showTip(e,o.nama,o.value)} onMouseLeave={hideTip}
             onClick={() => setSelectedOutlier(o)}/>
         ))}
-        {/* Threshold bawah (anomali = terlalu cepat) — selalu tampil */}
-        {data.fenceLo > 0 && (
-          <g>
-            <line x1={toX(data.fenceLo)} y1={by1-14} x2={toX(data.fenceLo)} y2={by2+14}
-              stroke="#f43f5e" strokeWidth={2} strokeDasharray="5,4"/>
-            <text x={toX(data.fenceLo)} y={by1-18} textAnchor="middle"
-              fontSize={9} fill="#f43f5e">batas anomali ↓</text>
-          </g>
-        )}
-        {/* Threshold atas (jika ada — opsional, bukan anomali utama untuk durasi) */}
-        {data.anomalyThresholdHi && data.anomalyThresholdHi < data.q4 && (
-          <line x1={Math.min(toX(data.anomalyThresholdHi),W-5)} y1={by1-12}
-            x2={Math.min(toX(data.anomalyThresholdHi),W-5)} y2={by2+12}
-            stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,4"/>
-        )}
+        {data.anomalyThresholdLo > 0 && <line x1={toX(data.anomalyThresholdLo)} y1={by1-12} x2={toX(data.anomalyThresholdLo)} y2={by2+12} stroke="#f43f5e" strokeWidth={2} strokeDasharray="5,4"/>}
+        {data.anomalyThresholdHi && data.anomalyThresholdHi < data.q4 && <line x1={Math.min(toX(data.anomalyThresholdHi),W-5)} y1={by1-12} x2={Math.min(toX(data.anomalyThresholdHi),W-5)} y2={by2+12} stroke="#f43f5e" strokeWidth={2} strokeDasharray="5,4"/>}
         {[{x:q1x,lbl:'Q1',val:data.q1},{x:medx,lbl:'Med',val:data.median},{x:q3x,lbl:'Q3',val:data.q3}].map(({x,lbl,val},i) => (
           <g key={i}>
             <text x={x} y={by2+20} textAnchor="middle" fontSize={9.5} fill="var(--text4)">{lbl}</text>
@@ -254,8 +204,7 @@ function StatRow({ data }) {
       {[
         {label:'Min',val:data.q0},{label:'Q1',val:data.q1},{label:'Median',val:data.median},
         {label:'Mean',val:data.mean},{label:'Q3',val:data.q3},{label:'Max',val:data.q4},
-        {label:'IQR',val:data.iqr},
-        ...(data.fenceLo > 0 ? [{label:'Fence ↓',val:data.fenceLo,danger:true}] : [{label:'Fence ↑',val:data.fenceHi}]),
+        {label:'IQR',val:data.iqr},{label:'Fence ↑',val:data.fenceHi},
         {label:'Outlier',val:data.outliers.length,danger:true},
       ].map(s => (
         <div key={s.label} style={{ background:'var(--bg3)', border:`1px solid ${s.danger?'rgba(244,63,94,0.25)':'var(--border)'}`, borderRadius:8, padding:'6px 12px', minWidth:60 }}>
@@ -513,6 +462,7 @@ function AnomalyCard({ item }) {
 // ══════════════════════════════════════════════════════════════════════════
 export function AnomalyPage() {
   const { data: stat, loading, error } = useStatistik();
+
   const { selectedKec } = useKecamatan();
 
   if (loading) return (
@@ -662,6 +612,11 @@ export function AnomalyPage() {
           </div>
         </Card>
       )}
+
+      {/* ── Daftar anomali responden (SE2026-L) ──────────────────────── */}
+      <AnomalyDetailTable
+        kecFilter={selectedKec}
+      />
     </div>
   );
 }
