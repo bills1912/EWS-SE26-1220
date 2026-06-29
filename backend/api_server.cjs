@@ -1360,6 +1360,7 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         pengeluaranKeluarga:1, pengeluaranListrik:1,
         statusKepemilikan:1, asetRumahTangga:1,
         penerangan:1, sumberPenerangan:1,
+        assignmentId:1, surveyPeriodId:1, fasihUrl:1,
       }
     }).toArray();
 
@@ -1385,6 +1386,9 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         id: r.id, no: r.no, namaKepala: r.namaKepala,
         kecamatan: r.kecamatan, desa: r.desa, sls: r.sls,
         petugas: r.petugas, status: r.status, flags,
+        fasihUrl: r.fasihUrl || '',
+        assignmentId: r.assignmentId || '',
+        surveyPeriodId: r.surveyPeriodId || '',
       });
     }
 
