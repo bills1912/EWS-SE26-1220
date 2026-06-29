@@ -35,8 +35,7 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Hari pendataan WIB (UTC+7), sejak 15 Juni 2026 ──────────────────────
-// SE2026: semua hari terhitung hari kerja (Senin–Minggu, tanpa libur)
+// ── Hari kerja WIB (UTC+7), Senin–Sabtu, sejak 15 Juni 2026 ─────────────
 const PENDATAAN_START_STR = '2026-06-15';
 
 function todayWIB() {
@@ -46,11 +45,11 @@ function todayWIB() {
 
 function countWorkingDays() {
   const endStr  = todayWIB();
+  let count     = 0;
   let cur       = new Date(PENDATAAN_START_STR + 'T12:00:00Z');
   const endDate = new Date(endStr + 'T12:00:00Z');
-  let count     = 0;
   while (cur <= endDate) {
-    count++;
+    if (cur.getUTCDay() !== 0) count++;
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return Math.max(1, count);
@@ -1360,7 +1359,6 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         pengeluaranKeluarga:1, pengeluaranListrik:1,
         statusKepemilikan:1, asetRumahTangga:1,
         penerangan:1, sumberPenerangan:1,
-        assignmentId:1, surveyPeriodId:1, fasihUrl:1,
       }
     }).toArray();
 
@@ -1386,9 +1384,6 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         id: r.id, no: r.no, namaKepala: r.namaKepala,
         kecamatan: r.kecamatan, desa: r.desa, sls: r.sls,
         petugas: r.petugas, status: r.status, flags,
-        fasihUrl: r.fasihUrl || '',
-        assignmentId: r.assignmentId || '',
-        surveyPeriodId: r.surveyPeriodId || '',
       });
     }
 
@@ -1407,5 +1402,146 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
       page: pg,
       data: results.slice((pg-1)*lim, pg*lim),
     });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// GET /api/anomali/detail — dengan filter status
+// ══════════════════════════════════════════════════════════════════════════
+
+function parseNum(v) {
+  if (v == null || v === '' || v === 'None' || v === 'nan') return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace(/[Rp\s,.]/g,'').replace('jt','000000').replace('rb','000')) || 0;
+}
+function is9999(v) { return v === 9999 || v === '9999' || String(v).trim() === '9999'; }
+
+function checkAnomaliUsaha(r) {
+  const flags = [];
+  const usahaList = r.usaha || [];
+  if (!usahaList.length) return flags;
+  for (const u of usahaList) {
+    const nama=u.namaUsaha||'—', skala=(u.skalaUsaha||'').toUpperCase();
+    const kbliAkhir=(u.kbli||'').slice(0,2), kbliSbr=(u.kbliSbr||'').slice(0,2);
+    const badan=(u.badanUsaha||'').toLowerCase(), internet=(u.internet||'').toLowerCase();
+    const lapKeu=(u.lapKeuangan||'').toLowerCase(), peranMBG=(u.peranMBG||u.mitraKdkmp||'').toLowerCase();
+    const biayaProd=parseNum(u.biayaProduksi), totKeluar=parseNum(u.totalPengeluaranRaw)||parseNum(u.totalPengeluaran);
+    const totPend=parseNum(u.nilaiPendapatanRaw)||parseNum(u.nilaiPendapatan);
+    const totAset=parseNum(u.totalAset)||parseNum(u.asetUsaha), tk=parseInt(u.totalTK||'0')||0;
+    const korPubik=parseNum(u.modalKorPublik);
+    if (totKeluar>0&&biayaProd>0&&biayaProd/totKeluar>0.5) flags.push({code:'A1',usaha:nama,ket:`Biaya produksi ${Math.round(biayaProd/totKeluar*100)}% dari total pengeluaran`});
+    if (totPend>0&&totKeluar>0&&totPend<totKeluar) flags.push({code:'A2',usaha:nama,ket:`Pengeluaran Rp ${(totKeluar/1e6).toFixed(1)} jt > Pendapatan Rp ${(totPend/1e6).toFixed(1)} jt`});
+    const isBukanBU=badan.includes('bukan badan')||badan.includes('13.');
+    if (isBukanBU&&korPubik>0) flags.push({code:'A3',usaha:nama,ket:`Bukan badan usaha tapi modal korporasi publik ${korPubik}%`});
+    const isMBG=peranMBG.includes('sppg')||peranMBG.includes('supplier')||peranMBG.includes('1.')||peranMBG.includes('2.');
+    if (isMBG&&totPend>0&&totKeluar>0){const r=totPend/totKeluar;if(r>10||r<0.1)flags.push({code:'A4',usaha:nama,ket:`MBG rasio ${r.toFixed(1)}x tidak wajar`});}
+    if (totPend>5e8&&tk===0&&totAset===0) flags.push({code:'A5',usaha:nama,ket:`Pendapatan Rp ${(totPend/1e6).toFixed(0)} jt tapi TK=0 dan Aset=0`});
+    if (tk>50&&totPend>0&&totPend/tk<500000) flags.push({code:'A5',usaha:nama,ket:`TK ${tk} orang tapi pendapatan/TK hanya Rp ${(totPend/tk/1e3).toFixed(0)} rb`});
+    const isUMB=skala.includes('UMB')||skala.includes('MENENGAH')||skala.includes('BESAR');
+    if (isUMB&&(internet.includes('2.')||internet==='tidak')) flags.push({code:'A6',usaha:nama,ket:`Skala ${u.skalaUsaha} tapi tidak menggunakan internet`});
+    if (isUMB&&(lapKeu.includes('2.')||lapKeu==='tidak')) flags.push({code:'A7',usaha:nama,ket:`Skala ${u.skalaUsaha} tapi tidak punya laporan keuangan`});
+    if (kbliAkhir&&kbliSbr&&kbliAkhir!==kbliSbr) flags.push({code:'A8',usaha:nama,ket:`KBLI pendataan ${kbliAkhir} vs SBR ${kbliSbr}`});
+  }
+  return flags;
+}
+
+function checkAnomaliKeluarga(r) {
+  const flags=[], anggota=r.anggotaKeluarga||[];
+  const jumlahAk=parseInt(r.jumlahAk||r.jumlahAkKK||'0')||0;
+  const luasLantai=parseNum(r.luasLantai), luasPerKap=jumlahAk>0?luasLantai/jumlahAk:0;
+  const aset=r.asetRumahTangga||{};
+  const totalPendKlrg=parseNum(r.totalPendapatanKeluarga)||parseNum(r.pendapatanKeluarga);
+  const totalPengKlrg=parseNum(r.pengeluaranKeluarga);
+  const pungListrik=parseNum(r.pengeluaranListrik)||parseNum(aset.listrikSebulan);
+  const statusKep=(r.statusKepemilikan||'').toLowerCase();
+  const penerangan=(r.penerangan||r.sumberPenerangan||'').toLowerCase();
+  const kepKep=anggota.find(a=>(a.hubungan||'').toLowerCase().includes('kepala'))||{};
+  const pasangan=anggota.find(a=>{const h=(a.hubungan||'').toLowerCase();return h.includes('istri')||h.includes('suami')||h.includes('pasangan');});
+  const kawKep=(kepKep.statusKawin||'').toLowerCase();
+  if (pasangan&&(kawKep.includes('cerai')||kawKep.includes('belum'))) flags.push({code:'K1',ket:`KK "${kepKep.statusKawin}" tapi ada ${pasangan.hubungan}`});
+  const umurKep=parseInt(kepKep.umur||'99')||99;
+  if (umurKep<10&&statusKep.includes('milik')) flags.push({code:'K2',ket:`Umur KK ${umurKep} th di rumah milik sendiri`});
+  if (jumlahAk>0&&luasLantai>0){
+    if (luasPerKap<3) flags.push({code:'K4',ket:`Luas/kapita ${luasPerKap.toFixed(1)} m² — terlalu sempit`});
+    else if (luasPerKap>200) flags.push({code:'K4',ket:`Luas/kapita ${luasPerKap.toFixed(1)} m² — sangat besar`});
+  }
+  if (totalPendKlrg>0&&totalPengKlrg>0&&totalPendKlrg<totalPengKlrg) flags.push({code:'K5',ket:`Pengeluaran Rp ${(totalPengKlrg/1e6).toFixed(1)} jt > Pendapatan Rp ${(totalPendKlrg/1e6).toFixed(1)} jt`});
+  const punyaMewah=(aset.kulkas>0||aset.ac>0||aset.laptop>0);
+  const listrikRendah=pungListrik>0&&pungListrik<100000;
+  const listrikNonPLN=penerangan.includes('non-pln')||penerangan.includes('bukan listrik')||penerangan.includes('3.');
+  if (punyaMewah&&(listrikRendah||listrikNonPLN)){
+    const detail=[aset.kulkas>0?`kulkas(${aset.kulkas})`:'',aset.ac>0?`AC(${aset.ac})`:'',aset.laptop>0?`laptop(${aset.laptop})`:''].filter(Boolean).join(', ');
+    flags.push({code:'K6',ket:`Punya ${detail} tapi listrik Rp ${(pungListrik/1e3).toFixed(0)} rb/bln`});
+  }
+  if (jumlahAk>10) flags.push({code:'K7',ket:`Jumlah AK ${jumlahAk} orang`});
+  return flags;
+}
+
+function checkMissingValue(r) {
+  const flags=[], usahaList=r.usaha||[];
+  for (const u of usahaList){
+    const nama=u.namaUsaha||'—';
+    if (is9999(u.nilaiPendapatanRaw)||is9999(u.pendapatanLain)) flags.push({code:'M1',usaha:nama,ket:'Nilai pendapatan (R27a/R31a) = 9999'});
+    const fk=[{key:'gaji',label:'gaji'},{key:'biayaProduksi',label:'biaya produksi'},{key:'operasional',label:'operasional'},{key:'nonOperasional',label:'non-operasional'}];
+    for (const f of fk){if(is9999(u[f.key])){flags.push({code:'M2',usaha:nama,ket:`Missing ${f.label} = 9999`});break;}}
+    if (is9999(u.asetTanah)||is9999(u.asetLain)||is9999(u.totalAset)) flags.push({code:'M4',usaha:nama,ket:'Nilai aset (R28/R32) = 9999'});
+  }
+  return flags;
+}
+
+app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const tab      = req.query.tab      || 'usaha';
+    const codes    = req.query.codes    ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    const fKec     = (req.query.kec     || '').trim();
+    const fKategori= req.query.kategori ? req.query.kategori.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean) : [];
+    const fStatus  = (req.query.status  || '').trim().toUpperCase();
+    const pg       = Math.max(1, parseInt(req.query.page  || '1'));
+    const lim      = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
+
+    const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
+    const matchStatus  = fStatus && VALID_STATUS.includes(fStatus) ? [fStatus] : VALID_STATUS;
+    const match = { status: { $in: matchStatus } };
+    if (fKec) match.kecamatan = { $regex: new RegExp('^'+fKec+'$','i') };
+
+    const docs = await db.collection('isian_se2026').find(match, {
+      projection: {
+        _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
+        petugas:1, status:1, usaha:1, anggotaKeluarga:1,
+        jumlahAk:1, jumlahAkKK:1, luasLantai:1,
+        totalPendapatanKeluarga:1, pendapatanKeluarga:1,
+        pengeluaranKeluarga:1, pengeluaranListrik:1,
+        statusKepemilikan:1, asetRumahTangga:1,
+        penerangan:1, sumberPenerangan:1,
+        assignmentId:1, surveyPeriodId:1, fasihUrl:1,
+      }
+    }).toArray();
+
+    const results = [];
+    for (const r of docs) {
+      if (tab === 'usaha' && fKategori.length > 0) {
+        const usahaList = r.usaha || [];
+        const hasKat = usahaList.some(u => {
+          const kat=(u.kategori||'').toUpperCase().trim();
+          const kbli=(u.kbli||'').toUpperCase().trim();
+          return fKategori.some(k => kat===k || kbli.startsWith(k));
+        });
+        if (!hasKat) continue;
+      }
+      let flags = tab==='usaha' ? checkAnomaliUsaha(r) : tab==='keluarga' ? checkAnomaliKeluarga(r) : checkMissingValue(r);
+      if (codes.length) flags = flags.filter(f => codes.includes(f.code));
+      if (!flags.length) continue;
+      results.push({
+        id:r.id, no:r.no, namaKepala:r.namaKepala,
+        kecamatan:r.kecamatan, desa:r.desa, sls:r.sls,
+        petugas:r.petugas, status:r.status, flags,
+        fasihUrl:r.fasihUrl||'', assignmentId:r.assignmentId||'',
+      });
+    }
+    results.sort(function(a,b){return b.flags.length-a.flags.length;});
+    const summary={};
+    for (const r of results) for (const f of r.flags) summary[f.code]=(summary[f.code]||0)+1;
+    const total=results.length;
+    res.json({ total, summary, totalPages:Math.ceil(total/lim), page:pg, data:results.slice((pg-1)*lim,pg*lim) });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
