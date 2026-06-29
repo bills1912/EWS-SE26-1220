@@ -7,8 +7,9 @@ import { createPortal } from 'react-dom';
 import {
   AlertTriangle, ChevronDown, X, ArrowRight,
   ShieldAlert, Search, ChevronLeft, ChevronRight,
+  ChevronsUpDown, ChevronUp,
 } from 'lucide-react';
-import { Badge } from './ui.jsx';
+// Badge tidak dipakai
 
 // ── Konstanta daftar anomali ─────────────────────────────────────────────
 const ANOMALI_USAHA = [
@@ -564,29 +565,48 @@ function AnomalyRow({ rec, onNavigate, idx }) {
         </div>
       </td>
       <td style={{ ...td, textAlign:'right', paddingRight:12 }}>
-        <button
-          onClick={() => onNavigate(rec.id)}
-          style={{
-            display:'inline-flex', alignItems:'center', gap:5,
-            padding:'5px 12px', borderRadius:20, fontSize:11, fontWeight:700,
-            cursor:'pointer', whiteSpace:'nowrap',
-            background:'linear-gradient(135deg,#f97316,#e2621b)',
-            color:'#fff', border:'none',
-            boxShadow:'0 2px 8px rgba(249,115,22,0.35)',
-            transition:'all .18s ease',
-            letterSpacing:'0.02em',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform='translateY(-1px)';
-            e.currentTarget.style.boxShadow='0 4px 14px rgba(249,115,22,0.5)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform='translateY(0)';
-            e.currentTarget.style.boxShadow='0 2px 8px rgba(249,115,22,0.35)';
-          }}
-        >
-          Lihat <ArrowRight size={11}/>
-        </button>
+        <div style={{ display:'flex', gap:6, justifyContent:'flex-end', alignItems:'center' }}>
+          {/* Tombol ke halaman Responden EWS */}
+          <button
+            onClick={() => onNavigate(rec.id)}
+            style={{
+              display:'inline-flex', alignItems:'center', gap:5,
+              padding:'5px 12px', borderRadius:20, fontSize:11, fontWeight:700,
+              cursor:'pointer', whiteSpace:'nowrap',
+              background:'linear-gradient(135deg,#f97316,#e2621b)',
+              color:'#fff', border:'none',
+              boxShadow:'0 2px 8px rgba(249,115,22,0.35)',
+              transition:'all .18s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 14px rgba(249,115,22,0.5)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 2px 8px rgba(249,115,22,0.35)'; }}
+          >
+            Lihat <ArrowRight size={11}/>
+          </button>
+          {/* Tombol ke Fasih — hanya kalau URL tersedia */}
+          {rec.fasihUrl && (
+            <a
+              href={rec.fasihUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Buka di Fasih-SM"
+              style={{
+                display:'inline-flex', alignItems:'center', gap:5,
+                padding:'5px 12px', borderRadius:20, fontSize:11, fontWeight:700,
+                cursor:'pointer', whiteSpace:'nowrap', textDecoration:'none',
+                background:'linear-gradient(135deg,#1d6fa4,#155d8a)',
+                color:'#fff', border:'none',
+                boxShadow:'0 2px 8px rgba(29,111,164,0.35)',
+                transition:'all .18s ease',
+                letterSpacing:'0.02em',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 14px rgba(29,111,164,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 2px 8px rgba(29,111,164,0.35)'; }}
+            >
+              Fasih <ArrowRight size={11}/>
+            </a>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -611,11 +631,15 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [data,           setData]         = useState(null);
   const [loading,        setLoading]      = useState(false);
   const [error,          setError]        = useState(null);
+  const [search,         setSearch]       = useState('');
+  const [filterStatus,   setFilterStatus] = useState('all');
+  const [sortCol,        setSortCol]      = useState('');
+  const [sortDir,        setSortDir]      = useState('asc');
 
   const options = OPTIONS_MAP[tab] || [];
 
   // Reset page & codes saat ganti tab
-  const switchTab = (t) => { setTab(t); setCodes([]); setFilterKategori([]); setPage(1); setData(null); };
+  const switchTab = (t) => { setTab(t); setCodes([]); setFilterKategori([]); setPage(1); setData(null); setSearch(''); setFilterStatus('all'); setSortCol(''); setSortDir('asc'); };
 
   // Fetch dengan satu useEffect terpadu — tidak pakai useCallback untuk hindari loop
   useEffect(() => {
@@ -628,6 +652,7 @@ export function AnomalyDetailTable({ kecFilter }) {
       ...(codes.length ? { codes: codes.join(',') } : {}),
       ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
       ...(filterKategori.length ? { kategori: filterKategori.join(',') } : {}),
+      ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
     });
 
     apiFetch(`/api/anomali/detail?${params}`)
@@ -635,7 +660,7 @@ export function AnomalyDetailTable({ kecFilter }) {
       .catch(e    => { if (!cancelled) { setError(e.message); setLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [tab, codes.join(','), page, kecFilter, filterKategori.join(',')]);
+  }, [tab, codes.join(','), page, kecFilter, filterKategori.join(','), filterStatus]);
 
   const navigate = (id) => {
     sessionStorage.setItem('ews_goto_responden', id);
@@ -649,10 +674,61 @@ export function AnomalyDetailTable({ kecFilter }) {
     }, 50);
   };
 
-  const rows = data?.data || [];
-  const total = data?.total || 0;
+  const rawRows  = data?.data || [];
+  const total    = data?.total || 0;
   const totalPages = data?.totalPages || 1;
-  const summary = data?.summary || {};
+  const summary  = data?.summary || {};
+
+  // Client-side search — filter di atas data yang sudah dipaginasi dari server
+  const searchQ = search.trim().toLowerCase();
+  const filtered = searchQ
+    ? rawRows.filter(r =>
+        (r.namaKepala||'').toLowerCase().includes(searchQ) ||
+        (r.id||'').toLowerCase().includes(searchQ) ||
+        (r.kecamatan||'').toLowerCase().includes(searchQ) ||
+        (r.desa||'').toLowerCase().includes(searchQ) ||
+        (r.petugas||'').toLowerCase().includes(searchQ) ||
+        r.flags.some(f => (f.code||'').toLowerCase().includes(searchQ) ||
+                          (f.ket||'').toLowerCase().includes(searchQ) ||
+                          (f.usaha||'').toLowerCase().includes(searchQ))
+      )
+    : rawRows;
+
+  // Client-side sort
+  const rows = sortCol
+    ? [...filtered].sort((a, b) => {
+        let va, vb;
+        if (sortCol === 'no')         { va = parseInt(a.no)||0;  vb = parseInt(b.no)||0; }
+        else if (sortCol === 'id')    { va = a.id||'';           vb = b.id||''; }
+        else if (sortCol === 'nama')  { va = a.namaKepala||'';   vb = b.namaKepala||''; }
+        else if (sortCol === 'kec')   { va = a.kecamatan||'';    vb = b.kecamatan||''; }
+        else if (sortCol === 'desa')  { va = a.desa||'';         vb = b.desa||''; }
+        else if (sortCol === 'status'){ va = a.status||'';       vb = b.status||''; }
+        else if (sortCol === 'flags') { va = a.flags.length;     vb = b.flags.length; }
+        else { va = ''; vb = ''; }
+        if (typeof va === 'number') return sortDir === 'asc' ? va-vb : vb-va;
+        return sortDir === 'asc' ? String(va).localeCompare(String(vb), 'id')
+                                 : String(vb).localeCompare(String(va), 'id');
+      })
+    : filtered;
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  const SortIcon = ({ col }) => {
+    const active = sortCol === col;
+    return (
+      <span style={{ marginLeft:3, verticalAlign:'middle', opacity: active ? 1 : 0.3 }}>
+        {active
+          ? (sortDir === 'asc'
+              ? <ChevronUp size={10} strokeWidth={2.5}/>
+              : <ChevronDown size={10} strokeWidth={2.5}/>)
+          : <ChevronsUpDown size={10} strokeWidth={2}/>}
+      </span>
+    );
+  };
 
   return (
     <div style={{
@@ -793,8 +869,62 @@ export function AnomalyDetailTable({ kecFilter }) {
             })}
           </div>
         )}
+        {/* Filter Status — pill toggle */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          {[
+            { val:'all',       label:'Semua' },
+            { val:'APPROVED',  label:'Approved' },
+            { val:'SUBMITTED', label:'Submitted' },
+            { val:'REJECTED',  label:'Rejected' },
+          ].map(({ val, label }) => {
+            const active = filterStatus === val;
+            const color  = val === 'APPROVED'  ? '#34d399'
+                         : val === 'SUBMITTED' ? '#fbbf24'
+                         : val === 'REJECTED'  ? '#f87171'
+                         : 'var(--text3)';
+            return (
+              <button key={val}
+                onClick={() => { setFilterStatus(val); setPage(1); }}
+                style={{
+                  padding:'4px 10px', borderRadius:20, fontSize:10, fontWeight:700,
+                  cursor:'pointer', border:'none', transition:'all .15s',
+                  background: active
+                    ? (val === 'APPROVED'  ? 'rgba(52,211,153,0.18)'
+                       : val === 'SUBMITTED' ? 'rgba(251,191,36,0.18)'
+                       : val === 'REJECTED'  ? 'rgba(248,113,113,0.18)'
+                       : 'var(--bg4)')
+                    : 'transparent',
+                  color: active ? color : 'var(--text4)',
+                  boxShadow: active ? `0 0 0 1px ${color}44` : 'none',
+                }}
+              >{label}</button>
+            );
+          })}
+        </div>
+
+        {/* Search input */}
+        <div style={{ display:'flex', alignItems:'center', gap:6,
+          padding:'5px 10px', borderRadius:8, background:'var(--bg3)',
+          border:'1px solid var(--border)', flex:'0 0 200px' }}>
+          <Search size={11} style={{ color:'var(--text4)', flexShrink:0 }}/>
+          <input
+            placeholder="Cari nama, ID, kecamatan..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ border:'none', background:'transparent', outline:'none',
+              fontSize:11, color:'var(--text2)', width:'100%' }}
+          />
+          {search && (
+            <X size={10} onClick={() => setSearch('')}
+              style={{ color:'var(--text4)', cursor:'pointer', flexShrink:0 }}/>
+          )}
+        </div>
+
         <span style={{ marginLeft:'auto', fontSize:11, color:'var(--text4)' }}>
-          {loading ? 'Memuat...' : total > 0 ? `${total.toLocaleString('id')} ditemukan` : ''}
+          {loading ? 'Memuat...'
+            : search && filtered.length !== rawRows.length
+              ? `${filtered.length} dari ${rawRows.length} (hal ini)`
+              : total > 0 ? `${total.toLocaleString('id')} ditemukan` : ''}
         </span>
       </div>
 
@@ -803,8 +933,31 @@ export function AnomalyDetailTable({ kecFilter }) {
         <table style={{ width:'100%', borderCollapse:'collapse', minWidth:800 }}>
           <thead>
             <tr style={{ background:'var(--bg3)' }}>
-              {['No','ID','Nama','Kecamatan','Desa','Status','Kode Anomali',''].map((h,i) => (
-                <th key={i} style={{ ...th, ...(i===7?{textAlign:'right',paddingRight:12}:{}) }}>{h}</th>
+              {[
+                { label:'No',          col:'no',     w:40  },
+                { label:'ID',          col:'id',     w:90  },
+                { label:'Nama',        col:'nama',   w:null },
+                { label:'Kecamatan',   col:'kec',    w:null },
+                { label:'Desa',        col:'desa',   w:null },
+                { label:'Status',      col:'status', w:90  },
+                { label:'Kode Anomali',col:'flags',  w:null },
+                { label:'',            col:'',       w:160  },
+              ].map(({ label, col, w }, i) => (
+                <th key={i}
+                  onClick={col ? () => handleSort(col) : undefined}
+                  style={{
+                    ...th,
+                    ...(i===7 ? { textAlign:'right', paddingRight:12 } : {}),
+                    ...(w ? { width: w } : {}),
+                    cursor: col ? 'pointer' : 'default',
+                    userSelect: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={e => { if (col) e.currentTarget.style.color='var(--text2)'; }}
+                  onMouseLeave={e => { if (col) e.currentTarget.style.color=''; }}
+                >
+                  {label}{col && <SortIcon col={col}/>}
+                </th>
               ))}
             </tr>
           </thead>
