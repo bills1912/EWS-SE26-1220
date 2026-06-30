@@ -1424,11 +1424,54 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
 
 // ── Helper functions untuk anomali/detail ────────────────────────────────
 function pNum(v) {
-  if (v == null || v === '' || v === 'None') return 0;
-  if (typeof v === 'number') return v;
-  return parseFloat(String(v).replace(/[Rp\s,.]/g,'').replace('jt','000000').replace('rb','000')) || 0;
+  if (v == null || v === '' || v === 'None' || v === 'nan') return 0;
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  var s = String(v).trim()
+    .replace(/m²|m2|%/g, '')       // hapus satuan
+    .replace(/^Rp\s*/i, '')        // hapus prefix Rp
+    .replace(/\s/g, '');           // hapus spasi
+  // Format 'X.Y jt' → X.Y * 1_000_000
+  var jtMatch = s.match(/^([\d.]+)\s*jt$/i);
+  if (jtMatch) return parseFloat(jtMatch[1]) * 1000000;
+  // Format 'X.Y rb' → X.Y * 1_000
+  var rbMatch = s.match(/^([\d.]+)\s*rb$/i);
+  if (rbMatch) return parseFloat(rbMatch[1]) * 1000;
+  // Format ribuan: '6.800.000' atau '6,800,000'
+  // Jika ada titik DAN koma: 1.234,56 → 1234.56
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',') && !s.includes('.')) {
+    // Koma sebagai desimal: '6,8' → '6.8'
+    s = s.replace(',', '.');
+  } else if (s.includes('.')) {
+    // Titik bisa pemisah ribuan (6.800.000) atau desimal (6.8)
+    var parts = s.split('.');
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      // Pemisah ribuan
+      s = s.replace(/\./g, '');
+    }
+    // else: desimal biasa, biarkan
+  }
+  return parseFloat(s) || 0;
 }
 function is9k(v) { return v === 9999 || v === '9999' || String(v).trim() === '9999'; }
+
+// Konversi 2-digit awal KBLI ke huruf kategori (A-V) sesuai KBLI 2025
+function kbliToKategori(kbli) {
+  if (!kbli) return '';
+  var n = parseInt(String(kbli).slice(0,2), 10);
+  if (isNaN(n)) return '';
+  var ranges = [
+    [1,3,'A'],[5,9,'B'],[10,33,'C'],[35,35,'D'],[36,39,'E'],
+    [41,43,'F'],[45,47,'G'],[49,53,'H'],[55,56,'I'],[58,63,'J'],
+    [64,66,'K'],[68,68,'L'],[69,75,'M'],[77,82,'N'],[84,84,'O'],
+    [85,85,'P'],[86,88,'Q'],[90,93,'R'],[94,96,'S'],[97,98,'T'],[99,99,'U'],
+  ];
+  for (var i=0;i<ranges.length;i++) {
+    if (n >= ranges[i][0] && n <= ranges[i][1]) return ranges[i][2];
+  }
+  return '';
+}
 
 function detailCheckUsaha(r) {
   var flags = [], usahaList = r.usaha || [];
@@ -1479,8 +1522,11 @@ function detailCheckUsaha(r) {
     if (isUMB && (internet.includes('2.') || internet === 'tidak')) flags.push({ code:'A6', usaha:nama, ket:'Skala UMB tapi tidak internet' });
     // A7
     if (isUMB && (lapKeu.includes('2.') || lapKeu === 'tidak')) flags.push({ code:'A7', usaha:nama, ket:'Skala UMB tapi tidak punya lapkeu' });
-    // A8
-    if (kbliAkhir && kbliSbr && kbliAkhir !== kbliSbr) flags.push({ code:'A8', usaha:nama, ket:'KBLI pendataan ' + kbliAkhir + ' vs SBR ' + kbliSbr });
+    // A8 — bandingkan kategori (huruf A-V), konversi dari 2-digit KBLI ke kategori
+    var katAkhir = (u.kategori || '').toUpperCase().trim();
+    var katSbr   = kbliToKategori(u.kbliSbr || '');
+    if (katAkhir && katSbr && katAkhir !== katSbr)
+      flags.push({ code:'A8', usaha:nama, ket:'Kategori pendataan ' + katAkhir + ' (KBLI: ' + (u.kbli||'') + ') vs SBR ' + katSbr + ' (KBLI: ' + u.kbliSbr + ')' });
   }
   return flags;
 }
@@ -1491,8 +1537,8 @@ function detailCheckKeluarga(r) {
   var luasLantai = pNum(r.luasLantai);
   var luasPerKap = jumlahAk > 0 ? luasLantai / jumlahAk : 0;
   var aset       = r.asetRumahTangga || {};
-  var totalPendK = pNum(r.totalPendapatanKeluarga) || pNum(r.pendapatanKeluarga);
-  var totalPengK = pNum(r.pengeluaranKeluarga);
+  var totalPendK = pNum(r.totalPendapatanKeluarga) || pNum(r.pendapatanKeluarga) || pNum(r.totalPendapatan);
+  var totalPengK = pNum(r.pengeluaranKeluarga) || pNum(r.totalPengeluaranKeluarga);
   var pungListrik= pNum(r.pengeluaranListrik) || pNum(aset.listrikSebulan);
   var statusKep  = (r.statusKepemilikan || '').toLowerCase();
   var penerangan = (r.penerangan || r.sumberPenerangan || '').toLowerCase();
