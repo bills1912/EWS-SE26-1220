@@ -294,7 +294,7 @@ function DurasiAnomalySection({ stat, selectedKec }) {
 }
 
 // ── NIK 9999 section ───────────────────────────────────────────────────────
-function NikSection({ anomali }) {
+function NikSection({ anomali, selectedKec }) {
   const nikKK  = anomali.find(a => a.category === 'NIK Tidak Valid' && a.sev === 'crit');
   const nikAK  = anomali.find(a => a.category === 'NIK Tidak Valid' && a.sev === 'warn');
   // Tetap tampilkan tabel crosscheck meski anomali belum di-load
@@ -350,7 +350,7 @@ function NikSection({ anomali }) {
 }
 
 // ── Rekening section ───────────────────────────────────────────────────────
-function RekeningSection({ anomali }) {
+function RekeningSection({ anomali, selectedKec }) {
   const a = anomali.find(a => a.category === 'Rekening Tidak Aktif');
   // Tetap tampil meski anomali belum ada
   const n = a ? parseInt(a.title||'0') : 0;
@@ -391,7 +391,7 @@ function RekeningSection({ anomali }) {
 }
 
 // ── Tidak Tahu section ─────────────────────────────────────────────────────
-function TidakTahuSection({ anomali }) {
+function TidakTahuSection({ anomali, selectedKec }) {
   const a = anomali.find(a => a.category === 'Data Tidak Lengkap' && a.title && a.title.includes('Tidak Tahu'));
   // Parse angka dari title jika anomali ada, default 0
   const matchAK = a?.title?.match(/^(\d+)/);
@@ -519,7 +519,7 @@ export function AnomalyPage() {
         <SectionTitle icon={Fingerprint} right={<Badge variant="crit">Identitas tidak valid</Badge>}>
           Anomali NIK kode 9999
         </SectionTitle>
-        <NikSection anomali={anomali}/>
+        <NikSection anomali={anomali} selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 3. Rekening ──────────────────────────────────────────────── */}
@@ -527,7 +527,7 @@ export function AnomalyPage() {
         <SectionTitle icon={CreditCard} right={<Badge variant="warn">Inklusi keuangan</Badge>}>
           KK tanpa rekening aktif
         </SectionTitle>
-        <RekeningSection anomali={anomali}/>
+        <RekeningSection anomali={anomali} selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 4. Tidak Tahu ─────────────────────────────────────────────── */}
@@ -535,7 +535,7 @@ export function AnomalyPage() {
         <SectionTitle icon={HelpCircle} right={<Badge variant="info">Data tidak lengkap</Badge>}>
           Status pekerjaan tidak tahu
         </SectionTitle>
-        <TidakTahuSection anomali={anomali}/>
+        <TidakTahuSection anomali={anomali} selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 5. Distribusi statistik lain (pendapatan, jumlah AK) ──────── */}
