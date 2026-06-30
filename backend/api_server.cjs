@@ -159,6 +159,19 @@ async function getDB() {
   await client.connect();
   db = client.db(DB_NAME);
   console.log(`[MongoDB] Terhubung ke ${DB_NAME}`);
+
+  // Index untuk mempercepat query anomali (status + kecamatan adalah filter paling sering dipakai)
+  try {
+    const coll = db.collection('isian_se2026');
+    await coll.createIndex({ status: 1 });
+    await coll.createIndex({ status: 1, kecamatan: 1 });
+    await coll.createIndex({ kecamatan: 1 });
+    await coll.createIndex({ id: 1 });
+    console.log('[MongoDB] Index siap (status, kecamatan)');
+  } catch (e) {
+    console.warn('[MongoDB] Gagal membuat index:', e.message);
+  }
+
   return db;
 }
 
@@ -1361,17 +1374,22 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
     const match = { status: { $in: matchStatus } };
     if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
 
+    // Projection minimal — hanya field yang relevan untuk tab yang diminta
+    const baseFields = {
+      _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
+      petugas:1, status:1, fasihUrl:1, assignmentId:1,
+    };
+    const projection = tab === 'usaha'
+      ? { ...baseFields, usaha:1 }
+      : tab === 'keluarga'
+        ? { ...baseFields, anggotaKeluarga:1, jumlahAk:1, jumlahAkKK:1, luasLantai:1,
+            totalPendapatanKeluarga:1, pendapatanKeluarga:1, pengeluaranKeluarga:1,
+            pengeluaranListrik:1, statusKepemilikan:1, asetRumahTangga:1,
+            penerangan:1, sumberPenerangan:1 }
+        : { ...baseFields, usaha:1 };  // missing juga butuh usaha saja
+
     const docs = await db.collection('isian_se2026').find(match, {
-      projection: {
-        _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
-        petugas:1, status:1, usaha:1, anggotaKeluarga:1,
-        jumlahAk:1, jumlahAkKK:1, luasLantai:1,
-        totalPendapatanKeluarga:1, pendapatanKeluarga:1,
-        pengeluaranKeluarga:1, pengeluaranListrik:1,
-        statusKepemilikan:1, asetRumahTangga:1,
-        penerangan:1, sumberPenerangan:1,
-        assignmentId:1, surveyPeriodId:1, fasihUrl:1,
-      }
+      projection: projection
     }).toArray();
 
     var results = [];
