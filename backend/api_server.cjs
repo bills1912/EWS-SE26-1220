@@ -35,8 +35,7 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Hari pendataan WIB (UTC+7), sejak 15 Juni 2026 ──────────────────────
-// SE2026: semua hari terhitung hari kerja (Senin–Minggu, tanpa libur)
+// ── Hari kerja WIB (UTC+7), Senin–Sabtu, sejak 15 Juni 2026 ─────────────
 const PENDATAAN_START_STR = '2026-06-15';
 
 function todayWIB() {
@@ -160,7 +159,6 @@ async function getDB() {
   db = client.db(DB_NAME);
   console.log(`[MongoDB] Terhubung ke ${DB_NAME}`);
 
-  // Index untuk mempercepat query anomali (status + kecamatan adalah filter paling sering dipakai)
   try {
     const coll = db.collection('isian_se2026');
     await coll.createIndex({ status: 1 });
@@ -620,9 +618,10 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
     const validTypes = ['nikKK','nikAK','rekening','tidakTahu'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
 
-    const { q = '', page = 1, limit = 10 } = req.query;
+    const { q = '', page = 1, limit = 10, kec = '' } = req.query;
     const pg  = Math.max(1, parseInt(page));
     const lim = Math.min(200, Math.max(1, parseInt(limit)));
+    const fKec = kec.trim();
 
     const STATUS_DONE = ['SUBMITTED','APPROVED','REJECTED'];
 
@@ -636,6 +635,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
         status: { $in: STATUS_DONE },
         nik: { $regex: '^9999', $options: 'i' }
       };
+      if (fKec) baseMatch.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
       if (q) {
         baseMatch.$or = [
           { namaKepala: { $regex: q, $options: 'i' } },
@@ -658,8 +658,10 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
     } else if (type === 'nikAK') {
       // NIK anggota keluarga yang startsWith '9999'
       // Gunakan $unwind + $match untuk flatten array anggotaKeluarga di MongoDB
+      const matchNikAK = { status: { $in: STATUS_DONE } };
+      if (fKec) matchNikAK.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
       const agg = [
-        { $match: { status: { $in: STATUS_DONE } } },
+        { $match: matchNikAK },
         { $unwind: { path: '$anggotaKeluarga', preserveNullAndEmptyArrays: false } },
         { $match: {
             $or: [
@@ -707,8 +709,10 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
 
     } else if (type === 'rekening') {
       // KK yang semua AK-nya tidak punya rekening aktif
+      const matchRekening = { status: { $in: STATUS_DONE }, anggotaKeluarga: { $exists: true, $ne: [] } };
+      if (fKec) matchRekening.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
       const allDocs = await db.collection('isian_se2026').find(
-        { status: { $in: STATUS_DONE }, anggotaKeluarga: { $exists: true, $ne: [] } },
+        matchRekening,
         { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, sls:1,
                         petugas:1, status:1, jumlahAk:1, anggotaKeluarga:1 } }
       ).toArray();
@@ -752,8 +756,10 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       const RT_FIELDS = ['airMinum','penerangan','jenisAtap','jenisDinding','jenisLantai',
                           'statusKepemilikan','tempatBAB','buangTinja'];
 
+      const matchTT = { status: { $in: STATUS_DONE } };
+      if (fKec) matchTT.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
       const allDocs = await db.collection('isian_se2026').find(
-        { status: { $in: STATUS_DONE } },
+        matchTT,
         { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, petugas:1,
                         status:1, anggotaKeluarga:1, usaha:1,
                         airMinum:1, penerangan:1, jenisAtap:1, jenisDinding:1,
@@ -1144,10 +1150,44 @@ app.get('/api/anomali/boxplot', verifyToken, async function(req, res) {
 
 function parseNum(v) {
   if (v == null || v === '' || v === 'None' || v === 'nan') return 0;
-  if (typeof v === 'number') return v;
-  return parseFloat(String(v).replace(/[Rp\s,.]/g,'').replace('jt','000000').replace('rb','000')) || 0;
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  var s = String(v).trim()
+    .replace(/m²|m2|%/g, '')
+    .replace(/^Rp\s*/i, '')
+    .replace(/\s/g, '');
+  var jtMatch = s.match(/^([\d.]+)\s*jt$/i);
+  if (jtMatch) return parseFloat(jtMatch[1]) * 1000000;
+  var rbMatch = s.match(/^([\d.]+)\s*rb$/i);
+  if (rbMatch) return parseFloat(rbMatch[1]) * 1000;
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',') && !s.includes('.')) {
+    s = s.replace(',', '.');
+  } else if (s.includes('.')) {
+    var parts = s.split('.');
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      s = s.replace(/\./g, '');
+    }
+  }
+  return parseFloat(s) || 0;
 }
 function is9999(v) { return v === 9999 || v === '9999' || String(v).trim() === '9999'; }
+
+function kbliToKategori(kbli) {
+  if (!kbli) return '';
+  var n = parseInt(String(kbli).slice(0,2), 10);
+  if (isNaN(n)) return '';
+  var ranges = [
+    [1,3,'A'],[5,9,'B'],[10,33,'C'],[35,35,'D'],[36,39,'E'],
+    [41,43,'F'],[45,47,'G'],[49,53,'H'],[55,56,'I'],[58,63,'J'],
+    [64,66,'K'],[68,68,'L'],[69,75,'M'],[77,82,'N'],[84,84,'O'],
+    [85,85,'P'],[86,88,'Q'],[90,93,'R'],[94,96,'S'],[97,98,'T'],[99,99,'U'],
+  ];
+  for (var i=0;i<ranges.length;i++) {
+    if (n >= ranges[i][0] && n <= ranges[i][1]) return ranges[i][2];
+  }
+  return '';
+}
 
 function checkAnomaliUsaha(r) {
   const flags = [];
@@ -1186,7 +1226,7 @@ function checkAnomaliUsaha(r) {
         ket: `Pengeluaran Rp ${(totKeluar/1e6).toFixed(1)} jt > Pendapatan Rp ${(totPend/1e6).toFixed(1)} jt — pastikan R27 lebih besar dari R26` });
     }
 
-    // A3: Penyertaan Modal Korporasi — R11a=13 (Bukan Badan Usaha) tapi R29c>0
+    // A3: Penyertaan Modal Korporasi — R11a=13 tapi R29c/R29d/R33c/R33d > 0
     const isBukanBU    = badan.includes('bukan badan') || badan.includes('13.');
     const korNonPubik  = parseNum(u.modalKorNonPublik);
     const korPubDirikan= parseNum(u.modalKorPublikDidirikan);
@@ -1236,10 +1276,12 @@ function checkAnomaliUsaha(r) {
         ket: `Skala ${u.skalaUsaha} tapi tidak punya laporan/catatan keuangan (R11d=Tidak)` });
     }
 
-    // A8: Perbedaan KBLI 2 Digit — KBLI hasil pendataan vs SBR
-    if (kbliAkhir && kbliSbr && kbliAkhir !== kbliSbr) {
+    // A8: Perbedaan Kategori — konversi KBLI ke huruf kategori A-V, bandingkan
+    const katAkhir = (u.kategori || '').toUpperCase().trim();
+    const katSbr   = kbliToKategori(u.kbliSbr || '');
+    if (katAkhir && katSbr && katAkhir !== katSbr) {
       flags.push({ code:'A8', usaha: nama,
-        ket: `KBLI pendataan 2-digit: ${kbliAkhir} vs SBR: ${kbliSbr} — verifikasi R13.g` });
+        ket: `Kategori pendataan ${katAkhir} (KBLI ${u.kbli||'—'}) vs SBR ${katSbr} (KBLI ${u.kbliSbr}) — verifikasi R13.g` });
     }
   }
   return flags;
@@ -1253,8 +1295,8 @@ function checkAnomaliKeluarga(r) {
   const luasPerKap = jumlahAk > 0 ? luasLantai / jumlahAk : 0;
   const aset = r.asetRumahTangga || {};
 
-  const totalPendKlrg = parseNum(r.totalPendapatanKeluarga) || parseNum(r.pendapatanKeluarga);
-  const totalPengKlrg = parseNum(r.pengeluaranKeluarga);
+  const totalPendKlrg = parseNum(r.totalPendapatanKeluarga) || parseNum(r.pendapatanKeluarga) || parseNum(r.totalPendapatan);
+  const totalPengKlrg = parseNum(r.pengeluaranKeluarga) || parseNum(r.totalPengeluaranKeluarga);
   const pungListrik   = parseNum(r.pengeluaranListrik) || parseNum(aset.listrikSebulan);
   const statusKep     = (r.statusKepemilikan || '').toLowerCase();
   const penerangan    = (r.penerangan || r.sumberPenerangan || '').toLowerCase();
@@ -1364,234 +1406,105 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
     const tab      = req.query.tab      || 'usaha';
     const codes    = req.query.codes    ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
     const fKec     = (req.query.kec     || '').trim();
-    const fKategori= req.query.kategori ? req.query.kategori.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean) : [];
-    const fStatus  = (req.query.status  || '').trim().toUpperCase();
-    const pg       = Math.max(1, parseInt(req.query.page  || '1'));
-    const lim      = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
+    const fKategori= req.query.kategori
+      ? req.query.kategori.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean)
+      : [];
+    const fStatus = (req.query.status || '').trim().toUpperCase();
+    const pg    = Math.max(1, parseInt(req.query.page  || '1'));
+    const lim   = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
 
     const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
     const matchStatus  = fStatus && VALID_STATUS.includes(fStatus) ? [fStatus] : VALID_STATUS;
     const match = { status: { $in: matchStatus } };
-    if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+    if (fKec) match.kecamatan = { $regex: new RegExp('^'+fKec+'$','i') };
 
-    // Projection minimal — hanya field yang relevan untuk tab yang diminta
     const baseFields = {
       _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
       petugas:1, status:1, fasihUrl:1, assignmentId:1,
     };
-    const projection = tab === 'usaha'
-      ? { ...baseFields, usaha:1 }
-      : tab === 'keluarga'
-        ? { ...baseFields, anggotaKeluarga:1, jumlahAk:1, jumlahAkKK:1, luasLantai:1,
-            totalPendapatanKeluarga:1, pendapatanKeluarga:1, pengeluaranKeluarga:1,
-            pengeluaranListrik:1, statusKepemilikan:1, asetRumahTangga:1,
-            penerangan:1, sumberPenerangan:1 }
-        : { ...baseFields, usaha:1 };  // missing juga butuh usaha saja
+    const projection = tab === 'keluarga'
+      ? { ...baseFields, anggotaKeluarga:1, jumlahAk:1, jumlahAkKK:1, luasLantai:1,
+          totalPendapatanKeluarga:1, pendapatanKeluarga:1, pengeluaranKeluarga:1,
+          pengeluaranListrik:1, statusKepemilikan:1, asetRumahTangga:1,
+          penerangan:1, sumberPenerangan:1 }
+      : { ...baseFields, usaha:1 };
 
     const docs = await db.collection('isian_se2026').find(match, {
       projection: projection
     }).toArray();
 
-    var results = [];
-    for (var ri = 0; ri < docs.length; ri++) {
-      var r = docs[ri];
-      // Filter kategori KBLI (tab usaha)
+    const results = [];
+    for (const r of docs) {
+      // Filter kategori KBLI — hanya untuk tab usaha (multi select)
       if (tab === 'usaha' && fKategori.length > 0) {
-        var usahaList0 = r.usaha || [];
-        var hasKat = usahaList0.some(function(u) {
-          var kat  = (u.kategori || '').toUpperCase().trim();
-          var kbli = (u.kbli     || '').toUpperCase().trim();
-          return fKategori.some(function(k) { return kat === k || kbli.startsWith(k); });
+        const usahaList = r.usaha || [];
+        const hasKategori = usahaList.some(u => {
+          const kat  = (u.kategori || '').toUpperCase().trim();
+          const kbli = (u.kbli     || '').toUpperCase().trim();
+          return fKategori.some(k => kat === k || kbli.startsWith(k));
         });
-        if (!hasKat) continue;
+        if (!hasKategori) continue;
       }
 
-      var flags = tab === 'usaha'    ? detailCheckUsaha(r)
-               : tab === 'keluarga' ? detailCheckKeluarga(r)
-               : detailCheckMissing(r);
-
-      if (codes.length) flags = flags.filter(function(f) { return codes.includes(f.code); });
+      let flags = tab === 'usaha' ? checkAnomaliUsaha(r)
+               : tab === 'keluarga' ? checkAnomaliKeluarga(r)
+               : checkMissingValue(r);
+      if (codes.length) flags = flags.filter(f => codes.includes(f.code));
       if (!flags.length) continue;
       results.push({
         id: r.id, no: r.no, namaKepala: r.namaKepala,
         kecamatan: r.kecamatan, desa: r.desa, sls: r.sls,
-        petugas: r.petugas, status: r.status, flags: flags,
-        fasihUrl: r.fasihUrl || '',
-        assignmentId: r.assignmentId || '',
+        petugas: r.petugas, status: r.status, flags,
+        fasihUrl: r.fasihUrl || '', assignmentId: r.assignmentId || '',
       });
     }
 
-    results.sort(function(a,b) { return b.flags.length - a.flags.length; });
+    results.sort(function(a,b){ return (b.flags.length - a.flags.length); });
 
-    var summary = {};
-    for (var si = 0; si < results.length; si++)
-      for (var fi = 0; fi < results[si].flags.length; fi++) {
-        var code = results[si].flags[fi].code;
-        summary[code] = (summary[code] || 0) + 1;
-      }
+    const summary = {};
+    for (const r of results)
+      for (const f of r.flags)
+        summary[f.code] = (summary[f.code]||0) + 1;
 
-    var total = results.length;
+    const total = results.length;
     res.json({
-      total: total,
-      summary: summary,
-      totalPages: Math.ceil(total / lim),
+      total, summary,
+      definitions: tab==='usaha' ? ANOMALI_DEF_USAHA : tab==='keluarga' ? ANOMALI_DEF_KLRG : ANOMALI_DEF_MISSING,
+      totalPages: Math.ceil(total/lim),
       page: pg,
       data: results.slice((pg-1)*lim, pg*lim),
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Helper functions untuk anomali/detail ────────────────────────────────
-function pNum(v) {
-  if (v == null || v === '' || v === 'None' || v === 'nan') return 0;
-  if (typeof v === 'number') return isFinite(v) ? v : 0;
-  var s = String(v).trim()
-    .replace(/m²|m2|%/g, '')       // hapus satuan
-    .replace(/^Rp\s*/i, '')        // hapus prefix Rp
-    .replace(/\s/g, '');           // hapus spasi
-  // Format 'X.Y jt' → X.Y * 1_000_000
-  var jtMatch = s.match(/^([\d.]+)\s*jt$/i);
-  if (jtMatch) return parseFloat(jtMatch[1]) * 1000000;
-  // Format 'X.Y rb' → X.Y * 1_000
-  var rbMatch = s.match(/^([\d.]+)\s*rb$/i);
-  if (rbMatch) return parseFloat(rbMatch[1]) * 1000;
-  // Format ribuan: '6.800.000' atau '6,800,000'
-  // Jika ada titik DAN koma: 1.234,56 → 1234.56
-  if (s.includes(',') && s.includes('.')) {
-    s = s.replace(/\./g, '').replace(',', '.');
-  } else if (s.includes(',') && !s.includes('.')) {
-    // Koma sebagai desimal: '6,8' → '6.8'
-    s = s.replace(',', '.');
-  } else if (s.includes('.')) {
-    // Titik bisa pemisah ribuan (6.800.000) atau desimal (6.8)
-    var parts = s.split('.');
-    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
-      // Pemisah ribuan
-      s = s.replace(/\./g, '');
+// ── GET /api/anomali/summary — total RESPONDEN (bukan kasus) per tab ──────
+// Dipakai untuk badge angka di tab Anomali Usaha/Keluarga/Missing Value
+app.get('/api/anomali/summary', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const fKec = (req.query.kec || '').trim();
+    const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
+    const match = { status: { $in: VALID_STATUS } };
+    if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+    const docs = await db.collection('isian_se2026').find(match, {
+      projection: {
+        _id:0, id:1, usaha:1, anggotaKeluarga:1,
+        jumlahAk:1, jumlahAkKK:1, luasLantai:1,
+        totalPendapatanKeluarga:1, pendapatanKeluarga:1,
+        pengeluaranKeluarga:1, pengeluaranListrik:1,
+        statusKepemilikan:1, asetRumahTangga:1,
+        penerangan:1, sumberPenerangan:1,
+      }
+    }).toArray();
+
+    var nUsaha = 0, nKeluarga = 0, nMissing = 0;
+    for (var i = 0; i < docs.length; i++) {
+      var r = docs[i];
+      if (checkAnomaliUsaha(r).length > 0) nUsaha++;
+      if (checkAnomaliKeluarga(r).length > 0) nKeluarga++;
+      if (checkMissingValue(r).length > 0) nMissing++;
     }
-    // else: desimal biasa, biarkan
-  }
-  return parseFloat(s) || 0;
-}
-function is9k(v) { return v === 9999 || v === '9999' || String(v).trim() === '9999'; }
 
-// Konversi 2-digit awal KBLI ke huruf kategori (A-V) sesuai KBLI 2025
-function kbliToKategori(kbli) {
-  if (!kbli) return '';
-  var n = parseInt(String(kbli).slice(0,2), 10);
-  if (isNaN(n)) return '';
-  var ranges = [
-    [1,3,'A'],[5,9,'B'],[10,33,'C'],[35,35,'D'],[36,39,'E'],
-    [41,43,'F'],[45,47,'G'],[49,53,'H'],[55,56,'I'],[58,63,'J'],
-    [64,66,'K'],[68,68,'L'],[69,75,'M'],[77,82,'N'],[84,84,'O'],
-    [85,85,'P'],[86,88,'Q'],[90,93,'R'],[94,96,'S'],[97,98,'T'],[99,99,'U'],
-  ];
-  for (var i=0;i<ranges.length;i++) {
-    if (n >= ranges[i][0] && n <= ranges[i][1]) return ranges[i][2];
-  }
-  return '';
-}
-
-function detailCheckUsaha(r) {
-  var flags = [], usahaList = r.usaha || [];
-  for (var i = 0; i < usahaList.length; i++) {
-    var u = usahaList[i];
-    var nama = u.namaUsaha || '—';
-    var skala = (u.skalaUsaha || '').toUpperCase();
-    var badan = (u.badanUsaha || '').toLowerCase();
-    var internet = (u.internet || '').toLowerCase();
-    var lapKeu   = (u.lapKeuangan || '').toLowerCase();
-    var peranMBG = (u.peranMBG || u.mitraKdkmp || '').toLowerCase();
-    var kbliAkhir= (u.kbli || '').slice(0,2);
-    var kbliSbr  = (u.kbliSbr || '').slice(0,2);
-    var biayaProd  = pNum(u.biayaProduksi);
-    var totKeluar  = pNum(u.totalPengeluaranRaw) || pNum(u.totalPengeluaran);
-    var totPend    = pNum(u.nilaiPendapatanRaw) || pNum(u.nilaiPendapatan);
-    var totAset    = pNum(u.totalAset) || pNum(u.asetUsaha);
-    var tk         = parseInt(u.totalTK || '0') || 0;
-    var korPubik      = pNum(u.modalKorPublik);
-    var korNonPubik   = pNum(u.modalKorNonPublik);
-    var korPubDirikan = pNum(u.modalKorPublikDidirikan);
-    var korNonDirikan = pNum(u.modalKorNonPublikDidirikan);
-
-    // A1
-    if (totKeluar > 0 && biayaProd > 0 && biayaProd/totKeluar > 0.5)
-      flags.push({ code:'A1', usaha:nama, ket:'Biaya produksi ' + Math.round(biayaProd/totKeluar*100) + '% dari pengeluaran' });
-    // A2
-    if (totPend > 0 && totKeluar > 0 && totPend < totKeluar)
-      flags.push({ code:'A2', usaha:nama, ket:'Pengeluaran Rp ' + (totKeluar/1e6).toFixed(1) + ' jt > Pendapatan Rp ' + (totPend/1e6).toFixed(1) + ' jt' });
-    // A3 — R29c/R29d/R33c/R33d
-    var isBukanBU = badan.includes('bukan badan') || badan.includes('13.');
-    if (isBukanBU && (korPubik>0 || korNonPubik>0 || korPubDirikan>0 || korNonDirikan>0)) {
-      var det = [korPubik>0?'R29c='+korPubik+'%':'', korNonPubik>0?'R29d='+korNonPubik+'%':'',
-                 korPubDirikan>0?'R33c='+korPubDirikan+'%':'', korNonDirikan>0?'R33d='+korNonDirikan+'%':''].filter(Boolean).join(', ');
-      flags.push({ code:'A3', usaha:nama, ket:'Bukan BU (R11a=13) tapi ada penyertaan korporasi: ' + det });
-    }
-    // A4
-    var isMBG = peranMBG.includes('sppg') || peranMBG.includes('supplier') || peranMBG.includes('1.') || peranMBG.includes('2.');
-    if (isMBG && totPend > 0 && totKeluar > 0) {
-      var r4 = totPend / totKeluar;
-      if (r4 > 10 || r4 < 0.1) flags.push({ code:'A4', usaha:nama, ket:'MBG rasio ' + r4.toFixed(1) + 'x tidak wajar' });
-    }
-    // A5
-    if (totPend > 5e8 && tk === 0 && totAset === 0) flags.push({ code:'A5', usaha:nama, ket:'Pendapatan besar tapi TK=0 dan Aset=0' });
-    if (tk > 50 && totPend > 0 && totPend/tk < 500000) flags.push({ code:'A5', usaha:nama, ket:'TK ' + tk + ' orang tapi pendapatan/TK kecil' });
-    // A6
-    var isUMB = skala.includes('UMB') || skala.includes('MENENGAH') || skala.includes('BESAR');
-    if (isUMB && (internet.includes('2.') || internet === 'tidak')) flags.push({ code:'A6', usaha:nama, ket:'Skala UMB tapi tidak internet' });
-    // A7
-    if (isUMB && (lapKeu.includes('2.') || lapKeu === 'tidak')) flags.push({ code:'A7', usaha:nama, ket:'Skala UMB tapi tidak punya lapkeu' });
-    // A8 — bandingkan kategori (huruf A-V), konversi dari 2-digit KBLI ke kategori
-    var katAkhir = (u.kategori || '').toUpperCase().trim();
-    var katSbr   = kbliToKategori(u.kbliSbr || '');
-    if (katAkhir && katSbr && katAkhir !== katSbr)
-      flags.push({ code:'A8', usaha:nama, ket:'Kategori pendataan ' + katAkhir + ' (KBLI: ' + (u.kbli||'') + ') vs SBR ' + katSbr + ' (KBLI: ' + u.kbliSbr + ')' });
-  }
-  return flags;
-}
-
-function detailCheckKeluarga(r) {
-  var flags = [], anggota = r.anggotaKeluarga || [];
-  var jumlahAk   = parseInt(r.jumlahAk || r.jumlahAkKK || '0') || 0;
-  var luasLantai = pNum(r.luasLantai);
-  var luasPerKap = jumlahAk > 0 ? luasLantai / jumlahAk : 0;
-  var aset       = r.asetRumahTangga || {};
-  var totalPendK = pNum(r.totalPendapatanKeluarga) || pNum(r.pendapatanKeluarga) || pNum(r.totalPendapatan);
-  var totalPengK = pNum(r.pengeluaranKeluarga) || pNum(r.totalPengeluaranKeluarga);
-  var pungListrik= pNum(r.pengeluaranListrik) || pNum(aset.listrikSebulan);
-  var statusKep  = (r.statusKepemilikan || '').toLowerCase();
-  var penerangan = (r.penerangan || r.sumberPenerangan || '').toLowerCase();
-  var kepKep = anggota.filter(function(a){return (a.hubungan||'').toLowerCase().includes('kepala');})[0] || {};
-  var pasangan = anggota.filter(function(a){var h=(a.hubungan||'').toLowerCase();return h.includes('istri')||h.includes('suami');})[0];
-  var kawKep = (kepKep.statusKawin || '').toLowerCase();
-  if (pasangan && (kawKep.includes('cerai') || kawKep.includes('belum'))) flags.push({code:'K1', ket:'KK "' + kepKep.statusKawin + '" tapi ada ' + pasangan.hubungan});
-  var umurKep = parseInt(kepKep.umur || '99') || 99;
-  if (umurKep < 10 && statusKep.includes('milik')) flags.push({code:'K2', ket:'Umur KK ' + umurKep + ' th di rumah milik sendiri'});
-  if (jumlahAk > 0 && luasLantai > 0) {
-    if (luasPerKap < 3)   flags.push({code:'K4', ket:'Luas/kapita ' + luasPerKap.toFixed(1) + ' m² — terlalu sempit'});
-    if (luasPerKap > 200) flags.push({code:'K4', ket:'Luas/kapita ' + luasPerKap.toFixed(1) + ' m² — sangat besar'});
-  }
-  if (totalPendK > 0 && totalPengK > 0 && totalPendK < totalPengK)
-    flags.push({code:'K5', ket:'Pengeluaran Rp ' + (totalPengK/1e6).toFixed(1) + ' jt > Pendapatan Rp ' + (totalPendK/1e6).toFixed(1) + ' jt'});
-  var mewah = (aset.kulkas>0||aset.ac>0||aset.laptop>0);
-  var listrikRendah = pungListrik > 0 && pungListrik < 100000;
-  var listrikNonPLN = penerangan.includes('non-pln') || penerangan.includes('bukan listrik');
-  if (mewah && (listrikRendah || listrikNonPLN)) {
-    var det2 = [aset.kulkas>0?'kulkas':'',aset.ac>0?'AC':'',aset.laptop>0?'laptop':''].filter(Boolean).join('/');
-    flags.push({code:'K6', ket:'Punya ' + det2 + ' tapi listrik Rp ' + (pungListrik/1e3).toFixed(0) + ' rb/bln'});
-  }
-  if (jumlahAk > 10) flags.push({code:'K7', ket:'Jumlah AK ' + jumlahAk + ' orang'});
-  return flags;
-}
-
-function detailCheckMissing(r) {
-  var flags = [], usahaList = r.usaha || [];
-  for (var i = 0; i < usahaList.length; i++) {
-    var u = usahaList[i], nama = u.namaUsaha || '—';
-    if (is9k(u.nilaiPendapatanRaw) || is9k(u.pendapatanLain)) flags.push({code:'M1', usaha:nama, ket:'Nilai pendapatan = 9999'});
-    var fk = [{k:'gaji',l:'gaji'},{k:'biayaProduksi',l:'biaya produksi'},{k:'operasional',l:'operasional'}];
-    for (var j=0;j<fk.length;j++){if(is9k(u[fk[j].k])){flags.push({code:'M2',usaha:nama,ket:'Missing '+fk[j].l+' = 9999'});break;}}
-    if (is9k(u.asetTanah)||is9k(u.asetLain)||is9k(u.totalAset)) flags.push({code:'M4',usaha:nama,ket:'Nilai aset = 9999'});
-  }
-  return flags;
-}
+    res.json({ usaha: nUsaha, keluarga: nKeluarga, missing: nMissing });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
