@@ -91,7 +91,7 @@ const STATUS_COLOR = {
 };
 const MONO_KEYS = new Set(['nik', 'nikAK', 'noKK', 'id', 'no']);
 
-export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
+export function CrosscheckTable({ type, accentColor = '#f43f5e', kecFilter = 'all' }) {
   const [rows,    setRows]    = useState([]);
   const [total,   setTotal]   = useState(0);
   const [pages,   setPages]   = useState(1);
@@ -108,7 +108,11 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetchCrosscheck(type, { page: pg, limit: PAGE_SIZE, ...(q ? { q } : {}) });
+      const r = await fetchCrosscheck(type, {
+        page: pg, limit: PAGE_SIZE,
+        ...(q ? { q } : {}),
+        ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
+      });
       setRows(r.data || []);
       setTotal(r.total || 0);
       setPages(r.totalPages || 1);
@@ -122,10 +126,10 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
     } finally {
       setLoading(false);
     }
-  }, [type]);
+  }, [type, kecFilter]);
 
   // Load awal
-  useEffect(() => { load(1, ''); }, [type]);
+  useEffect(() => { load(1, search); }, [type, kecFilter]);
 
   // Search dengan debounce 300ms
   const handleSearch = (val) => {
@@ -139,7 +143,11 @@ export function CrosscheckTable({ type, accentColor = '#f43f5e' }) {
   // Export: ambil semua data (limit besar)
   const handleExport = async () => {
     try {
-      const r = await fetchCrosscheck(type, { page: 1, limit: 500, ...(search ? { q: search } : {}) });
+      const r = await fetchCrosscheck(type, {
+        page: 1, limit: 500,
+        ...(search ? { q: search } : {}),
+        ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
+      });
       const filename = `crosscheck_${type}_${new Date().toISOString().slice(0,10)}.csv`;
       exportCSV(r.data || [], filename, cols);
     } catch (e) { alert('Gagal export: ' + e.message); }

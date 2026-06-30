@@ -1,5 +1,5 @@
 // src/pages/AnomalyPage.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ShieldAlert, Users, MapPin, BarChart2, AlertTriangle,
@@ -219,19 +219,53 @@ function StatRow({ data }) {
 // ── Anomali Durasi — section khusus dengan breakdown ──────────────────────
 function DurasiAnomalySection({ stat, selectedKec }) {
   const od = stat?.outlierDurasi;
-  if (!od) return null;
+  const [liveData, setLiveData] = useState(null);
+  const [loadingBox, setLoadingBox] = useState(false);
+
+  // Fetch boxplot LANGSUNG dari backend dengan filter kecamatan —
+  // tidak bergantung pada `stat` yang statis dan tidak mendukung filter
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBox(true);
+    const params = new URLSearchParams(
+      selectedKec && selectedKec !== 'all' ? { kec: selectedKec } : {}
+    );
+    const BASE = (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const token = localStorage.getItem('ews_token');
+    fetch(`${BASE}/api/anomali/boxplot?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(result => { if (!cancelled) { setLiveData(result); setLoadingBox(false); } })
+      .catch(() => { if (!cancelled) setLoadingBox(false); });
+    return () => { cancelled = true; };
+  }, [selectedKec]);
+
+  if (!od && !liveData) return null;
 
   const isFiltered = selectedKec !== 'all';
 
-  // Hitung dari data anomali
-  const anomaliAll = stat?.anomali || [];
-  const dur0    = anomaliAll.find(a => a.category === 'Durasi Anomali' && a.sev === 'crit' && a.title?.includes('0 menit'));
-  const dur5    = anomaliAll.find(a => a.category === 'Durasi Anomali' && a.sev === 'warn' && a.title?.includes('1–5'));
+  // Pakai data live dari backend (sudah terfilter kecamatan) jika tersedia
+  const stats   = liveData?.stats || null;
+  const points  = liveData?.points || [];
+  const odLive  = stats ? {
+    q0: stats.min, q1: stats.q1, median: stats.median, q3: stats.q3, q4: stats.max,
+    mean: stats.mean, iqr: stats.iqr,
+    fenceLo: stats.fenceLo, fenceHi: stats.fenceHi,
+    anomalyThresholdLo: stats.fenceLo,
+    anomalyThresholdHi: stats.fenceHi,
+    label: 'Durasi pengisian', unit: 'menit',
+    outliers: points
+      .filter(p => p.anomaly)
+      .map(p => ({
+        id: p.id, value: p.nilai, nama: p.namaKepala,
+        kec: p.kecamatan, desa: p.desa, pcl: p.petugas, status: p.status,
+      })),
+  } : od;
 
-  // Ekstrak angka dari title
-  const n0 = dur0 ? parseInt(dur0.title) : 0;
-  const n5 = dur5 ? parseInt(dur5.title) : 0;
-  const nTotal = od.outliers.length;
+  const n0 = points.filter(p => p.anomaly === 'crit').length || 0;
+  const n5 = points.filter(p => p.anomaly === 'warn').length || 0;
+  const nTotal = odLive?.outliers?.length || 0;
 
   const durSummary = [
     { label: '0 menit', sublabel:'Wawancara tidak terjadi', n: n0, color:'#f43f5e', sev:'CRIT' },
@@ -245,8 +279,12 @@ function DurasiAnomalySection({ stat, selectedKec }) {
         <Timer size={13} color="#f43f5e" strokeWidth={2}/>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--text1)' }}>
           Distribusi durasi pengisian kuesioner (menit)
+          {isFiltered && <span style={{ color:'var(--text4)', fontWeight:500 }}> — {selectedKec}</span>}
         </span>
-        <Badge variant="crit" style={{ marginLeft:'auto' }}>{n0+n5} anomali waktu</Badge>
+        {loadingBox
+          ? <span style={{ marginLeft:'auto', fontSize:10, color:'var(--text4)' }}>Memuat…</span>
+          : <Badge variant="crit" style={{ marginLeft:'auto' }}>{n0+n5} anomali waktu</Badge>
+        }
       </div>
 
       {/* 3 kartu ringkasan durasi */}
@@ -272,14 +310,14 @@ function DurasiAnomalySection({ stat, selectedKec }) {
         <strong style={{ color:'#f87171' }}>Threshold anomali:</strong>{' '}
         <span style={{ color:'#f43f5e' }}>0 menit (CRIT)</span> = waktu mulai = waktu selesai, wawancara tidak terjadi.{' '}
         <span style={{ color:'#f59e0b' }}>1–5 menit (WARN)</span> = terlalu singkat untuk kuesioner SE2026 (estimasi normal ≥10 menit).{' '}
-        Batas atas statistik: ≥{od.anomalyThresholdHi} menit.
+        Batas atas statistik: ≥{odLive?.anomalyThresholdHi ?? odLive?.fenceHi ?? '—'} menit.
       </div>
 
-      <StatRow data={od}/>
+      <StatRow data={odLive}/>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, fontWeight:600 }}>Box plot</div>
-        {od.q4 > 0
-          ? <BoxPlot data={od}/>
+        {odLive?.q4 > 0
+          ? <BoxPlot data={odLive}/>
           : <div style={{ padding:'16px', textAlign:'center', color:'var(--text4)', fontSize:11 }}>Data belum cukup untuk menampilkan boxplot</div>
         }
       </div>
@@ -287,10 +325,29 @@ function DurasiAnomalySection({ stat, selectedKec }) {
         <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, fontWeight:600 }}>
           Distribusi frekuensi <span style={{ color:'#f87171' }}>(merah = zona anomali ≤5 menit)</span>
         </div>
-        <DistChart data={od.dist}/>
+        <DistChart data={liveData ? buildDistFromPoints(points) : od?.dist}/>
       </div>
     </div>
   );
+}
+
+// Bangun histogram distribusi dari raw points (untuk DistChart)
+function buildDistFromPoints(points) {
+  if (!points || !points.length) return [];
+  const buckets = [
+    { range:'0', min:0, max:0 },
+    { range:'1–2', min:1, max:2 },
+    { range:'3–4', min:3, max:4 },
+    { range:'5–6', min:5, max:6 },
+    { range:'7–9', min:7, max:9 },
+    { range:'10–12', min:10, max:12 },
+    { range:'13+', min:13, max:Infinity },
+  ];
+  return buckets.map(b => ({
+    range: b.range,
+    n: points.filter(p => p.nilai >= b.min && p.nilai <= b.max).length,
+    anomaly: b.max <= 5,
+  }));
 }
 
 // ── NIK 9999 section ───────────────────────────────────────────────────────
