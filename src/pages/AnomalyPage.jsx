@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import {
   ShieldAlert, Users, MapPin, BarChart2, AlertTriangle,
   Clock, CreditCard, HelpCircle, Fingerprint, Timer,
+  ArrowRight, ArrowUpRight,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -87,7 +88,53 @@ function OutlierModal({ outlier, metricLabel, unit, onClose }) {
             )}
           </div>
         </div>
-        <div style={{ padding:'12px 22px 18px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end' }}>
+        <div style={{ padding:'12px 22px 18px', borderTop:'1px solid var(--border)', display:'flex', gap:8, justifyContent:'flex-end' }}>
+          {/* Tombol Fasih — buka di tab baru */}
+          {outlier.fasihUrl && (
+            <a
+              href={outlier.fasihUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display:'inline-flex', alignItems:'center', gap:5,
+                padding:'7px 14px', borderRadius:20, fontSize:11, fontWeight:700,
+                cursor:'pointer', whiteSpace:'nowrap', textDecoration:'none',
+                background:'linear-gradient(135deg,#1d6fa4,#155d8a)',
+                color:'#fff', border:'none',
+                boxShadow:'0 2px 8px rgba(29,111,164,0.35)',
+                transition:'all .18s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 14px rgba(29,111,164,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 2px 8px rgba(29,111,164,0.35)'; }}
+            >
+              Fasih <ArrowUpRight size={11}/>
+            </a>
+          )}
+          {/* Tombol Lihat Responden — navigate ke tab Responden EWS */}
+          {outlier.id && (
+            <button
+              onClick={() => {
+                onClose();
+                sessionStorage.setItem('ews_goto_responden', outlier.id);
+                window.dispatchEvent(new CustomEvent('ews:goto', {
+                  detail: { tab: 'Responden', respondentId: outlier.id }
+                }));
+              }}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:5,
+                padding:'7px 14px', borderRadius:20, fontSize:11, fontWeight:700,
+                cursor:'pointer', whiteSpace:'nowrap',
+                background:'linear-gradient(135deg,#f97316,#e2621b)',
+                color:'#fff', border:'none',
+                boxShadow:'0 2px 8px rgba(249,115,22,0.35)',
+                transition:'all .18s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 14px rgba(249,115,22,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 2px 8px rgba(249,115,22,0.35)'; }}
+            >
+              Lihat <ArrowRight size={11}/>
+            </button>
+          )}
           <button onClick={onClose} style={{ padding:'7px 16px', borderRadius:8, fontSize:12, fontWeight:500,
             cursor:'pointer', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)' }}>
             Tutup
@@ -272,6 +319,7 @@ function DurasiAnomalySection({ stat, selectedKec }) {
       .map(p => ({
         id: p.id, value: p.nilai, nama: p.namaKepala,
         kec: p.kecamatan, desa: p.desa, pcl: p.petugas, status: p.status,
+        fasihUrl: p.fasihUrl || '',
       })),
   } : od;
 

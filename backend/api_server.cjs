@@ -1110,7 +1110,7 @@ app.get('/api/anomali/boxplot', verifyToken, async function(req, res) {
     var docs = await db.collection('isian_se2026')
       .find(match, { projection: {
         _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1,
-        petugas:1, status:1, durMenit:1
+        petugas:1, status:1, durMenit:1, fasihUrl:1,
       }}).toArray();
 
     var sorted = docs.map(function(d){ return d.durMenit; })
@@ -1130,6 +1130,7 @@ app.get('/api/anomali/boxplot', verifyToken, async function(req, res) {
         kecamatan: r.kecamatan, desa: r.desa,
         petugas: r.petugas, status: r.status,
         nilai: r.durMenit, anomaly: anomaly,
+        fasihUrl: r.fasihUrl || '',
       };
     });
 
