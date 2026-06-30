@@ -635,11 +635,28 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [filterStatus,   setFilterStatus] = useState('all');
   const [sortCol,        setSortCol]      = useState('');
   const [sortDir,        setSortDir]      = useState('asc');
+  const [tabSummary,     setTabSummary]   = useState({ usaha:0, keluarga:0, missing:0 });
 
   const options = OPTIONS_MAP[tab] || [];
 
   // Reset page & codes saat ganti tab
   const switchTab = (t) => { setTab(t); setCodes([]); setFilterKategori([]); setPage(1); setData(null); setSearch(''); setFilterStatus('all'); setSortCol(''); setSortDir('asc'); };
+
+  // Fetch ringkasan jumlah RESPONDEN per tab — pakai filter yang SAMA dengan tabel
+  // agar badge dan total header selalu konsisten
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({
+      ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
+      ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+      ...(filterKategori.length ? { kategori: filterKategori.join(',') } : {}),
+      ...(codes.length ? { codes: codes.join(',') } : {}),
+    });
+    apiFetch(`/api/anomali/summary?${params}`)
+      .then(result => { if (!cancelled) setTabSummary(result); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [kecFilter, filterStatus, filterKategori.join(','), codes.join(',')]);
 
   // Fetch dengan satu useEffect terpadu — tidak pakai useCallback untuk hindari loop
   useEffect(() => {
@@ -770,8 +787,8 @@ export function AnomalyDetailTable({ kecFilter }) {
         }}>
           {Object.entries(TAB_LABELS).map(([key, label]) => {
             const active = tab === key;
-            const prefix = key === 'usaha' ? 'A' : key === 'keluarga' ? 'K' : 'M';
-            const n = Object.entries(summary).filter(([k]) => k.startsWith(prefix)).reduce((a,[,v])=>a+v,0);
+            // n = jumlah RESPONDEN unik di tab ini (bukan jumlah kasus flag)
+            const n = tabSummary[key] || 0;
             return (
               <button
                 key={key}

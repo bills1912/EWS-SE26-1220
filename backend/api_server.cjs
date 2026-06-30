@@ -1401,6 +1401,74 @@ const ANOMALI_DEF_KLRG   = { K1:'Status Cerai/Belum Kawin', K2:'KK < 10 Th di Ru
   K7:'Jumlah AK Ekstrem' };
 const ANOMALI_DEF_MISSING = { M1:'Missing Pendapatan', M2:'Missing Pengeluaran', M4:'Missing Nilai Aset Tetap' };
 
+// ══════════════════════════════════════════════════════════════════════════
+// Cache in-memory untuk hasil anomali — hindari hitung ulang setiap request
+// TTL 3 menit: cukup fresh untuk monitoring real-time, tapi hindari beban
+// hitung ulang saat banyak user buka halaman Anomali bersamaan
+// ══════════════════════════════════════════════════════════════════════════
+const ANOMALI_CACHE_TTL_MS = 3 * 60 * 1000; // 3 menit
+const anomaliCache = new Map(); // key: `${tab}|${kec}` -> { data, computedAt }
+
+function getCacheKey(tab, kec) {
+  return `${tab}|${(kec || '').toLowerCase()}`;
+}
+
+async function computeAnomaliForTab(tab, fKec) {
+  const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
+  const match = { status: { $in: VALID_STATUS } };
+  if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+  const baseFields = {
+    _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
+    petugas:1, status:1, fasihUrl:1, assignmentId:1,
+  };
+  const projection = tab === 'keluarga'
+    ? { ...baseFields, anggotaKeluarga:1, jumlahAk:1, jumlahAkKK:1, luasLantai:1,
+        totalPendapatanKeluarga:1, pendapatanKeluarga:1, pengeluaranKeluarga:1,
+        pengeluaranListrik:1, statusKepemilikan:1, asetRumahTangga:1,
+        penerangan:1, sumberPenerangan:1 }
+    : { ...baseFields, usaha:1 };
+
+  const docs = await db.collection('isian_se2026').find(match, { projection }).toArray();
+
+  const results = [];
+  for (const r of docs) {
+    const flags = tab === 'usaha' ? checkAnomaliUsaha(r)
+               : tab === 'keluarga' ? checkAnomaliKeluarga(r)
+               : checkMissingValue(r);
+    if (!flags.length) continue;
+    results.push({
+      id: r.id, no: r.no, namaKepala: r.namaKepala,
+      kecamatan: r.kecamatan, desa: r.desa, sls: r.sls,
+      petugas: r.petugas, status: r.status, flags,
+      fasihUrl: r.fasihUrl || '', assignmentId: r.assignmentId || '',
+      // simpan kategori/kbli usaha untuk filter kategori tanpa re-scan
+      _usahaKatKbli: tab === 'usaha'
+        ? (r.usaha || []).map(u => ({ kategori: (u.kategori||'').toUpperCase(), kbli: (u.kbli||'').toUpperCase() }))
+        : undefined,
+    });
+  }
+  return results;
+}
+
+async function getCachedAnomali(tab, fKec) {
+  const key = getCacheKey(tab, fKec);
+  const cached = anomaliCache.get(key);
+  const now = Date.now();
+  if (cached && (now - cached.computedAt) < ANOMALI_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const data = await computeAnomaliForTab(tab, fKec);
+  anomaliCache.set(key, { data, computedAt: now });
+  return data;
+}
+
+// Bersihkan cache setiap upload baru via endpoint ini (opsional, panggil manual jika perlu)
+app.post('/api/anomali/cache/clear', verifyToken, requireFullAccess, async function(req, res) {
+  anomaliCache.clear();
+  res.json({ ok: true, message: 'Cache anomali dibersihkan' });
+});
+
 app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(req, res) {
   try {
     const tab      = req.query.tab      || 'usaha';
@@ -1413,53 +1481,32 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
     const pg    = Math.max(1, parseInt(req.query.page  || '1'));
     const lim   = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
 
-    const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
-    const matchStatus  = fStatus && VALID_STATUS.includes(fStatus) ? [fStatus] : VALID_STATUS;
-    const match = { status: { $in: matchStatus } };
-    if (fKec) match.kecamatan = { $regex: new RegExp('^'+fKec+'$','i') };
+    // Ambil dari cache (atau hitung jika cache expired/kosong)
+    // Catatan: cache tidak terpisah per status karena status difilter di-memory
+    // dari hasil cache (lebih murah daripada query ulang ke MongoDB)
+    let results = await getCachedAnomali(tab, fKec);
 
-    const baseFields = {
-      _id:0, id:1, no:1, namaKepala:1, kecamatan:1, desa:1, sls:1,
-      petugas:1, status:1, fasihUrl:1, assignmentId:1,
-    };
-    const projection = tab === 'keluarga'
-      ? { ...baseFields, anggotaKeluarga:1, jumlahAk:1, jumlahAkKK:1, luasLantai:1,
-          totalPendapatanKeluarga:1, pendapatanKeluarga:1, pengeluaranKeluarga:1,
-          pengeluaranListrik:1, statusKepemilikan:1, asetRumahTangga:1,
-          penerangan:1, sumberPenerangan:1 }
-      : { ...baseFields, usaha:1 };
+    // Filter status (in-memory, dari hasil cache)
+    if (fStatus && ['SUBMITTED','APPROVED','REJECTED'].includes(fStatus)) {
+      results = results.filter(r => r.status === fStatus);
+    }
 
-    const docs = await db.collection('isian_se2026').find(match, {
-      projection: projection
-    }).toArray();
-
-    const results = [];
-    for (const r of docs) {
-      // Filter kategori KBLI — hanya untuk tab usaha (multi select)
-      if (tab === 'usaha' && fKategori.length > 0) {
-        const usahaList = r.usaha || [];
-        const hasKategori = usahaList.some(u => {
-          const kat  = (u.kategori || '').toUpperCase().trim();
-          const kbli = (u.kbli     || '').toUpperCase().trim();
-          return fKategori.some(k => kat === k || kbli.startsWith(k));
-        });
-        if (!hasKategori) continue;
-      }
-
-      let flags = tab === 'usaha' ? checkAnomaliUsaha(r)
-               : tab === 'keluarga' ? checkAnomaliKeluarga(r)
-               : checkMissingValue(r);
-      if (codes.length) flags = flags.filter(f => codes.includes(f.code));
-      if (!flags.length) continue;
-      results.push({
-        id: r.id, no: r.no, namaKepala: r.namaKepala,
-        kecamatan: r.kecamatan, desa: r.desa, sls: r.sls,
-        petugas: r.petugas, status: r.status, flags,
-        fasihUrl: r.fasihUrl || '', assignmentId: r.assignmentId || '',
+    // Filter kategori KBLI (in-memory)
+    if (tab === 'usaha' && fKategori.length > 0) {
+      results = results.filter(r => {
+        const usahaKat = r._usahaKatKbli || [];
+        return usahaKat.some(u => fKategori.some(k => u.kategori === k || u.kbli.startsWith(k)));
       });
     }
 
-    results.sort(function(a,b){ return (b.flags.length - a.flags.length); });
+    // Filter codes (in-memory)
+    if (codes.length) {
+      results = results
+        .map(r => ({ ...r, flags: r.flags.filter(f => codes.includes(f.code)) }))
+        .filter(r => r.flags.length > 0);
+    }
+
+    results = [...results].sort((a,b) => b.flags.length - a.flags.length);
 
     const summary = {};
     for (const r of results)
@@ -1467,12 +1514,15 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         summary[f.code] = (summary[f.code]||0) + 1;
 
     const total = results.length;
+    const pageData = results.slice((pg-1)*lim, pg*lim)
+      .map(({ _usahaKatKbli, ...rest }) => rest); // buang field internal
+
     res.json({
       total, summary,
       definitions: tab==='usaha' ? ANOMALI_DEF_USAHA : tab==='keluarga' ? ANOMALI_DEF_KLRG : ANOMALI_DEF_MISSING,
       totalPages: Math.ceil(total/lim),
       page: pg,
-      data: results.slice((pg-1)*lim, pg*lim),
+      data: pageData,
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -1481,30 +1531,37 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
 // Dipakai untuk badge angka di tab Anomali Usaha/Keluarga/Missing Value
 app.get('/api/anomali/summary', verifyToken, requireFullAccess, async function(req, res) {
   try {
-    const fKec = (req.query.kec || '').trim();
-    const VALID_STATUS = ['SUBMITTED','APPROVED','REJECTED'];
-    const match = { status: { $in: VALID_STATUS } };
-    if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+    const fKec      = (req.query.kec      || '').trim();
+    const fStatus   = (req.query.status   || '').trim().toUpperCase();
+    const fKategori = req.query.kategori
+      ? req.query.kategori.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean) : [];
+    const codes     = req.query.codes
+      ? req.query.codes.split(',').map(s=>s.trim()).filter(Boolean) : [];
 
-    const docs = await db.collection('isian_se2026').find(match, {
-      projection: {
-        _id:0, id:1, usaha:1, anggotaKeluarga:1,
-        jumlahAk:1, jumlahAkKK:1, luasLantai:1,
-        totalPendapatanKeluarga:1, pendapatanKeluarga:1,
-        pengeluaranKeluarga:1, pengeluaranListrik:1,
-        statusKepemilikan:1, asetRumahTangga:1,
-        penerangan:1, sumberPenerangan:1,
-      }
-    }).toArray();
+    // Ambil data dari cache untuk ketiga tab sekaligus
+    const [usahaRaw, keluargaRaw, missingRaw] = await Promise.all([
+      getCachedAnomali('usaha',    fKec),
+      getCachedAnomali('keluarga', fKec),
+      getCachedAnomali('missing',  fKec),
+    ]);
 
-    var nUsaha = 0, nKeluarga = 0, nMissing = 0;
-    for (var i = 0; i < docs.length; i++) {
-      var r = docs[i];
-      if (checkAnomaliUsaha(r).length > 0) nUsaha++;
-      if (checkAnomaliKeluarga(r).length > 0) nKeluarga++;
-      if (checkMissingValue(r).length > 0) nMissing++;
+    // Fungsi filter in-memory — sama persis dengan logika di /api/anomali/detail
+    function applyFilters(results, tab) {
+      let r = results;
+      if (fStatus && ['SUBMITTED','APPROVED','REJECTED'].includes(fStatus))
+        r = r.filter(x => x.status === fStatus);
+      if (tab === 'usaha' && fKategori.length > 0)
+        r = r.filter(x => (x._usahaKatKbli||[]).some(u => fKategori.some(k => u.kategori===k || u.kbli.startsWith(k))));
+      if (codes.length)
+        r = r.map(x => ({ ...x, flags: x.flags.filter(f => codes.includes(f.code)) }))
+             .filter(x => x.flags.length > 0);
+      return r;
     }
 
-    res.json({ usaha: nUsaha, keluarga: nKeluarga, missing: nMissing });
+    res.json({
+      usaha:    applyFilters(usahaRaw,    'usaha').length,
+      keluarga: applyFilters(keluargaRaw, 'keluarga').length,
+      missing:  applyFilters(missingRaw,  'missing').length,
+    });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
