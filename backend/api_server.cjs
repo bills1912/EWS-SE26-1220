@@ -35,7 +35,8 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Hari kerja WIB (UTC+7), Senin–Sabtu, sejak 15 Juni 2026 ─────────────
+// ── Hari pendataan WIB (UTC+7), sejak 15 Juni 2026 ──────────────────────
+// SE2026: semua hari terhitung hari kerja (Senin–Minggu, tanpa libur)
 const PENDATAAN_START_STR = '2026-06-15';
 
 function todayWIB() {
@@ -45,11 +46,11 @@ function todayWIB() {
 
 function countWorkingDays() {
   const endStr  = todayWIB();
-  let count     = 0;
   let cur       = new Date(PENDATAAN_START_STR + 'T12:00:00Z');
   const endDate = new Date(endStr + 'T12:00:00Z');
+  let count     = 0;
   while (cur <= endDate) {
-    if (cur.getUTCDay() !== 0) count++;
+    count++;
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return Math.max(1, count);
