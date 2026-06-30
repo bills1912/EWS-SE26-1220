@@ -635,28 +635,27 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [filterStatus,   setFilterStatus] = useState('all');
   const [sortCol,        setSortCol]      = useState('');
   const [sortDir,        setSortDir]      = useState('asc');
-  const [tabSummary,     setTabSummary]   = useState({ usaha:0, keluarga:0, missing:0 });
+  const [tabSummary,     setTabSummary]   = useState({ usaha:null, keluarga:null, missing:null });
 
   const options = OPTIONS_MAP[tab] || [];
 
   // Reset page & codes saat ganti tab
   const switchTab = (t) => { setTab(t); setCodes([]); setFilterKategori([]); setPage(1); setData(null); setSearch(''); setFilterStatus('all'); setSortCol(''); setSortDir('asc'); };
 
-  // Fetch ringkasan jumlah RESPONDEN per tab — pakai filter yang SAMA dengan tabel
-  // agar badge dan total header selalu konsisten
+  // Fetch ringkasan jumlah RESPONDEN per tab untuk BADGE di capsule tab
+  // Hanya filter kec + status (bukan codes/kategori) agar badge selalu tampil
+  // dan memberi gambaran keseluruhan anomali di tab tersebut
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({
       ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
       ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
-      ...(filterKategori.length ? { kategori: filterKategori.join(',') } : {}),
-      ...(codes.length ? { codes: codes.join(',') } : {}),
     });
     apiFetch(`/api/anomali/summary?${params}`)
       .then(result => { if (!cancelled) setTabSummary(result); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [kecFilter, filterStatus, filterKategori.join(','), codes.join(',')]);
+  }, [kecFilter, filterStatus]);
 
   // Fetch dengan satu useEffect terpadu — tidak pakai useCallback untuk hindari loop
   useEffect(() => {
@@ -787,8 +786,8 @@ export function AnomalyDetailTable({ kecFilter }) {
         }}>
           {Object.entries(TAB_LABELS).map(([key, label]) => {
             const active = tab === key;
-            // n = jumlah RESPONDEN unik di tab ini (bukan jumlah kasus flag)
-            const n = tabSummary[key] || 0;
+            const n = tabSummary[key];
+            const isLoading = n === undefined || n === null;
             return (
               <button
                 key={key}
@@ -817,14 +816,15 @@ export function AnomalyDetailTable({ kecFilter }) {
                 onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text4)'; }}
               >
                 {label}
-                {n > 0 && (
-                  <span style={{
-                    padding:'1px 6px', borderRadius:10, fontSize:9, fontWeight:700,
-                    background: active ? 'rgba(255,255,255,0.25)' : 'rgba(249,115,22,0.12)',
-                    color: active ? '#fff' : '#f97316',
-                    transition:'all .18s',
-                  }}>{n}</span>
-                )}
+                <span style={{
+                  padding:'1px 6px', borderRadius:10, fontSize:9, fontWeight:700,
+                  background: active ? 'rgba(255,255,255,0.25)' : 'rgba(249,115,22,0.12)',
+                  color: active ? '#fff' : '#f97316',
+                  transition:'all .18s',
+                  minWidth:20, textAlign:'center',
+                }}>
+                  {isLoading ? '…' : (n ?? 0).toLocaleString('id')}
+                </span>
               </button>
             );
           })}
