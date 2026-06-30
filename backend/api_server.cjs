@@ -664,10 +664,15 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
         { $match: matchNikAK },
         { $unwind: { path: '$anggotaKeluarga', preserveNullAndEmptyArrays: false } },
         { $match: {
-            $or: [
-              { 'anggotaKeluarga.nik': /^9999/ },
-              { 'anggotaKeluarga.nik': '9999' },
-              { 'anggotaKeluarga.nik': { $regex: '^9{4}' } },
+            $and: [
+              { $or: [
+                  { 'anggotaKeluarga.nik': /^9999/ },
+                  { 'anggotaKeluarga.nik': '9999' },
+                  { 'anggotaKeluarga.nik': { $regex: '^9{4}' } },
+                ]
+              },
+              // Exclude Kepala Keluarga — sudah ditangani oleh endpoint nikKK
+              { 'anggotaKeluarga.hubungan': { $not: /kepala keluarga/i } },
             ]
           }
         },
