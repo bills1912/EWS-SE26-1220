@@ -17,6 +17,18 @@ import { AnomalyDetailTable } from '../components/AnomalyDetailTable.jsx';
 
 const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
 
+// ── Loading spinner kecil untuk indikasi filter sedang berjalan ──────────
+function MiniSpinner({ size = 12, color = 'var(--orange3)' }) {
+  return (
+    <div style={{
+      width:size, height:size, borderRadius:'50%',
+      border:`2px solid ${color}30`, borderTopColor:color,
+      animation:'spin .7s linear infinite', flexShrink:0,
+    }}/>
+  );
+}
+
+
 function Skeleton({ h = 80 }) {
   return (
     <div style={{
@@ -282,7 +294,10 @@ function DurasiAnomalySection({ stat, selectedKec }) {
           {isFiltered && <span style={{ color:'var(--text4)', fontWeight:500 }}> — {selectedKec}</span>}
         </span>
         {loadingBox
-          ? <span style={{ marginLeft:'auto', fontSize:10, color:'var(--text4)' }}>Memuat…</span>
+          ? <span style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6,
+              fontSize:10, color:'var(--text4)' }}>
+              <MiniSpinner color="#f43f5e"/> Memuat…
+            </span>
           : <Badge variant="crit" style={{ marginLeft:'auto' }}>{n0+n5} anomali waktu</Badge>
         }
       </div>
@@ -350,11 +365,42 @@ function buildDistFromPoints(points) {
   }));
 }
 
+// Hook kecil untuk ambil total count dari endpoint crosscheck (sumber of truth,
+// selalu sinkron dengan filter kecamatan — tidak bergantung pada stat.anomali)
+function useCrosscheckCount(type, kecFilter) {
+  const [count, setCount]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const BASE = (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const token = localStorage.getItem('ews_token');
+    const params = new URLSearchParams({
+      page: 1, limit: 1,
+      ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
+    });
+    fetch(`${BASE}/api/crosscheck/${type}?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) { setCount(d.total ?? 0); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [type, kecFilter]);
+  return { count, loading };
+}
+
 // ── NIK 9999 section ───────────────────────────────────────────────────────
-function NikSection({ anomali, selectedKec }) {
-  const nikKK  = anomali.find(a => a.category === 'NIK Tidak Valid' && a.sev === 'crit');
-  const nikAK  = anomali.find(a => a.category === 'NIK Tidak Valid' && a.sev === 'warn');
-  // Tetap tampilkan tabel crosscheck meski anomali belum di-load
+function NikSection({ selectedKec }) {
+  const nikKK = useCrosscheckCount('nikKK', selectedKec);
+  const nikAK = useCrosscheckCount('nikAK', selectedKec);
+
+  const cards = [
+    { type:'crit', label:'Kepala Keluarga', n:nikKK.count, loading:nikKK.loading,
+      title:'kepala keluarga dengan NIK kode 9999',
+      detail:'NIK diisi 9999 — tidak valid untuk integrasi DTSEN. Harus dikonfirmasi ulang dengan responden.' },
+    { type:'warn', label:'Anggota Keluarga', n:nikAK.count, loading:nikAK.loading,
+      title:'anggota keluarga dengan NIK kode 9999',
+      detail:'NIK anggota keluarga diisi 9999 — tidak bisa dicocokkan ke data DTSEN/Dukcapil. Perlu konfirmasi KTP/KK fisik ke responden.' },
+  ];
 
   return (
     <div style={{ background:'var(--bg3)', border:'1px solid rgba(244,63,94,0.2)', borderRadius:12, padding:'16px 18px' }}>
@@ -364,25 +410,18 @@ function NikSection({ anomali, selectedKec }) {
         <Badge variant="crit" style={{ marginLeft:'auto' }}>Perlu konfirmasi KTP</Badge>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-        {[nikKK, nikAK].filter(Boolean).map(a => (
-          <div key={a.id} style={{ background:'var(--bg2)', border:`1px solid ${a.sev==='crit'?'rgba(244,63,94,0.25)':'rgba(245,158,11,0.2)'}`, borderRadius:10, padding:'12px 14px' }}>
+        {cards.map(a => (
+          <div key={a.label} style={{ background:'var(--bg2)', border:`1px solid ${a.type==='crit'?'rgba(244,63,94,0.25)':'rgba(245,158,11,0.2)'}`, borderRadius:10, padding:'12px 14px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-              <PulseDot color={a.sev==='crit'?'#f43f5e':'#f59e0b'} size={7}/>
-              <Badge variant={a.sev==='crit'?'crit':'warn'} style={{ fontSize:9 }}>{a.sev==='crit'?'Kepala Keluarga':'Anggota Keluarga'}</Badge>
+              <PulseDot color={a.type==='crit'?'#f43f5e':'#f59e0b'} size={7}/>
+              <Badge variant={a.type==='crit'?'crit':'warn'} style={{ fontSize:9 }}>{a.label}</Badge>
+              {a.loading && <MiniSpinner color={a.type==='crit'?'#f43f5e':'#f59e0b'}/>}
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:a.sev==='crit'?'#f87171':'#f59e0b', fontFamily:'var(--mono)', marginBottom:4 }}>
-              {parseInt(a?.title||'0').toLocaleString('id')}
+            <div style={{ fontSize:22, fontWeight:800, color:a.type==='crit'?'#f87171':'#f59e0b', fontFamily:'var(--mono)', marginBottom:4 }}>
+              {a.loading ? '—' : (a.n ?? 0).toLocaleString('id')}
             </div>
-            <div style={{ fontSize:11, fontWeight:600, color:'var(--text1)', marginBottom:6 }}>{(a?.title||'').replace(/^\d+\s*/,'')}</div>
-            <p style={{ fontSize:10, color:'var(--text3)', lineHeight:1.6, marginBottom:8 }}>{a?.detail}</p>
-            <div style={{ display:'flex', gap:12 }}>
-              <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:9, color:'var(--text4)' }}>
-                <Users size={9}/>{a?.petugas}
-              </span>
-              <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:9, color:'var(--text4)' }}>
-                <MapPin size={9}/>{a?.kec}
-              </span>
-            </div>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--text1)', marginBottom:6 }}>{a.title}</div>
+            <p style={{ fontSize:10, color:'var(--text3)', lineHeight:1.6, marginBottom:8 }}>{a.detail}</p>
           </div>
         ))}
       </div>
@@ -407,29 +446,27 @@ function NikSection({ anomali, selectedKec }) {
 }
 
 // ── Rekening section ───────────────────────────────────────────────────────
-function RekeningSection({ anomali, selectedKec }) {
-  const a = anomali.find(a => a.category === 'Rekening Tidak Aktif');
-  // Tetap tampil meski anomali belum ada
-  const n = a ? parseInt(a.title||'0') : 0;
+function RekeningSection({ selectedKec }) {
+  const { count, loading } = useCrosscheckCount('rekening', selectedKec);
+  const n = count ?? 0;
   return (
     <div style={{ background:'var(--bg3)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:12, padding:'16px 18px' }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
         <CreditCard size={13} color="#f59e0b" strokeWidth={2}/>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--text1)' }}>Kepemilikan Rekening</span>
+        {loading && <MiniSpinner color="#f59e0b"/>}
         <Badge variant="warn" style={{ marginLeft:'auto' }}>Perlu verifikasi</Badge>
       </div>
       <div style={{ display:'flex', gap:14, alignItems:'flex-start', flexWrap:'wrap' }}>
         <div style={{ background:'var(--bg2)', border:'1px solid rgba(245,158,11,0.25)', borderRadius:10, padding:'14px 18px', minWidth:160 }}>
           <div style={{ fontSize:9, color:'#f59e0b', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:700, marginBottom:6 }}>KK tanpa rekening aktif</div>
-          <div style={{ fontSize:32, fontWeight:800, color:'#f59e0b', fontFamily:'var(--mono)', lineHeight:1 }}>{n.toLocaleString('id')}</div>
+          <div style={{ fontSize:32, fontWeight:800, color:'#f59e0b', fontFamily:'var(--mono)', lineHeight:1 }}>
+            {loading ? '—' : n.toLocaleString('id')}
+          </div>
           <div style={{ fontSize:10, color:'var(--text4)', marginTop:6 }}>seluruh AK jawab "Tidak ada" / "Tidak tahu"</div>
         </div>
         <div style={{ flex:1, minWidth:220 }}>
-          <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7, marginBottom:10 }}>{a?.detail || 'Verifikasi kepemilikan rekening seluruh anggota keluarga.'}</p>
-          <div style={{ display:'flex', gap:12 }}>
-            <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text4)' }}><Users size={10}/>{a?.petugas || '—'}</span>
-            <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text4)' }}><MapPin size={10}/>{a?.kec || '—'}</span>
-          </div>
+          <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7, marginBottom:10 }}>Verifikasi kepemilikan rekening seluruh anggota keluarga.</p>
           <div style={{ marginTop:10, padding:'8px 12px', background:'rgba(245,158,11,0.06)',
             border:'1px solid rgba(245,158,11,0.15)', borderRadius:8, fontSize:10, color:'var(--text3)' }}>
             💡 Opsi rekening aktif: <em>Ya untuk pribadi / Ya untuk usaha / Ya untuk usaha dan pribadi</em>
@@ -448,36 +485,26 @@ function RekeningSection({ anomali, selectedKec }) {
 }
 
 // ── Tidak Tahu section ─────────────────────────────────────────────────────
-function TidakTahuSection({ anomali, selectedKec }) {
-  const a = anomali.find(a => a.category === 'Data Tidak Lengkap' && a.title && a.title.includes('Tidak Tahu'));
-  // Parse angka dari title jika anomali ada, default 0
-  const matchAK = a?.title?.match(/^(\d+)/);
-  const matchKK = a?.title?.match(/\((\d+)\s*KK\)/);
-  const nAK = matchAK ? parseInt(matchAK[1]) : 0;
-  const nKK = matchKK ? parseInt(matchKK[1]) : 0;
+function TidakTahuSection({ selectedKec }) {
+  const { count, loading } = useCrosscheckCount('tidakTahu', selectedKec);
+  const nAK = count ?? 0;
   return (
     <div style={{ background:'var(--bg3)', border:'1px solid rgba(27,63,139,0.2)', borderRadius:12, padding:'16px 18px' }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
         <HelpCircle size={13} color="var(--blue3)" strokeWidth={2}/>
         <span style={{ fontSize:11, fontWeight:700, color:'var(--text1)' }}>Status Pekerjaan "Tidak Tahu"</span>
+        {loading && <MiniSpinner color="var(--blue3)"/>}
         <Badge variant="info" style={{ marginLeft:'auto' }}>Data tidak lengkap</Badge>
       </div>
       <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-        {[
-          { label:'Anggota Keluarga', val:nAK, color:'var(--blue3)' },
-          { label:'KK Terdampak',     val:nKK, color:'var(--blue2)' },
-        ].map(s => (
-          <div key={s.label} style={{ background:'var(--bg2)', border:`1px solid rgba(27,63,139,0.2)`, borderRadius:10, padding:'10px 16px', flex:1 }}>
-            <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:26, fontWeight:800, color:s.color, fontFamily:'var(--mono)' }}>{s.val.toLocaleString('id')}</div>
+        <div style={{ background:'var(--bg2)', border:`1px solid rgba(27,63,139,0.2)`, borderRadius:10, padding:'10px 16px', flex:1 }}>
+          <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:4 }}>KK Terdampak</div>
+          <div style={{ fontSize:26, fontWeight:800, color:'var(--blue3)', fontFamily:'var(--mono)' }}>
+            {loading ? '—' : nAK.toLocaleString('id')}
           </div>
-        ))}
+        </div>
       </div>
-      <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7, marginBottom:8 }}>{a?.detail || 'Terdapat anggota keluarga dengan status pekerjaan tidak diketahui.'}</p>
-      <div style={{ display:'flex', gap:12 }}>
-        <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text4)' }}><Users size={10}/>{a?.petugas || '—'}</span>
-        <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text4)' }}><MapPin size={10}/>{a?.kec || '—'}</span>
-      </div>
+      <p style={{ fontSize:11, color:'var(--text2)', lineHeight:1.7, marginBottom:8 }}>Terdapat anggota keluarga atau usaha dengan jawaban "Tidak Tahu" pada rincian tertentu.</p>
       <div style={{ marginTop:16, borderTop:'1px solid var(--border)', paddingTop:14 }}>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase',
           letterSpacing:'0.07em', marginBottom:4 }}>
@@ -576,7 +603,7 @@ export function AnomalyPage() {
         <SectionTitle icon={Fingerprint} right={<Badge variant="crit">Identitas tidak valid</Badge>}>
           Anomali NIK kode 9999
         </SectionTitle>
-        <NikSection anomali={anomali} selectedKec={selectedKec}/>
+        <NikSection selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 3. Rekening ──────────────────────────────────────────────── */}
@@ -584,7 +611,7 @@ export function AnomalyPage() {
         <SectionTitle icon={CreditCard} right={<Badge variant="warn">Inklusi keuangan</Badge>}>
           KK tanpa rekening aktif
         </SectionTitle>
-        <RekeningSection anomali={anomali} selectedKec={selectedKec}/>
+        <RekeningSection selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 4. Tidak Tahu ─────────────────────────────────────────────── */}
@@ -592,7 +619,7 @@ export function AnomalyPage() {
         <SectionTitle icon={HelpCircle} right={<Badge variant="info">Data tidak lengkap</Badge>}>
           Status pekerjaan tidak tahu
         </SectionTitle>
-        <TidakTahuSection anomali={anomali} selectedKec={selectedKec}/>
+        <TidakTahuSection selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 5. Distribusi statistik lain (pendapatan, jumlah AK) ──────── */}
@@ -674,6 +701,8 @@ export function AnomalyPage() {
       <AnomalyDetailTable
         kecFilter={selectedKec}
       />
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
