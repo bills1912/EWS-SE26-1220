@@ -336,14 +336,14 @@ function NikSection({ anomali }) {
           letterSpacing:'0.07em', marginBottom:4 }}>
           📋 Daftar NIK 9999 — Kepala Keluarga
         </div>
-        <CrosscheckTable type="nikKK" title="NIK KK 9999" accentColor="#f43f5e"/>
+        <CrosscheckTable type="nikKK" title="NIK KK 9999" accentColor="#f43f5e" kecFilter={selectedKec}/>
       </div>
       <div style={{ marginTop:16, borderTop:'1px solid var(--border)', paddingTop:14 }}>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase',
           letterSpacing:'0.07em', marginBottom:4 }}>
           📋 Daftar NIK 9999 — Anggota Keluarga
         </div>
-        <CrosscheckTable type="nikAK" title="NIK AK 9999" accentColor="#f59e0b"/>
+        <CrosscheckTable type="nikAK" title="NIK AK 9999" accentColor="#f59e0b" kecFilter={selectedKec}/>
       </div>
     </div>
   );
@@ -384,7 +384,7 @@ function RekeningSection({ anomali }) {
           letterSpacing:'0.07em', marginBottom:4 }}>
           📋 Daftar KK tanpa rekening aktif
         </div>
-        <CrosscheckTable type="rekening" title="KK Tanpa Rekening" accentColor="#f59e0b"/>
+        <CrosscheckTable type="rekening" title="KK Tanpa Rekening" accentColor="#f59e0b" kecFilter={selectedKec}/>
       </div>
     </div>
   );
@@ -426,7 +426,7 @@ function TidakTahuSection({ anomali }) {
           letterSpacing:'0.07em', marginBottom:4 }}>
           📋 Daftar AK dengan status pekerjaan "Tidak Tahu"
         </div>
-        <CrosscheckTable type="tidakTahu" title="Status Kerja Tidak Tahu" accentColor="var(--blue3)"/>
+        <CrosscheckTable type="tidakTahu" title="Status Kerja Tidak Tahu" accentColor="var(--blue3)" kecFilter={selectedKec}/>
       </div>
     </div>
   );
