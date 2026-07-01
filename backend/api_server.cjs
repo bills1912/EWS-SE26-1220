@@ -556,7 +556,10 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       return { ...p,
         progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
         avgPerDay: { ...(p.avgPerDay||{}),
-          total: sr((pS+pD)/WORKING_DAYS), submitted: sr(pS/WORKING_DAYS),
+          // total = semua yang sudah dikerjakan PCL / hari kerja
+          // (submit + approved + rejected + draft) — approved/rejected tetap dihitung
+          // karena pencacah sudah mengerjakannya, hanya statusnya diubah pengawas
+          total: sr((pS+pD+pA+pR)/WORKING_DAYS), submitted: sr(pS/WORKING_DAYS),
           draft: sr(pD/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
           rejected: sr(pR/WORKING_DAYS), workingDays: WORKING_DAYS,
         },
