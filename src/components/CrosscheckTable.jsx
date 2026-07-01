@@ -45,7 +45,8 @@ const COLUMNS = {
     { key:'kec',    label:'Kecamatan' },
     { key:'desa',   label:'Desa' },
     { key:'sls',    label:'SLS' },
-    { key:'pcl',    label:'Petugas' },
+    { key:'pcl',    label:'PCL (Pencacah)' },
+    { key:'pml',    label:'PML (Pengawas)' },
     { key:'status', label:'Status' },
   ],
   nikAK: [
@@ -56,7 +57,8 @@ const COLUMNS = {
     { key:'hubungan', label:'Hub. Keluarga' },
     { key:'kec',      label:'Kecamatan' },
     { key:'desa',     label:'Desa' },
-    { key:'pcl',      label:'Petugas' },
+    { key:'pcl',      label:'PCL (Pencacah)' },
+    { key:'pml',      label:'PML (Pengawas)' },
     { key:'status',   label:'Status' },
   ],
   rekening: [
@@ -68,7 +70,8 @@ const COLUMNS = {
     { key:'sls',      label:'SLS' },
     { key:'jumlahAk', label:'Jml AK' },
     { key:'jawaban',  label:'Jawaban Rekening' },
-    { key:'pcl',      label:'Petugas' },
+    { key:'pcl',      label:'PCL (Pencacah)' },
+    { key:'pml',      label:'PML (Pengawas)' },
     { key:'status',   label:'Status' },
   ],
   tidakTahu: [
@@ -79,7 +82,8 @@ const COLUMNS = {
     { key:'fields',  label:'Field Bermasalah' },
     { key:'kec',     label:'Kecamatan' },
     { key:'desa',    label:'Desa' },
-    { key:'pcl',     label:'Petugas' },
+    { key:'pcl',     label:'PCL (Pencacah)' },
+    { key:'pml',     label:'PML (Pengawas)' },
     { key:'status',  label:'Status' },
   ],
 };

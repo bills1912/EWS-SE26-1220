@@ -99,7 +99,10 @@ function Page0({ r }) {
       <div>
         <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Waktu Pendataan</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-          <Field label="PCL"           value={r.petugas}  Icon={User}/>
+          <Field label="PCL (Pencacah)" value={r.namaPencacah || r.petugas} Icon={User}/>
+          {r.namaPengawas && (
+            <Field label="PML (Pengawas)" value={r.namaPengawas} Icon={User}/>
+          )}
           <Field label="Role"          value={r.role}     Icon={Shield}/>
           <Field label="Mulai"         value={r.mulai}    Icon={Clock} mono/>
           <Field label="Selesai"       value={r.selesai}  Icon={Clock} mono/>
@@ -418,7 +421,7 @@ export default function RespondenPage() {
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['ID','Kepala Keluarga','Kecamatan / Desa','PCL','Nama Usaha','KBLI','Durasi','Status','Flag'].map(h => (
+                {['ID','Kepala Keluarga','Kecamatan / Desa','PCL','PML','Nama Usaha','KBLI','Durasi','Status','Flag'].map(h => (
                   <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontSize:9, fontWeight:700, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -452,7 +455,8 @@ export default function RespondenPage() {
                         <div style={{ fontSize:11, color:'var(--text2)' }}>{r.kecamatan}</div>
                         <div style={{ fontSize:10, color:'var(--text3)' }}>{r.desa}</div>
                       </td>
-                      <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.petugas}</td>
+                      <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.namaPencacah || r.petugas}</td>
+                      <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.namaPengawas || '—'}</td>
                       <td style={{ padding:'9px 10px', fontSize:11, color:'var(--text2)', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {r.namaUsaha && r.namaUsaha!=='—' ? r.namaUsaha : <span style={{ color:'var(--text4)', fontStyle:'italic' }}>—</span>}
                       </td>

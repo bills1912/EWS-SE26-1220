@@ -1466,8 +1466,21 @@ export function EvaluasiPage() {
       const rej  = dd.reduce((a,d) => a + d.reject,       0);
       const dr   = dd.reduce((a,d) => a + (d.draft || 0), 0);
       const op   = dd.reduce((a,d) => a + d.open,         0);
+      const wd = summary?.workingDays || p.avgPerDay?.workingDays || 1;
+      const sr2 = v => Math.round(v * 100) / 100;
       return { ...p, total:tot, approved:appr, submit:sub, reject:rej, draft:dr, open:op,
-               pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0 };
+               pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0,
+               // Recompute avgPerDay — total = submit+approved+rejected+draft / hari kerja
+               avgPerDay: {
+                 ...( p.avgPerDay || {} ),
+                 total:     sr2((sub + dr + appr + rej) / wd),
+                 submitted: sr2(sub  / wd),
+                 draft:     sr2(dr   / wd),
+                 approved:  sr2(appr / wd),
+                 rejected:  sr2(rej  / wd),
+                 workingDays: wd,
+               },
+      };
     }).filter(p => p.total > 0);
   }
 
