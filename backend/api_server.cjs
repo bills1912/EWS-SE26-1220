@@ -1351,6 +1351,69 @@ app.get('/api/anomali/boxplot', verifyToken, async function(req, res) {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// GET /api/anomali/boxplot-usaha — distribusi jumlah usaha (data7) per assignment
+// Sumber: assignment_detail (level assignment, BUKAN respondent/isian_se2026)
+// ══════════════════════════════════════════════════════════════════════════
+app.get('/api/anomali/boxplot-usaha', verifyToken, async function(req, res) {
+  try {
+    var fKec = (req.query.kec || '').trim();
+    // Status yang dianggap valid utk metrik usaha — sejalan dgn STATUS_USAHA
+    // di convert_assignment.py (submit + approve + reject)
+    var STATUS_USAHA = [
+      'SUBMITTED BY Pencacah', 'APPROVED BY Pengawas',
+      'REJECTED BY Pengawas', 'REVOKED BY Pengawas', 'COMPLETED BY Admin Kabupaten',
+    ];
+    var match = { status: { $in: STATUS_USAHA }, data7: { $ne: null } };
+    if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+    var docs = await db.collection('assignment_detail')
+      .find(match, { projection: {
+        _id:0, assignmentId:1, pencacahEmail:1, nama:1, kecamatan:1, desa:1,
+        subSlsCode:1, status:1, data7:1,
+      }}).toArray();
+
+    var sorted = docs.map(function(d){ return d.data7; }).sort(function(a,b){ return a-b; });
+    var n = sorted.length;
+    if (!n) return res.json({ stats: null, points: [] });
+
+    var fence = calcFence(sorted);
+
+    var points = docs.map(function(r) {
+      // Resolve nama pencacah RESMI lewat petugasCache (by email atau subSlsCode) —
+      // field `nama`/`email` di assignment_detail bisa jadi currentUser (pengawas)
+      // setelah assignment di-submit, bukan pencacah aslinya.
+      var cacheInfo = null;
+      if (petugasCache) {
+        cacheInfo = (r.pencacahEmail && petugasCache.get(r.pencacahEmail.toLowerCase().trim()))
+          || (r.subSlsCode && petugasCache.get(r.subSlsCode.trim()))
+          || null;
+      }
+      var namaPencacah = (cacheInfo && cacheInfo.namaPencacah) || r.pencacahEmail || r.nama;
+      var anomaly = (isFinite(fence.hi) && r.data7 > fence.hi) ? 'warn' : null;
+      return {
+        id: r.assignmentId, namaKepala: namaPencacah,
+        kecamatan: r.kecamatan, desa: r.desa,
+        petugas: namaPencacah, status: r.status,
+        nilai: r.data7, anomaly: anomaly,
+        fasihUrl: '',
+      };
+    });
+
+    res.json({
+      stats: {
+        n: n, min: sorted[0], q1: fence.q1,
+        median: fence.med, q3: fence.q3, max: sorted[n-1],
+        mean: Math.round(fence.mean * 10) / 10, iqr: fence.iqr,
+        fenceLo: Math.round(Math.max(0, fence.lo)),
+        fenceHi: Math.round(fence.hi),
+        nOutlier: points.filter(function(p){ return p.anomaly; }).length,
+      },
+      points: points,
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
 // GET /api/anomali/detail — Daftar anomali SE2026-L per responden (on-the-fly)
 // ══════════════════════════════════════════════════════════════════════════
 
