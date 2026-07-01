@@ -767,6 +767,24 @@ app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {
 });
 
 // ── GET /api/crosscheck/:type ─────────────────────────────────────────────
+// Helper enrich PCL/PML untuk crosscheck — lookup by kodeSubsls (dari raw doc)
+function enrichCrosscheck(entry, rawDoc) {
+  if (!petugasCache) return entry;
+  // Cari by kodeSubsls dari raw doc (paling akurat)
+  const kode = (rawDoc && rawDoc.kodeSubsls || '').trim()
+    || ((rawDoc && rawDoc.codeIdentity || '').split(' ')[0] || '').trim();
+  const byKode  = kode ? petugasCache.get(kode) : null;
+  // Fallback: by email pencacah jika ada
+  const byEmail = (rawDoc && rawDoc.emailPencacah)
+    ? petugasCache.get((rawDoc.emailPencacah || '').toLowerCase().trim()) : null;
+  const info = byKode || byEmail;
+  if (!info) return entry;
+  return { ...entry,
+    pcl: info.namaPencacah || entry.pcl || '',
+    pml: info.namaPengawas || entry.pml || '',
+  };
+}
+
 // type: nikKK | nikAK | rekening | tidakTahu
 // Query: kec, desa, pcl, page, limit
 app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
@@ -806,7 +824,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       pipeline = [
         { $match: baseMatch },
         { $project: { _id:0, id:1, no:1, nama:'$namaKepala', nik:1, noKK:1,
-                      kec:'$kecamatan', desa:1, sls:1, pcl:'$petugas', status:1 } },
+                      kec:'$kecamatan', desa:1, sls:1, pcl:'$petugas', status:1, kodeSubsls:1, emailPencacah:1 } },
         { $sort: { kec:1, desa:1, id:1 } },
         { $skip: (pg-1)*lim }, { $limit: lim }
       ];
@@ -840,6 +858,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
             nikAK:  '$anggotaKeluarga.nik',
             hubungan: '$anggotaKeluarga.hubungan',
             kec: '$kecamatan', desa: 1, pcl: '$petugas', status: 1,
+            kodeSubsls: 1, emailPencacah: 1,
           }
         },
         { $sort: { kec: 1, desa: 1, id: 1 } },
@@ -866,12 +885,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
         list = list.filter(r => JSON.stringify(r).toLowerCase().includes(ql));
       }
       const total = list.length;
-      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
-        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
-        return { ...r,
-          pcl: (info && info.namaPencacah) || r.pcl,
-          pml: (info && info.namaPengawas) || '' };
-      });
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => enrichCrosscheck(r, r));
       return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
 
@@ -882,7 +896,8 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       const allDocs = await db.collection('isian_se2026').find(
         matchRekening,
         { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, sls:1,
-                        petugas:1, status:1, jumlahAk:1, anggotaKeluarga:1 } }
+                        petugas:1, status:1, jumlahAk:1, anggotaKeluarga:1,
+                        kodeSubsls:1, emailPencacah:1 } }
       ).toArray();
 
       let list = [];
@@ -896,19 +911,14 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
                         kec: r.kecamatan, desa: r.desa, sls: r.sls,
                         jumlahAk: r.jumlahAk || aks.length,
                         jawaban: rekVals.join(', ') || '—',
-                        pcl: r.petugas, status: r.status };
+                        pcl: r.petugas, status: r.status, _rawDoc: r };
         if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
           list.push(entry);
         }
       }
       list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
       const total = list.length;
-      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
-        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
-        return { ...r,
-          pcl: (info && info.namaPencacah) || r.pcl,
-          pml: (info && info.namaPengawas) || '' };
-      });
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => enrichCrosscheck(r, r._rawDoc));
       return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
 
@@ -937,7 +947,8 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
         { projection: { id:1, namaKepala:1, noKK:1, kecamatan:1, desa:1, petugas:1,
                         status:1, anggotaKeluarga:1, usaha:1,
                         airMinum:1, penerangan:1, jenisAtap:1, jenisDinding:1,
-                        jenisLantai:1, statusKepemilikan:1, tempatBAB:1, buangTinja:1 } }
+                        jenisLantai:1, statusKepemilikan:1, tempatBAB:1, buangTinja:1,
+                        kodeSubsls:1, emailPencacah:1 } }
       ).toArray();
 
       let list = [];
@@ -974,7 +985,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
           kec: r.kecamatan, desa: r.desa, pcl: r.petugas, status: r.status,
           jumlah: temuan.length,
           fields: [...new Set(temuan.map(t => t.field))].join(', '),
-          temuan,
+          temuan, _rawDoc: r,
         };
         if (!q || JSON.stringify(entry).toLowerCase().includes(q.toLowerCase())) {
           list.push(entry);
@@ -982,12 +993,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       }
       list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
       const total = list.length;
-      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
-        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
-        return { ...r,
-          pcl: (info && info.namaPencacah) || r.pcl,
-          pml: (info && info.namaPengawas) || '' };
-      });
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => enrichCrosscheck(r, r._rawDoc));
       return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
     }
@@ -999,12 +1005,7 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
     ]);
     const total = countResult[0]?.n || 0;
     // Inject pml dari petugasCache
-    const enrichedData = data.map(r => {
-      const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
-      return { ...r,
-        pcl: (info && info.namaPencacah) || r.pcl,
-        pml: (info && info.namaPengawas) || '' };
-    });
+    const enrichedData = data.map(r => enrichCrosscheck(r, r));
     res.json({ data: enrichedData, total, totalPages: Math.ceil(total/lim), page: pg });
 
   } catch (err) { res.status(500).json({ error: err.message }); }
