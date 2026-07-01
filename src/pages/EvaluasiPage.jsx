@@ -33,6 +33,10 @@ const ALL_COLS_PENCACAH = [
   { key:'open',      label:'Open',       always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
+  { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
+  { key:'usahaTotal', label:'Total Usaha',      always: false },
+  { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', always: false },
+  { key:'usahaMaxDesa', label:'Desa Usaha Terbanyak',           always: false },
 ];
 const ALL_COLS_PENGAWAS = [
   { key:'kecamatan', label:'Kecamatan',  always: false },
@@ -44,6 +48,10 @@ const ALL_COLS_PENGAWAS = [
   { key:'open',      label:'Open',       always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
+  { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
+  { key:'usahaTotal', label:'Total Usaha',      always: false },
+  { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', always: false },
+  { key:'usahaMaxDesa', label:'Desa Usaha Terbanyak',           always: false },
 ];
 const DEFAULT_COLS = ['kecamatan','pengawas','total','submit','approved','rejected','draft','open','progress'];
 const LS_KEY_COL   = 'ews_evaluasi_cols';
@@ -471,6 +479,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
         </td>
         )}
+        {visibleCols.has('usahaCount') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaAssignmentCount>0?600:400 }}>{p.usahaAssignmentCount||0}</td>}
+        {visibleCols.has('usahaTotal') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>{p.totalUsahaDitemukan||0}</td>}
+        {visibleCols.has('usahaMax')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaMaxCount>0?600:400 }}>{p.usahaMaxCount||0}</td>}
+        {visibleCols.has('usahaMaxDesa') && <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis' }}>{p.usahaMaxDesa||'—'}</td>}
         {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
@@ -481,7 +493,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
+          <td colSpan={18} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
             {p.inaktif && (
               <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'8px 12px',
@@ -623,6 +635,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
         </td>
         )}
+        {visibleCols.has('usahaCount') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaAssignmentCount>0?600:400 }}>{p.usahaAssignmentCount||0}</td>}
+        {visibleCols.has('usahaTotal') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>{p.totalUsahaDitemukan||0}</td>}
+        {visibleCols.has('usahaMax')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaMaxCount>0?600:400 }}>{p.usahaMaxCount||0}</td>}
+        {visibleCols.has('usahaMaxDesa') && <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis' }}>{p.usahaMaxDesa||'—'}</td>}
         {/* KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
         <td style={{ padding:'9px 8px' }}><PerfGauge score={p.perfScore} grade={p.grade}/></td>
         <td style={{ padding:'9px 8px' }}><GradeBadge grade={p.grade}/></td>
@@ -633,7 +649,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={14} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
+          <td colSpan={18} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Diawasi"   value={p.total}                                        icon={BarChart2}   animate/>
               <Mini label="Belum Dikerjakan" value={p.open}     color="var(--text4)"               icon={Inbox}       animate/>
@@ -1537,6 +1553,10 @@ export function EvaluasiPage() {
     if (sortBy==='open')      return d*((b.open??0)-(a.open??0));
     if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
     if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
+    if (sortBy==='usahaCount') return d*((b.usahaAssignmentCount??0)-(a.usahaAssignmentCount??0));
+    if (sortBy==='usahaTotal') return d*((b.totalUsahaDitemukan??0)-(a.totalUsahaDitemukan??0));
+    if (sortBy==='usahaMax')   return d*((b.usahaMaxCount??0)-(a.usahaMaxCount??0));
+    if (sortBy==='usahaMaxDesa') return d*(a.usahaMaxDesa||'').localeCompare(b.usahaMaxDesa||'', 'id');
     if (sortBy==='kecepatan') return d*((b.kecepatan??0)-(a.kecepatan??0));
     if (sortBy==='perfScore') return d*((b.perfScore??0)-(a.perfScore??0));
     // Grade (A > B > C > D)
@@ -1770,6 +1790,10 @@ export function EvaluasiPage() {
           <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
           <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
           <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
+          <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;1)</span>
+          <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;1)</span>
+          <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
+          <span><strong style={{ color:'var(--text3)' }}>Desa Usaha Terbanyak</strong> = lokasi desa dari assignment tsb</span>
         </div>
 
         <div style={{ overflowX:'auto' }}>
@@ -1788,12 +1812,16 @@ export function EvaluasiPage() {
                 {visibleCols.has('open')     && <H label="Open"     col="open"    right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
+                {visibleCols.has('usahaCount')&& <H label="Assignment Usaha Ditemukan" col="usahaCount" right/>}
+                {visibleCols.has('usahaTotal')&& <H label="Total Usaha" col="usahaTotal" right/>}
+                {visibleCols.has('usahaMax')&& <H label="Usaha Terbanyak" col="usahaMax" right/>}
+                {visibleCols.has('usahaMaxDesa')&& <H label="Desa Usaha Terbanyak" col="usahaMaxDesa"/>}
                 <th style={{ width:24 }}/>
               </tr>
             </thead>
             <tbody>
               {paginated.length===0
-                ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                ? <tr><td colSpan={16} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
                       ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}

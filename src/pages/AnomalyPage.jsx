@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import {
   ShieldAlert, Users, MapPin, BarChart2, AlertTriangle,
   Clock, CreditCard, HelpCircle, Fingerprint, Timer,
-  ArrowRight, ArrowUpRight,
+  ArrowRight, ArrowUpRight, Building2, ChevronLeft, ChevronRight, Download,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -17,6 +17,21 @@ import { useKecamatan } from '../context/KecamatanContext.jsx';
 import { AnomalyDetailTable } from '../components/AnomalyDetailTable.jsx';
 
 const matchKec = (a, b) => (a||'').toLowerCase() === (b||'').toLowerCase();
+
+// Helper export CSV lokal (tidak bergantung ke file lain) — sama logikanya
+// dengan yang dipakai CrosscheckTable.jsx
+function exportCSV(data, filename, columns) {
+  const header = columns.map(c => c.label).join(',');
+  const rows   = data.map(row =>
+    columns.map(c => `"${String(row[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
+  );
+  const blob = new Blob(['\uFEFF' + [header, ...rows].join('\n')],
+    { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ── Loading spinner kecil untuk indikasi filter sedang berjalan ──────────
 function MiniSpinner({ size = 12, color = 'var(--orange3)' }) {
@@ -394,6 +409,291 @@ function DurasiAnomalySection({ stat, selectedKec }) {
   );
 }
 
+// ── Pager kecil (mirip PagBtn di CrosscheckTable, dipakai lokal di sini) ───
+function SimplePager({ page, totalPages, onChange, accent = 'var(--orange3)' }) {
+  if (totalPages <= 1) return null;
+  const nums = [];
+  const delta = 1;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= delta) nums.push(i);
+    else if (nums[nums.length - 1] !== '…') nums.push('…');
+  }
+  const btnStyle = (active, disabled) => ({
+    minWidth: 26, height: 26, padding: '0 6px', fontSize: 10.5, borderRadius: 6,
+    border: active ? `1px solid ${accent}` : '1px solid var(--border)',
+    background: active ? accent : 'var(--bg2)',
+    color: active ? '#fff' : disabled ? 'var(--text4)' : 'var(--text2)',
+    cursor: disabled ? 'default' : 'pointer',
+    fontFamily: 'var(--mono)', fontWeight: active ? 700 : 400,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  });
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+      <button disabled={page===1} onClick={() => onChange(page-1)} style={btnStyle(false, page===1)}>
+        <ChevronLeft size={11}/>
+      </button>
+      {nums.map((n,i) => n === '…'
+        ? <span key={`e${i}`} style={{ padding:'0 3px', fontSize:10, color:'var(--text4)' }}>…</span>
+        : <button key={n} onClick={() => onChange(n)} style={btnStyle(n===page, false)}>{n}</button>
+      )}
+      <button disabled={page===totalPages} onClick={() => onChange(page+1)} style={btnStyle(false, page===totalPages)}>
+        <ChevronRight size={11}/>
+      </button>
+    </div>
+  );
+}
+
+// ── Anomali Usaha Terbanyak — jumlah usaha (data7) per assignment ─────────
+// Ambang minimum jumlah usaha yang ditampilkan di TABEL crosscheck (fixed rule,
+// terpisah dari deteksi outlier statistik yang dipakai boxplot/badge di atasnya).
+// Ubah angka ini kalau mau geser batasnya.
+const USAHA_TABLE_MIN = 4;
+
+function UsahaAnomalySection({ selectedKec }) {
+  const [liveData, setLiveData]     = useState(null);
+  const [loadingBox, setLoadingBox] = useState(false);
+  const [tablePage, setTablePage]   = useState(1);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const TABLE_PAGE_SIZE = 5;
+
+  // Fetch boxplot LANGSUNG dari backend (level assignment, dari assignment_detail),
+  // dengan filter kecamatan — sama pola dengan DurasiAnomalySection
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBox(true);
+    setTablePage(1);
+    const params = new URLSearchParams(
+      selectedKec && selectedKec !== 'all' ? { kec: selectedKec } : {}
+    );
+    const BASE = (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const token = localStorage.getItem('ews_token');
+    fetch(`${BASE}/api/anomali/boxplot-usaha?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(result => { if (!cancelled) { setLiveData(result); setLoadingBox(false); } })
+      .catch(() => { if (!cancelled) setLoadingBox(false); });
+    return () => { cancelled = true; };
+  }, [selectedKec]);
+
+  const isFiltered = selectedKec && selectedKec !== 'all';
+  const stats  = liveData?.stats  || null;
+  const points = liveData?.points || [];
+
+  const od = stats ? {
+    q0: stats.min, q1: stats.q1, median: stats.median, q3: stats.q3, q4: stats.max,
+    mean: stats.mean, iqr: stats.iqr,
+    fenceLo: stats.fenceLo, fenceHi: stats.fenceHi,
+    anomalyThresholdLo: 0,
+    anomalyThresholdHi: stats.fenceHi,
+    label: 'Usaha ditemukan / assignment', unit: 'usaha',
+    outliers: points
+      .filter(p => p.anomaly)
+      .map(p => ({
+        id: p.id, value: p.nilai, nama: p.namaKepala || 'Isian belum tersedia',
+        kec: p.kecamatan, desa: p.desa, pcl: p.petugas, status: p.status,
+        fasihUrl: p.fasihUrl || '',
+      }))
+      .sort((a, b) => b.value - a.value), // yang paling ekstrem duluan
+  } : null;
+
+  // List khusus tabel — fixed rule (>=USAHA_TABLE_MIN), TERPISAH dari od.outliers
+  // (yang statistik, dipakai boxplot + badge di header section)
+  const tableRows    = points
+    .filter(p => (p.nilai ?? 0) >= USAHA_TABLE_MIN)
+    .map(p => ({
+      id: p.id, value: p.nilai, nama: p.namaKepala || 'Isian belum tersedia',
+      kec: p.kecamatan, desa: p.desa, pcl: p.petugas, status: p.status,
+      fasihUrl: p.fasihUrl || '',
+    }))
+    .sort((a, b) => b.value - a.value);
+  const tablePages    = Math.max(1, Math.ceil(tableRows.length / TABLE_PAGE_SIZE));
+  const pagedOutliers = tableRows.slice((tablePage-1)*TABLE_PAGE_SIZE, tablePage*TABLE_PAGE_SIZE);
+
+  // Export SEMUA baris tableRows (bukan cuma halaman aktif) ke CSV
+  const handleExportUsaha = () => {
+    const cols = [
+      { key:'no',       label:'No' },
+      { key:'pcl',      label:'Petugas' },
+      { key:'kec',      label:'Kecamatan' },
+      { key:'desa',     label:'Desa' },
+      { key:'value',    label:'Jumlah Usaha' },
+      { key:'status',   label:'Status' },
+      { key:'id',       label:'Assignment ID' },
+    ];
+    const rows = tableRows.map((r, i) => ({ ...r, no: i + 1 }));
+    const kecPart = isFiltered ? `_${selectedKec.replace(/\s+/g,'-')}` : '';
+    const filename = `crosscheck_usaha_ge${USAHA_TABLE_MIN}${kecPart}_${new Date().toISOString().slice(0,10)}.csv`;
+    exportCSV(rows, filename, cols);
+  };
+
+  return (
+    <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 18px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+        <Building2 size={13} color="#a78bfa" strokeWidth={2}/>
+        <span style={{ fontSize:11, fontWeight:700, color:'var(--text1)' }}>
+          Distribusi jumlah usaha ditemukan per assignment
+          {isFiltered && <span style={{ color:'var(--text4)', fontWeight:500 }}> — {selectedKec}</span>}
+        </span>
+        {loadingBox
+          ? <span style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6,
+              fontSize:10, color:'var(--text4)' }}>
+              <MiniSpinner color="#a78bfa"/> Memuat…
+            </span>
+          : <Badge variant="warn" style={{ marginLeft:'auto' }}>{od?.outliers?.length || 0} outlier</Badge>
+        }
+      </div>
+
+      {od && od.q4 > 0 ? (
+        <>
+          {/* Catatan threshold */}
+          <div style={{ background:'rgba(167,139,250,0.06)', border:'1px solid rgba(167,139,250,0.2)',
+            borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:10, color:'var(--text3)', lineHeight:1.6 }}>
+            <strong style={{ color:'#a78bfa' }}>Threshold anomali:</strong>{' '}
+            assignment dengan jumlah usaha ditemukan di atas batas statistik
+            (fence Q3 + 1.5×IQR ≈ {od.fenceHi} usaha) ditandai sebagai outlier — kemungkinan
+            salah input jumlah usaha, atau memang kasus tidak biasa (mis. pasar/ruko) yang perlu dicek ulang.
+          </div>
+
+          <StatRow data={od}/>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, fontWeight:600 }}>Box plot</div>
+            <BoxPlot data={od}/>
+          </div>
+          <div style={{ marginBottom:6 }}>
+            <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, fontWeight:600 }}>
+              Distribusi frekuensi <span style={{ color:'#f87171' }}>(merah = zona anomali)</span>
+            </div>
+            <DistChart data={buildUsahaDist(points, od.fenceHi)}/>
+          </div>
+
+          {/* ── Tabel crosscheck detail outlier ─────────────────────────── */}
+          <div style={{ marginTop:18, paddingTop:16, borderTop:'1px solid var(--border)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+              <span style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase',
+                letterSpacing:'0.08em', fontWeight:600 }}>
+                📋 Crosscheck detail — assignment dengan usaha ≥ {USAHA_TABLE_MIN}
+              </span>
+              <span style={{ fontSize:10, color:'var(--text4)', marginLeft:'auto' }}>
+                {tableRows.length > 0
+                  ? `${(tablePage-1)*TABLE_PAGE_SIZE+1}–${Math.min(tablePage*TABLE_PAGE_SIZE, tableRows.length)} dari ${tableRows.length}`
+                  : ''}
+              </span>
+              <button onClick={handleExportUsaha} disabled={tableRows.length === 0}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px',
+                  fontSize:10.5, borderRadius:8, border:'1px solid rgba(167,139,250,0.4)',
+                  background: tableRows.length === 0 ? 'var(--bg3)' : 'rgba(167,139,250,0.1)',
+                  color: tableRows.length === 0 ? 'var(--text4)' : '#a78bfa',
+                  cursor: tableRows.length === 0 ? 'default' : 'pointer',
+                  fontWeight:600, whiteSpace:'nowrap' }}>
+                <Download size={11} strokeWidth={2}/> Export CSV
+              </button>
+            </div>
+
+            {tableRows.length === 0 ? (
+              <div style={{ padding:'16px', textAlign:'center', color:'var(--text4)', fontSize:11,
+                background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8 }}>
+                Tidak ada assignment dengan usaha ≥ {USAHA_TABLE_MIN}{isFiltered ? ` di ${selectedKec}` : ''}. 🎉
+              </div>
+            ) : (
+              <>
+                <div style={{ overflowX:'auto', borderRadius:8, border:'1px solid var(--border)' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                    <thead>
+                      <tr style={{ background:'var(--bg2)', borderBottom:'1px solid var(--border)' }}>
+                        <th style={{ padding:'7px 10px', textAlign:'center', fontSize:9, width:30,
+                          fontWeight:700, color:'var(--text4)' }}>#</th>
+                        <th style={{ padding:'7px 10px', textAlign:'left', fontSize:9, fontWeight:700,
+                          color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Petugas</th>
+                        <th style={{ padding:'7px 10px', textAlign:'left', fontSize:9, fontWeight:700,
+                          color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Kecamatan</th>
+                        <th style={{ padding:'7px 10px', textAlign:'left', fontSize:9, fontWeight:700,
+                          color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Desa</th>
+                        <th style={{ padding:'7px 10px', textAlign:'right', fontSize:9, fontWeight:700,
+                          color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Usaha</th>
+                        <th style={{ padding:'7px 10px', textAlign:'left', fontSize:9, fontWeight:700,
+                          color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.07em' }}>Status</th>
+                        <th style={{ width:22 }}/>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedOutliers.map((o, i) => (
+                        <tr key={o.id || `${tablePage}-${i}`}
+                          onClick={() => setSelectedRow(o)}
+                          style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background .1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg2)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <td style={{ padding:'8px 10px', textAlign:'center', fontSize:10,
+                            color:'var(--text3)', fontFamily:'var(--mono)' }}>
+                            {(tablePage-1)*TABLE_PAGE_SIZE + i + 1}
+                          </td>
+                          <td style={{ padding:'8px 10px', fontSize:11, color:'var(--text1)', fontWeight:600,
+                            maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {o.pcl || o.nama || '—'}
+                          </td>
+                          <td style={{ padding:'8px 10px', fontSize:10, color:'var(--text3)', whiteSpace:'nowrap' }}>
+                            {o.kec || '—'}
+                          </td>
+                          <td style={{ padding:'8px 10px', fontSize:10, color:'var(--text3)', whiteSpace:'nowrap' }}>
+                            {o.desa || '—'}
+                          </td>
+                          <td style={{ padding:'8px 10px', textAlign:'right' }}>
+                            <span style={{ background:'rgba(167,139,250,0.15)', color:'#a78bfa',
+                              padding:'2px 9px', borderRadius:99, fontSize:10.5, fontWeight:700,
+                              fontFamily:'var(--mono)' }}>
+                              {o.value}
+                            </span>
+                          </td>
+                          <td style={{ padding:'8px 10px', fontSize:9.5, color:'var(--text3)', whiteSpace:'nowrap' }}>
+                            {o.status || '—'}
+                          </td>
+                          <td style={{ padding:'8px 10px', textAlign:'center' }}>
+                            <ArrowRight size={11} color="var(--text4)"/>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                  marginTop:10, flexWrap:'wrap', gap:8 }}>
+                  <span style={{ fontSize:10, color:'var(--text3)' }}>
+                    Halaman {tablePage} dari {tablePages}
+                  </span>
+                  <SimplePager page={tablePage} totalPages={tablePages} onChange={setTablePage} accent="#a78bfa"/>
+                </div>
+              </>
+            )}
+          </div>
+
+          <OutlierModal outlier={selectedRow} metricLabel={od.label} unit={od.unit}
+            onClose={() => setSelectedRow(null)}/>
+        </>
+      ) : (
+        <div style={{ padding:'16px', textAlign:'center', color:'var(--text4)', fontSize:11 }}>
+          {loadingBox ? 'Memuat data…' : 'Data belum cukup untuk menampilkan boxplot'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Bangun histogram distribusi utk jumlah usaha (data7 diskrit: 0,1,2,3,...)
+function buildUsahaDist(points, fenceHi) {
+  if (!points || !points.length) return [];
+  const maxVal = points.reduce((m,p) => Math.max(m, p.nilai ?? 0), 0);
+  const cap = Math.min(maxVal, 6);
+  const buckets = [];
+  for (let v = 0; v <= cap; v++) buckets.push({ range: String(v), min: v, max: v });
+  if (maxVal > 6) buckets.push({ range: '7+', min: 7, max: Infinity });
+  return buckets.map(b => ({
+    range: b.range,
+    n: points.filter(p => p.nilai >= b.min && p.nilai <= b.max).length,
+    anomaly: b.min > fenceHi,
+  }));
+}
+
 // Bangun histogram distribusi dari raw points (untuk DistChart)
 function buildDistFromPoints(points) {
   if (!points || !points.length) return [];
@@ -644,6 +944,14 @@ export function AnomalyPage() {
           Analisis durasi pengisian kuesioner
         </SectionTitle>
         <DurasiAnomalySection stat={stat} selectedKec={selectedKec}/>
+      </Card>
+
+      {/* ── 1b. Anomali Jumlah Usaha Terbanyak per Assignment ────────────── */}
+      <Card>
+        <SectionTitle icon={Building2} right={<Badge variant="warn">Anomali jumlah usaha</Badge>}>
+          Analisis jumlah usaha ditemukan per assignment
+        </SectionTitle>
+        <UsahaAnomalySection selectedKec={selectedKec}/>
       </Card>
 
       {/* ── 2. NIK 9999 — selalu tampil, data dari isian_se2026 langsung ── */}
