@@ -387,18 +387,6 @@ export default function RespondenPage() {
     return () => window.removeEventListener('ews:goto', handler);
   }, []);
 
-  // Auto-scroll ke baris yang di-highlight setelah data load
-  useEffect(() => {
-    if (!highlightId) return;
-    const el = rowRefs.current[highlightId];
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Hilangkan highlight setelah 3 detik
-      const t = setTimeout(() => setHighlightId(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [highlightId, records]);
-
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
 
@@ -412,6 +400,18 @@ export default function RespondenPage() {
   }), [currentPage, filterKec, filterStatus, filterAnomaly, search]);
 
   const { data: records, total, totalPages, loading } = useResponden(queryParams);
+
+  // Auto-scroll ke baris yang di-highlight setelah data load
+  // HARUS setelah deklarasi 'records' agar tidak TDZ error
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = rowRefs.current[highlightId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const t = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightId, records]);
 
   // Reset halaman saat filter berubah
   const updateFilter = useCallback((fn) => { fn(); setCurrentPage(1); }, []);
@@ -493,12 +493,12 @@ export default function RespondenPage() {
                         cursor: 'pointer',
                         transition: 'background .15s, box-shadow .15s',
                         background: highlightId === r.id
-                          ? 'rgba(249,115,22,0.12)'
+                          ? 'rgba(249,115,22,0.08)'
                           : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent',
                         boxShadow: highlightId === r.id
                           ? 'inset 3px 0 0 #f97316' : 'none',
-                        outline: highlightId === r.id
-                          ? '1px solid rgba(249,115,22,0.35)' : 'none',
+                        animation: highlightId === r.id
+                          ? 'rowBreathing 1.4s ease-in-out infinite' : 'none',
                       }}
                       onMouseEnter={e => { if (highlightId !== r.id) e.currentTarget.style.background='var(--bg3)'; }}
                       onMouseLeave={e => { e.currentTarget.style.background = highlightId === r.id ? 'rgba(249,115,22,0.12)' : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent'; }}>
@@ -560,6 +560,12 @@ export default function RespondenPage() {
         )}
       </Card>
       {selected && <DetailModal row={selected} onClose={() => setSelected(null)}/>}
+      <style>{`
+        @keyframes rowBreathing {
+          0%, 100% { background: rgba(249,115,22,0.04); }
+          50%       { background: rgba(249,115,22,0.13); }
+        }
+      `}</style>
     </div>
   );
 }
