@@ -1,5 +1,5 @@
 // src/pages/RespondenPage.jsx — versi data real dari MongoDB
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, X, AlertTriangle, CheckCircle, Clock,
@@ -356,6 +356,92 @@ export default function RespondenPage() {
     setCurrentPage(1);
   }, [globalKec]);
 
+  // ── Navigasi dari Anomali (ews:goto event) ────────────────────────────
+  const [highlightId,   setHighlightId]   = useState(null);
+  const rowRefs = useRef({});  // { [id]: <tr element> }
+
+  useEffect(() => {
+    // Cek sessionStorage saat mount (jika pindah tab dari Anomali)
+    const savedId = sessionStorage.getItem('ews_goto_responden');
+    if (savedId) {
+      sessionStorage.removeItem('ews_goto_responden');
+      setHighlightId(savedId);
+      setSearch(savedId);   // search by ID agar langsung ketemu di halaman 1
+      setFilterStatus('all');
+      setFilterAnomaly('all');
+      setCurrentPage(1);
+    }
+
+    // Listen event ews:goto dari AnomalyDetailTable / OutlierModal
+    const handler = (e) => {
+      const id = e.detail?.respondentId;
+      if (!id) return;
+      sessionStorage.removeItem('ews_goto_responden');
+      setHighlightId(id);
+      setSearch(id);        // search by ID agar langsung ketemu di halaman 1
+      setFilterStatus('all');
+      setFilterAnomaly('all');
+      setCurrentPage(1);
+    };
+    window.addEventListener('ews:goto', handler);
+    return () => window.removeEventListener('ews:goto', handler);
+  }, []);
+
+  // Auto-scroll ke baris yang di-highlight setelah data load
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = rowRefs.current[highlightId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Hilangkan highlight setelah 3 detik
+      const t = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightId, records]);
+
+  // ── Navigasi dari Anomali (ews:goto event) ────────────────────────────
+  const [highlightId,   setHighlightId]   = useState(null);
+  const rowRefs = useRef({});  // { [id]: <tr element> }
+
+  useEffect(() => {
+    // Cek sessionStorage saat mount (jika pindah tab dari Anomali)
+    const savedId = sessionStorage.getItem('ews_goto_responden');
+    if (savedId) {
+      sessionStorage.removeItem('ews_goto_responden');
+      setHighlightId(savedId);
+      setSearch(savedId);   // search by ID agar langsung ketemu di halaman 1
+      setFilterStatus('all');
+      setFilterAnomaly('all');
+      setCurrentPage(1);
+    }
+
+    // Listen event ews:goto dari AnomalyDetailTable / OutlierModal
+    const handler = (e) => {
+      const id = e.detail?.respondentId;
+      if (!id) return;
+      sessionStorage.removeItem('ews_goto_responden');
+      setHighlightId(id);
+      setSearch(id);        // search by ID agar langsung ketemu di halaman 1
+      setFilterStatus('all');
+      setFilterAnomaly('all');
+      setCurrentPage(1);
+    };
+    window.addEventListener('ews:goto', handler);
+    return () => window.removeEventListener('ews:goto', handler);
+  }, []);
+
+  // Auto-scroll ke baris yang di-highlight setelah data load
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = rowRefs.current[highlightId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Hilangkan highlight setelah 3 detik
+      const t = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightId, records]);
+
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
 
@@ -442,10 +528,23 @@ export default function RespondenPage() {
                   const hasCrit = r.flags?.some(f => f.sev==='crit');
                   const durColor = r.durMenit !== null && r.durMenit <= 2 ? '#f87171' : r.durMenit > 480 ? '#fbbf24' : 'var(--text2)';
                   return (
-                    <tr key={r.id} onClick={() => setSelected(r)}
-                      style={{ borderBottom:'1px solid var(--border)', background:r.anomaly?'rgba(244,63,94,0.02)':'transparent', cursor:'pointer', transition:'background .1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background='var(--bg3)'}
-                      onMouseLeave={e => e.currentTarget.style.background=r.anomaly?'rgba(244,63,94,0.02)':'transparent'}>
+                    <tr key={r.id}
+                      ref={el => { if (el) rowRefs.current[r.id] = el; }}
+                      onClick={() => setSelected(r)}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        cursor: 'pointer',
+                        transition: 'background .15s, box-shadow .15s',
+                        background: highlightId === r.id
+                          ? 'rgba(249,115,22,0.12)'
+                          : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent',
+                        boxShadow: highlightId === r.id
+                          ? 'inset 3px 0 0 #f97316' : 'none',
+                        outline: highlightId === r.id
+                          ? '1px solid rgba(249,115,22,0.35)' : 'none',
+                      }}
+                      onMouseEnter={e => { if (highlightId !== r.id) e.currentTarget.style.background='var(--bg3)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = highlightId === r.id ? 'rgba(249,115,22,0.12)' : r.anomaly ? 'rgba(244,63,94,0.02)' : 'transparent'; }}>
                       <td style={{ padding:'9px 10px', fontSize:10, color:'var(--text4)', fontFamily:'var(--mono)', whiteSpace:'nowrap' }}>{r.id}</td>
                       <td style={{ padding:'9px 10px', whiteSpace:'nowrap' }}>
                         <div style={{ fontSize:12, fontWeight:600, color:'var(--text1)' }}>{r.namaKepala}</div>
