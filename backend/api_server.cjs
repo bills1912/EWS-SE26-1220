@@ -208,6 +208,30 @@ async function buildPetugasCache() {
     if (d.namaPcl) petugasCache.set(d.namaPcl.toLowerCase().trim(), entry);
   }
 
+  // ── Bridge: nama pendek (dari isian_se2026.petugas) → email → nama SOBAT ──────
+  // assignment_pengawas.subSlsDetail punya pencacahNama (nama pendek di Fasih) + pencacahEmail
+  // Pakai ini untuk bridge nama pendek ke email, lalu email ke nama SOBAT di cache
+  const pws_bridge = await db.collection('assignment_pengawas')
+    .find({}, { projection: { _id:0, subSlsDetail:1 } })
+    .toArray();
+
+  for (const d of pws_bridge) {
+    for (const sub of (d.subSlsDetail || [])) {
+      const pclEmail    = (sub.pencacahEmail || '').toLowerCase().trim();
+      const pclNamaShort = (sub.pencacahNama || '').toLowerCase().trim(); // nama pendek di Fasih
+      if (!pclNamaShort) continue;
+
+      // Cek apakah email ini sudah ada di cache (dari nama_petugas_se2026)
+      const byEmail = pclEmail ? petugasCache.get(pclEmail) : null;
+      if (byEmail && pclNamaShort && !petugasCache.has(pclNamaShort)) {
+        // Tambah index by nama pendek → sama entry dengan email
+        petugasCache.set(pclNamaShort, byEmail);
+      }
+    }
+  }
+
+  console.log(`[MongoDB] Petugas cache setelah bridge: ${petugasCache.size} entri`);
+
   // ── Fallback: assignment_pencacah (jika ada PCL yang tidak ada di file wilayah tugas) ──
   if (sobat_docs.length === 0) {
     console.warn('[MongoDB] nama_petugas_se2026 kosong — fallback ke assignment_pencacah');
