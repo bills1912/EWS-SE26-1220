@@ -399,47 +399,6 @@ export default function RespondenPage() {
     }
   }, [highlightId, records]);
 
-  // ── Navigasi dari Anomali (ews:goto event) ────────────────────────────
-
-  useEffect(() => {
-    // Cek sessionStorage saat mount (jika pindah tab dari Anomali)
-    const savedId = sessionStorage.getItem('ews_goto_responden');
-    if (savedId) {
-      sessionStorage.removeItem('ews_goto_responden');
-      setHighlightId(savedId);
-      setSearch(savedId);   // search by ID agar langsung ketemu di halaman 1
-      setFilterStatus('all');
-      setFilterAnomaly('all');
-      setCurrentPage(1);
-    }
-
-    // Listen event ews:goto dari AnomalyDetailTable / OutlierModal
-    const handler = (e) => {
-      const id = e.detail?.respondentId;
-      if (!id) return;
-      sessionStorage.removeItem('ews_goto_responden');
-      setHighlightId(id);
-      setSearch(id);        // search by ID agar langsung ketemu di halaman 1
-      setFilterStatus('all');
-      setFilterAnomaly('all');
-      setCurrentPage(1);
-    };
-    window.addEventListener('ews:goto', handler);
-    return () => window.removeEventListener('ews:goto', handler);
-  }, []);
-
-  // Auto-scroll ke baris yang di-highlight setelah data load
-  useEffect(() => {
-    if (!highlightId) return;
-    const el = rowRefs.current[highlightId];
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Hilangkan highlight setelah 3 detik
-      const t = setTimeout(() => setHighlightId(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [highlightId, records]);
-
   const { data: kecList } = useKecamatanData();
   const PAGE_SIZE = 15;
 
