@@ -180,43 +180,79 @@ async function getDB() {
   return db;
 }
 
-// ── Cache lookup petugas: namaPencacah → info lengkap ──────────────────────
-let petugasCache = null; // Map: namaPencacah.toLowerCase() → { namaPencacah, emailPencacah, namaPengawas, emailPengawas }
+// ── Cache lookup petugas: namaPencacah/emailPencacah → info lengkap ──────────
+// Dibangun dari assignment_pencacah (nama → pengawas) + assignment_pengawas
+// (email pencacah → nama pengawas) untuk coverage lengkap
+let petugasCache = null; // Map: key (nama.lower atau email.lower) → { namaPencacah, emailPencacah, namaPengawas, emailPengawas }
 
 async function buildPetugasCache() {
-  const docs = await db.collection('assignment_pencacah')
+  petugasCache = new Map();
+
+  // ── Sumber 1: assignment_pencacah — pencacah yg tidak jadi pengawas ─────
+  // Struktur: { nama, email, role:'Pencacah', pengawas: { nama, email } }
+  const pcl_docs = await db.collection('assignment_pencacah')
     .find({}, { projection: { _id:0, nama:1, email:1, pengawas:1 } })
     .toArray();
 
-  petugasCache = new Map();
-  for (const d of docs) {
+  for (const d of pcl_docs) {
     if (!d.nama) continue;
-    petugasCache.set(d.nama.toLowerCase().trim(), {
+    const entry = {
       namaPencacah:  d.nama,
       emailPencacah: d.email || '',
       namaPengawas:  (d.pengawas && d.pengawas.nama)  || '',
       emailPengawas: (d.pengawas && d.pengawas.email) || '',
-    });
+    };
+    petugasCache.set(d.nama.toLowerCase().trim(), entry);
+    if (d.email) petugasCache.set(d.email.toLowerCase().trim(), entry);
   }
-  console.log(`[MongoDB] Petugas cache: ${petugasCache.size} pencacah`);
+
+  // ── Sumber 2: assignment_pengawas — untuk kasus pencacah yg role-nya Pengawas ─
+  // Struktur: { nama (pengawas), email (pengawas), subSlsDetail:[{ pencacahEmail, pencacahNama, ... }] }
+  const pws_docs = await db.collection('assignment_pengawas')
+    .find({}, { projection: { _id:0, nama:1, email:1, subSlsDetail:1 } })
+    .toArray();
+
+  for (const d of pws_docs) {
+    const namasPengawas = d.nama || '';
+    const emailPengawas = d.email || '';
+    for (const sub of (d.subSlsDetail || [])) {
+      const pclEmail = (sub.pencacahEmail || '').toLowerCase().trim();
+      const pclNama  = (sub.pencacahNama  || '').toLowerCase().trim();
+      if (!pclEmail && !pclNama) continue;
+      const entry = {
+        namaPencacah:  sub.pencacahNama  || pclEmail,
+        emailPencacah: sub.pencacahEmail || '',
+        namaPengawas:  namasPengawas,
+        emailPengawas: emailPengawas,
+      };
+      // Index by email pencacah (paling reliable)
+      if (pclEmail) petugasCache.set(pclEmail, entry);
+      // Index by nama pencacah juga (untuk match dengan field petugas di isian_se2026)
+      if (pclNama) petugasCache.set(pclNama, entry);
+    }
+  }
+
+  console.log(`[MongoDB] Petugas cache: ${petugasCache.size} entri (nama+email)`);
 }
 
 // Fungsi enrich: tambahkan namaPencacah & namaPengawas ke satu record
+// Match pertama by nama (field petugas di isian_se2026), fallback by email
 function enrichPetugas(doc) {
   if (!petugasCache || !doc) return doc;
-  const key = (doc.petugas || '').toLowerCase().trim();
-  const info = petugasCache.get(key);
+  const byNama  = petugasCache.get((doc.petugas || '').toLowerCase().trim());
+  const byEmail = petugasCache.get((doc.emailPencacah || '').toLowerCase().trim());
+  const info    = byNama || byEmail;
   if (!info) return doc;
   return {
     ...doc,
-    namaPencacah:  info.namaPencacah,
-    emailPencacah: info.emailPencacah,
-    namaPengawas:  info.namaPengawas,
-    emailPengawas: info.emailPengawas,
+    namaPencacah:  info.namaPencacah  || doc.petugas,
+    emailPencacah: info.emailPencacah || '',
+    namaPengawas:  info.namaPengawas  || '',
+    emailPengawas: info.emailPengawas || '',
   };
 }
 
-// Refresh cache manual (dipanggil setelah upload baru)
+// Refresh cache manual
 app.post('/api/petugas/cache/refresh', verifyToken, requireFullAccess, async (req, res) => {
   try {
     await buildPetugasCache();
