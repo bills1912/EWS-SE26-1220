@@ -188,51 +188,71 @@ let petugasCache = null; // Map: key (nama.lower atau email.lower) → { namaPen
 async function buildPetugasCache() {
   petugasCache = new Map();
 
-  // ── Sumber 1: assignment_pencacah — pencacah yg tidak jadi pengawas ─────
-  // Struktur: { nama, email, role:'Pencacah', pengawas: { nama, email } }
-  const pcl_docs = await db.collection('assignment_pencacah')
-    .find({}, { projection: { _id:0, nama:1, email:1, pengawas:1 } })
+  // ── Sumber UTAMA: nama_petugas_se2026 (dari file wilayah tugas resmi BPS) ──
+  // Kolom: emailPcl, namaPcl, emailPml, namaPml — nama SOBAT yang resmi
+  const sobat_docs = await db.collection('nama_petugas_se2026')
+    .find({ type: 'pcl' }, { projection: { _id:0, emailPcl:1, namaPcl:1, emailPml:1, namaPml:1 } })
     .toArray();
 
-  for (const d of pcl_docs) {
-    if (!d.nama) continue;
+  for (const d of sobat_docs) {
+    if (!d.emailPcl) continue;
     const entry = {
-      namaPencacah:  d.nama,
-      emailPencacah: d.email || '',
-      namaPengawas:  (d.pengawas && d.pengawas.nama)  || '',
-      emailPengawas: (d.pengawas && d.pengawas.email) || '',
+      namaPencacah:  d.namaPcl  || d.emailPcl,
+      emailPencacah: d.emailPcl || '',
+      namaPengawas:  d.namaPml  || '',
+      emailPengawas: d.emailPml || '',
     };
-    petugasCache.set(d.nama.toLowerCase().trim(), entry);
-    if (d.email) petugasCache.set(d.email.toLowerCase().trim(), entry);
+    // Index by email (primary key yang reliable)
+    petugasCache.set(d.emailPcl.toLowerCase().trim(), entry);
+    // Index by nama SOBAT (untuk match dengan field petugas di isian_se2026 yg berisi nama)
+    if (d.namaPcl) petugasCache.set(d.namaPcl.toLowerCase().trim(), entry);
   }
 
-  // ── Sumber 2: assignment_pengawas — untuk kasus pencacah yg role-nya Pengawas ─
-  // Struktur: { nama (pengawas), email (pengawas), subSlsDetail:[{ pencacahEmail, pencacahNama, ... }] }
-  const pws_docs = await db.collection('assignment_pengawas')
-    .find({}, { projection: { _id:0, nama:1, email:1, subSlsDetail:1 } })
-    .toArray();
-
-  for (const d of pws_docs) {
-    const namasPengawas = d.nama || '';
-    const emailPengawas = d.email || '';
-    for (const sub of (d.subSlsDetail || [])) {
-      const pclEmail = (sub.pencacahEmail || '').toLowerCase().trim();
-      const pclNama  = (sub.pencacahNama  || '').toLowerCase().trim();
-      if (!pclEmail && !pclNama) continue;
+  // ── Fallback: assignment_pencacah (jika ada PCL yang tidak ada di file wilayah tugas) ──
+  if (sobat_docs.length === 0) {
+    console.warn('[MongoDB] nama_petugas_se2026 kosong — fallback ke assignment_pencacah');
+    const pcl_docs = await db.collection('assignment_pencacah')
+      .find({}, { projection: { _id:0, nama:1, email:1, username:1, pengawas:1 } })
+      .toArray();
+    for (const d of pcl_docs) {
+      if (!d.email && !d.nama) continue;
       const entry = {
-        namaPencacah:  sub.pencacahNama  || pclEmail,
-        emailPencacah: sub.pencacahEmail || '',
-        namaPengawas:  namasPengawas,
-        emailPengawas: emailPengawas,
+        namaPencacah:  d.username || d.nama || d.email,
+        emailPencacah: d.email || '',
+        namaPengawas:  (d.pengawas && (d.pengawas.username || d.pengawas.nama)) || '',
+        emailPengawas: (d.pengawas && d.pengawas.email) || '',
       };
-      // Index by email pencacah (paling reliable)
-      if (pclEmail) petugasCache.set(pclEmail, entry);
-      // Index by nama pencacah juga (untuk match dengan field petugas di isian_se2026)
-      if (pclNama) petugasCache.set(pclNama, entry);
+      if (d.nama)     petugasCache.set(d.nama.toLowerCase().trim(), entry);
+      if (d.username) petugasCache.set(d.username.toLowerCase().trim(), entry);
+      if (d.email)    petugasCache.set(d.email.toLowerCase().trim(), entry);
+    }
+
+    // Fallback 2: assignment_pengawas
+    const pws_docs = await db.collection('assignment_pengawas')
+      .find({}, { projection: { _id:0, nama:1, username:1, email:1, subSlsDetail:1 } })
+      .toArray();
+    for (const d of pws_docs) {
+      const namaEmailRx = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      const namaPengawas = d.username
+        || (d.nama && !namaEmailRx.test(d.nama) ? d.nama : '') || d.email || '';
+      for (const sub of (d.subSlsDetail || [])) {
+        const pclEmail = (sub.pencacahEmail || '').toLowerCase().trim();
+        const pclNama  = (sub.pencacahNama  || '').toLowerCase().trim();
+        if (!pclEmail && !pclNama) continue;
+        const existing = pclEmail ? petugasCache.get(pclEmail) : null;
+        const entry = {
+          namaPencacah:  existing?.namaPencacah || sub.pencacahNama || pclEmail,
+          emailPencacah: sub.pencacahEmail || '',
+          namaPengawas:  namaPengawas,
+          emailPengawas: d.email || '',
+        };
+        if (pclEmail) petugasCache.set(pclEmail, entry);
+        if (pclNama)  petugasCache.set(pclNama,  entry);
+      }
     }
   }
 
-  console.log(`[MongoDB] Petugas cache: ${petugasCache.size} entri (nama+email)`);
+  console.log(`[MongoDB] Petugas cache: ${petugasCache.size} entri (sumber: ${sobat_docs.length > 0 ? 'nama_petugas_se2026' : 'assignment_pencacah/pengawas'})`);
 }
 
 // Fungsi enrich: tambahkan namaPencacah & namaPengawas ke satu record
@@ -251,6 +271,47 @@ function enrichPetugas(doc) {
     emailPengawas: info.emailPengawas || '',
   };
 }
+
+// Debug endpoint — cek isi cache dan sample dokumen
+app.get('/api/petugas/debug', verifyToken, requireFullAccess, async (req, res) => {
+  try {
+    // Cek collection ada
+    const collections = await db.listCollections().toArray();
+    const collNames = collections.map(c => c.name);
+
+    // Sample dari assignment_pencacah
+    const samplePcl = await db.collection('assignment_pencacah')
+      .findOne({}, { projection: { _id:0, nama:1, email:1, pengawas:1 } });
+
+    // Sample dari assignment_pengawas
+    const samplePws = await db.collection('assignment_pengawas')
+      .findOne({}, { projection: { _id:0, nama:1, email:1, subSlsDetail:{ $slice:1 } } });
+
+    // Cek cache
+    const cacheSize = petugasCache ? petugasCache.size : null;
+    // Sample 3 entry dari cache
+    const cacheSample = [];
+    if (petugasCache) {
+      let i = 0;
+      for (const [k, v] of petugasCache.entries()) {
+        if (i++ >= 3) break;
+        cacheSample.push({ key: k, value: v });
+      }
+    }
+
+    // Test lookup untuk 'Fadlan'
+    const fadlan = petugasCache ? petugasCache.get('fadlan') : null;
+
+    res.json({
+      collections: collNames.filter(n => n.includes('assignment') || n.includes('isian')),
+      samplePcl,
+      samplePws,
+      cacheSize,
+      cacheSample,
+      fadlanLookup: fadlan,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 // Refresh cache manual
 app.post('/api/petugas/cache/refresh', verifyToken, requireFullAccess, async (req, res) => {
