@@ -400,8 +400,6 @@ export default function RespondenPage() {
   }, [highlightId, records]);
 
   // ── Navigasi dari Anomali (ews:goto event) ────────────────────────────
-  const [highlightId,   setHighlightId]   = useState(null);
-  const rowRefs = useRef({});  // { [id]: <tr element> }
 
   useEffect(() => {
     // Cek sessionStorage saat mount (jika pindah tab dari Anomali)
