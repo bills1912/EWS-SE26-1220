@@ -539,7 +539,7 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         workingDays: WORKING_DAYS, activeDays,
       },
       avgPerDayPencacah: {
-        total: sr((sub+draft) / WORKING_DAYS),
+        total: sr((appr+sub+rej+draft) / WORKING_DAYS),
         submitted: sr(sub / WORKING_DAYS), draft: sr(draft / WORKING_DAYS),
         workingDays: WORKING_DAYS,
       },
