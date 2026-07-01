@@ -1378,6 +1378,22 @@ app.get('/api/anomali/boxplot-usaha', verifyToken, async function(req, res) {
 
     var fence = calcFence(sorted);
 
+    // Join ke isian_se2026 lewat assignmentId — supaya dapat ID resmi (format SE26-xxxx),
+    // fasihUrl, dan nama kepala keluarga (respondent), bukan ID assignment mentah (UUID Fasih).
+    // Tidak semua assignment_detail otomatis punya pasangan isian_se2026 (mis. isian belum
+    // sempat di-scrape via fetch-isian-bulk.py) — kalau tidak ketemu, id/fasihUrl dibiarkan
+    // kosong supaya tombol "Lihat Responden"/"Fasih" di modal otomatis tidak muncul
+    // (menghindari link yang salah arah), bukan fallback ke UUID mentah.
+    var assignmentIds = docs.map(function(d){ return d.assignmentId; }).filter(Boolean);
+    var isianDocs = assignmentIds.length
+      ? await db.collection('isian_se2026').find(
+          { assignmentId: { $in: assignmentIds } },
+          { projection: { _id:0, id:1, assignmentId:1, namaKepala:1, fasihUrl:1 } }
+        ).toArray()
+      : [];
+    var isianByAssignment = {};
+    isianDocs.forEach(function(d) { if (d.assignmentId) isianByAssignment[d.assignmentId] = d; });
+
     var points = docs.map(function(r) {
       // Resolve nama pencacah RESMI lewat petugasCache (by email atau subSlsCode) —
       // field `nama`/`email` di assignment_detail bisa jadi currentUser (pengawas)
@@ -1390,12 +1406,18 @@ app.get('/api/anomali/boxplot-usaha', verifyToken, async function(req, res) {
       }
       var namaPencacah = (cacheInfo && cacheInfo.namaPencacah) || r.pencacahEmail || r.nama;
       var anomaly = (isFinite(fence.hi) && r.data7 > fence.hi) ? 'warn' : null;
+      var isian = isianByAssignment[r.assignmentId] || null;
       return {
-        id: r.assignmentId, namaKepala: namaPencacah,
+        id: (isian && isian.id) || null,          // ID resmi SE26-xxxx (null kalau belum ada isian)
+        assignmentIdRaw: r.assignmentId,           // UUID mentah — disimpan utk referensi/debug saja
+        // PENTING: namaKepala HARUS nama responden (kepala keluarga), BUKAN nama pencacah.
+        // Kalau isian belum ketemu, biarkan null (jangan fallback ke namaPencacah) —
+        // supaya tidak duplikat dengan field `petugas` di bawah, frontend yang kasih placeholder.
+        namaKepala: (isian && isian.namaKepala) || null,
         kecamatan: r.kecamatan, desa: r.desa,
         petugas: namaPencacah, status: r.status,
         nilai: r.data7, anomaly: anomaly,
-        fasihUrl: '',
+        fasihUrl: (isian && isian.fasihUrl) || '',
       };
     });
 
