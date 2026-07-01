@@ -635,15 +635,34 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       },
     };
 
-    // Rekalkulasi per individu
+    // Build reverse map emailPml → namaPml sekali saja (lebih efisien dari loop per pengawas)
+    const pmlNameMap = new Map();
+    if (petugasCache) {
+      for (const [, v] of petugasCache.entries()) {
+        if (v.emailPengawas && v.namaPengawas && !pmlNameMap.has(v.emailPengawas)) {
+          pmlNameMap.set(v.emailPengawas, v.namaPengawas);
+        }
+      }
+    }
+
+    // Rekalkulasi per individu + enrich nama dari petugasCache (nama SOBAT resmi)
     const pencacahFixed = (pencacah || []).map(p => {
       const pS=p.submit||0, pD=p.draft||0, pA=p.approved||0, pR=p.reject||0, pT=p.total||0;
+      // Lookup nama resmi dari cache — by email (paling reliable)
+      const cacheByEmail = petugasCache && p.email ? petugasCache.get(p.email.toLowerCase().trim()) : null;
+      const cacheByNama  = petugasCache && p.nama  ? petugasCache.get(p.nama.toLowerCase().trim())  : null;
+      const cache = cacheByEmail || cacheByNama;
       return { ...p,
+        // Override nama dengan nama SOBAT resmi jika ada
+        nama:          cache?.namaPencacah  || p.nama,
+        namaSobat:     cache?.namaPencacah  || p.nama,
+        pengawas: {
+          ...( p.pengawas || {} ),
+          nama:  cache?.namaPengawas  || p.pengawas?.nama  || '',
+          email: cache?.emailPengawas || p.pengawas?.email || '',
+        },
         progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
         avgPerDay: { ...(p.avgPerDay||{}),
-          // total = semua yang sudah dikerjakan PCL / hari kerja
-          // (submit + approved + rejected + draft) — approved/rejected tetap dihitung
-          // karena pencacah sudah mengerjakannya, hanya statusnya diubah pengawas
           total: sr((pS+pD+pA+pR)/WORKING_DAYS), submitted: sr(pS/WORKING_DAYS),
           draft: sr(pD/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
           rejected: sr(pR/WORKING_DAYS), workingDays: WORKING_DAYS,
@@ -652,7 +671,14 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
     });
     const pengawasFixed = (pengawas || []).map(p => {
       const pA=p.approved||0, pR=p.reject||0, pT=p.total||0;
+      // Lookup nama pengawas dari reverse map (by emailPml)
+      const emailKey = (p.email || '').toLowerCase().trim();
+      const namaFromXlsx = pmlNameMap.get(emailKey) || null;
+      // Fallback: cari by email di cache langsung (jika pengawas juga terdaftar sebagai PCL)
+      const cacheEntry = petugasCache ? petugasCache.get(emailKey) : null;
       return { ...p,
+        nama:      namaFromXlsx || p.username || p.nama,
+        namaSobat: namaFromXlsx || p.username || p.nama,
         progressScore: pT>0 ? sr((pA+pR)/pT*100,1) : 0,
         avgPerDay: { ...(p.avgPerDay||{}),
           total: sr((pA+pR)/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
