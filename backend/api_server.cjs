@@ -170,8 +170,59 @@ async function getDB() {
     console.warn('[MongoDB] Gagal membuat index:', e.message);
   }
 
+  // Build lookup cache: nama pencacah → { namaPengawas, emailPengawas, emailPencacah }
+  try {
+    await buildPetugasCache();
+  } catch (e) {
+    console.warn('[MongoDB] Gagal build petugas cache:', e.message);
+  }
+
   return db;
 }
+
+// ── Cache lookup petugas: namaPencacah → info lengkap ──────────────────────
+let petugasCache = null; // Map: namaPencacah.toLowerCase() → { namaPencacah, emailPencacah, namaPengawas, emailPengawas }
+
+async function buildPetugasCache() {
+  const docs = await db.collection('assignment_pencacah')
+    .find({}, { projection: { _id:0, nama:1, email:1, pengawas:1 } })
+    .toArray();
+
+  petugasCache = new Map();
+  for (const d of docs) {
+    if (!d.nama) continue;
+    petugasCache.set(d.nama.toLowerCase().trim(), {
+      namaPencacah:  d.nama,
+      emailPencacah: d.email || '',
+      namaPengawas:  (d.pengawas && d.pengawas.nama)  || '',
+      emailPengawas: (d.pengawas && d.pengawas.email) || '',
+    });
+  }
+  console.log(`[MongoDB] Petugas cache: ${petugasCache.size} pencacah`);
+}
+
+// Fungsi enrich: tambahkan namaPencacah & namaPengawas ke satu record
+function enrichPetugas(doc) {
+  if (!petugasCache || !doc) return doc;
+  const key = (doc.petugas || '').toLowerCase().trim();
+  const info = petugasCache.get(key);
+  if (!info) return doc;
+  return {
+    ...doc,
+    namaPencacah:  info.namaPencacah,
+    emailPencacah: info.emailPencacah,
+    namaPengawas:  info.namaPengawas,
+    emailPengawas: info.emailPengawas,
+  };
+}
+
+// Refresh cache manual (dipanggil setelah upload baru)
+app.post('/api/petugas/cache/refresh', verifyToken, requireFullAccess, async (req, res) => {
+  try {
+    await buildPetugasCache();
+    res.json({ ok: true, size: petugasCache?.size || 0 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.use(async (req, res, next) => {
   try { await getDB(); next(); }
@@ -377,7 +428,8 @@ app.get('/api/responden', verifyToken, requireFullAccess, async (req, res) => {
       coll.find(filter, { projection: { _id: 0 } })
           .sort({ no: 1 }).skip(skip).limit(limit).toArray(),
     ]);
-    res.json({ total, page, limit, totalPages: Math.ceil(total / limit), data: docs });
+    res.json({ total, page, limit, totalPages: Math.ceil(total / limit),
+      data: docs.map(enrichPetugas) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -386,7 +438,7 @@ app.get('/api/responden/:id', verifyToken, requireFullAccess, async (req, res) =
     const doc = await db.collection('isian_se2026')
       .findOne({ id: req.params.id }, { projection: { _id: 0 } });
     if (!doc) return res.status(404).json({ error: `Record ${req.params.id} tidak ditemukan` });
-    res.json(doc);
+    res.json(enrichPetugas(doc));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -709,7 +761,13 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
         list = list.filter(r => JSON.stringify(r).toLowerCase().includes(ql));
       }
       const total = list.length;
-      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
+        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
+        return { ...r,
+          pcl: (info && info.namaPencacah) || r.pcl,
+          pml: (info && info.namaPengawas) || '' };
+      });
+      return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
 
     } else if (type === 'rekening') {
@@ -740,7 +798,13 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       }
       list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
       const total = list.length;
-      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
+        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
+        return { ...r,
+          pcl: (info && info.namaPencacah) || r.pcl,
+          pml: (info && info.namaPengawas) || '' };
+      });
+      return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
 
     } else if (type === 'tidakTahu') {
@@ -813,7 +877,13 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       }
       list.sort((a,b) => (a.kec||'').localeCompare(b.kec||'') || (a.desa||'').localeCompare(b.desa||''));
       const total = list.length;
-      return res.json({ data: list.slice((pg-1)*lim, pg*lim), total,
+      const pageNikAK = list.slice((pg-1)*lim, pg*lim).map(r => {
+        const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
+        return { ...r,
+          pcl: (info && info.namaPencacah) || r.pcl,
+          pml: (info && info.namaPengawas) || '' };
+      });
+      return res.json({ data: pageNikAK, total,
                          totalPages: Math.ceil(total/lim), page: pg });
     }
 
@@ -823,7 +893,14 @@ app.get('/api/crosscheck/:type', verifyToken, async (req, res) => {
       db.collection('isian_se2026').aggregate(countPipeline).toArray(),
     ]);
     const total = countResult[0]?.n || 0;
-    res.json({ data, total, totalPages: Math.ceil(total/lim), page: pg });
+    // Inject pml dari petugasCache
+    const enrichedData = data.map(r => {
+      const info = petugasCache && petugasCache.get((r.pcl||'').toLowerCase().trim());
+      return { ...r,
+        pcl: (info && info.namaPencacah) || r.pcl,
+        pml: (info && info.namaPengawas) || '' };
+    });
+    res.json({ data: enrichedData, total, totalPages: Math.ceil(total/lim), page: pg });
 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
