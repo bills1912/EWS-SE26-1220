@@ -570,6 +570,10 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       workingDays:    WORKING_DAYS,
       todayWIB:       todayWIB(),
       pendataanStart: PENDATAAN_START_STR,
+      // Metrik Usaha Ditemukan (data7) — passthrough dari convert_assignment.py,
+      // fallback 0 untuk snapshot lama yang belum punya field ini
+      usahaAssignmentCount: rawSummary.usahaAssignmentCount || 0,
+      totalUsahaDitemukan:  rawSummary.totalUsahaDitemukan  || 0,
       avgPerDay: {
         approved:  sr(appr  / WORKING_DAYS),
         submitted: sr(sub   / WORKING_DAYS),
@@ -617,6 +621,10 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
           email: cache?.emailPengawas || p.pengawas?.email || '',
         },
         progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
+        // Metrik Usaha Ditemukan (data7) — auto-passthrough dari convert_assignment.py,
+        // fallback 0 untuk snapshot lama yang belum punya field ini
+        usahaAssignmentCount: p.usahaAssignmentCount || 0,
+        totalUsahaDitemukan:  p.totalUsahaDitemukan  || 0,
         avgPerDay: { ...(p.avgPerDay||{}),
           total: sr((pS+pD+pA+pR)/WORKING_DAYS), submitted: sr(pS/WORKING_DAYS),
           draft: sr(pD/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
@@ -635,6 +643,9 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         nama:      namaFromXlsx || p.username || p.nama,
         namaSobat: namaFromXlsx || p.username || p.nama,
         progressScore: pT>0 ? sr((pA+pR)/pT*100,1) : 0,
+        // Metrik Usaha Ditemukan (data7) — sudah agregat dari pencacah di convert_assignment.py
+        usahaAssignmentCount: p.usahaAssignmentCount || 0,
+        totalUsahaDitemukan:  p.totalUsahaDitemukan  || 0,
         avgPerDay: { ...(p.avgPerDay||{}),
           total: sr((pA+pR)/WORKING_DAYS), approved: sr(pA/WORKING_DAYS),
           rejected: sr(pR/WORKING_DAYS), workingDays: WORKING_DAYS,
