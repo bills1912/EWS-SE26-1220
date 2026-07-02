@@ -600,6 +600,125 @@ function ResolutionModal({ target, onClose, onConfirm, saving, error }) {
   );
 }
 
+// ── Modal peringatan saat MEMBATALKAN centang anomali yang sudah selesai ──
+// Sama pola dgn ResolutionModal: createPortal ke document.body supaya
+// ngikut viewport asli, bukan inline.
+function UncheckWarningModal({ target, onClose, onConfirm, saving, error }) {
+  if (!target) return null;
+  const ex = target.existing;
+  let waktu = '';
+  if (ex?.resolvedAt) {
+    try { waktu = new Date(ex.resolvedAt).toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' }); }
+    catch { waktu = ex.resolvedAt; }
+  }
+
+  return createPortal(
+    <div
+      style={{ position:'fixed', inset:0, zIndex:9999, display:'flex',
+        alignItems:'center', justifyContent:'center', padding:'24px',
+        background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}
+      onClick={saving ? undefined : onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:'var(--bg2)', border:'1px solid var(--border2)',
+          borderRadius:16, width:440, maxWidth:'100%', maxHeight:'85vh',
+          display:'flex', flexDirection:'column', overflow:'hidden',
+          boxShadow:'0 24px 64px rgba(0,0,0,0.6)', animation:'modalIn .25s ease both' }}
+      >
+        {/* Header */}
+        <div style={{ padding:'16px 18px', borderBottom:'1px solid var(--border)',
+          display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
+            background:'rgba(251,146,60,0.15)', display:'flex',
+            alignItems:'center', justifyContent:'center' }}>
+            <AlertTriangle size={15} color="#fb923c" strokeWidth={2.5}/>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)' }}>
+              Batalkan Status Selesai?
+            </div>
+            <div style={{ fontSize:10, color:'var(--text4)', marginTop:2,
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {target.namaKepala} · <span style={{ fontFamily:'var(--mono)' }}>{target.code}</span>
+              {target.usaha ? ` · ${target.usaha}` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} disabled={saving}
+            style={{ background:'none', border:'none', cursor: saving ? 'default' : 'pointer',
+              padding:4, borderRadius:6, display:'flex', flexShrink:0 }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+            onMouseLeave={e=>e.currentTarget.style.background='none'}>
+            <X size={15} color="var(--text3)"/>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'16px 18px', overflowY:'auto' }}>
+          <div style={{ background:'rgba(251,146,60,0.08)', border:'1px solid rgba(251,146,60,0.25)',
+            borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:11.5,
+            color:'var(--text2)', lineHeight:1.6 }}>
+            Anomali ini akan ditandai <strong>belum ditindaklanjuti</strong> lagi.
+            {ex?.catatan ? ' Catatan klarifikasi yang sudah ditulis akan tetap terhapus dari status aktif — cek dulu isinya di bawah kalau perlu.' : ''}
+          </div>
+
+          {ex && (
+            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)',
+              borderRadius:8, padding:'10px 12px', marginBottom:6 }}>
+              <div style={{ fontSize:9.5, fontWeight:700, color:'var(--text4)',
+                textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>
+                Ditandai selesai sebelumnya
+              </div>
+              <div style={{ fontSize:11, color:'var(--text2)', marginBottom:3 }}>
+                Oleh: <strong>{ex.resolvedBy || 'tidak diketahui'}</strong>
+                {waktu && <> · {waktu}</>}
+              </div>
+              {ex.catatan
+                ? <div style={{ fontSize:11, color:'var(--text3)', marginTop:6,
+                    fontStyle:'italic', lineHeight:1.5, whiteSpace:'pre-wrap' }}>
+                    “{ex.catatan}”
+                  </div>
+                : <div style={{ fontSize:10.5, color:'var(--text4)', marginTop:6 }}>
+                    (tidak ada catatan klarifikasi)
+                  </div>}
+            </div>
+          )}
+
+          {error && (
+            <div style={{ marginTop:10, padding:'8px 10px', borderRadius:8,
+              background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)',
+              fontSize:11, color:'#f87171' }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)',
+          display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8,
+              border:'1px solid var(--border)', background:'var(--bg3)',
+              color:'var(--text2)', cursor: saving ? 'default' : 'pointer' }}>
+            Batal
+          </button>
+          <button onClick={onConfirm} disabled={saving}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px',
+              fontSize:12, fontWeight:700, borderRadius:8, border:'none',
+              cursor: saving ? 'default' : 'pointer',
+              background: saving ? 'var(--bg4)' : '#fb923c', color: saving ? 'var(--text4)' : '#3a1c05',
+              boxShadow: saving ? 'none' : '0 1px 4px rgba(251,146,60,0.35)' }}>
+            {saving
+              ? <><Loader2 size={13} strokeWidth={2} style={{ animation:'spin .8s linear infinite' }}/> Menyimpan…</>
+              : <>Ya, Batalkan</>}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function FlagBadge({ flag, resolved, onToggle }) {
   const [hover, setHover] = useState(false);
   const [pos,   setPos]   = useState({ above: true, left: 0 });
@@ -790,6 +909,7 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [tabSummary,     setTabSummary]   = useState({ usaha:null, keluarga:null, missing:null });
   const [resolutionMap,  setResolutionMap] = useState({});   // { "id::code::usaha": {...} }
   const [pendingResolve, setPendingResolve] = useState(null); // target lagi diklarifikasi di modal
+  const [pendingUncheck, setPendingUncheck] = useState(null); // target lagi dikonfirmasi utk di-uncheck
   const [savingResolve,  setSavingResolve]  = useState(false);
   const [resolveError,   setResolveError]   = useState(null);
 
@@ -809,10 +929,10 @@ export function AnomalyDetailTable({ kecFilter }) {
 
   // Klik checkbox pada satu flag anomali:
   // - kalau mau DICENTANG (belum -> selesai) -> buka modal klarifikasi dulu
-  // - kalau mau DIBATALKAN (selesai -> belum) -> langsung toggle, tanpa modal
+  // - kalau mau DIBATALKAN (selesai -> belum) -> buka modal PERINGATAN dulu (jangan langsung hilang)
   const handleToggleResolved = (rec, flag, next) => {
+    setResolveError(null);
     if (next) {
-      setResolveError(null);
       setPendingResolve({
         id: rec.id, code: flag.code, usaha: flag.usaha || '',
         namaKepala: rec.namaKepala, ket: flag.ket,
@@ -820,15 +940,10 @@ export function AnomalyDetailTable({ kecFilter }) {
       return;
     }
     const key = `${rec.id}::${flag.code}::${flag.usaha||''}`;
-    // Optimistic update — langsung hilangkan centang di UI
-    setResolutionMap(prev => { const n = { ...prev }; delete n[key]; return n; });
-    apiFetch('/api/anomali/resolusi', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: rec.id, code: flag.code, usaha: flag.usaha || '', tab, resolved: false }),
-    }).catch(() => {
-      // Gagal -> kembalikan checklist ke status semula
-      setResolutionMap(prev => ({ ...prev, [key]: { resolved: true } }));
+    setPendingUncheck({
+      id: rec.id, code: flag.code, usaha: flag.usaha || '',
+      namaKepala: rec.namaKepala, ket: flag.ket,
+      existing: resolutionMap[key] || null,
     });
   };
 
@@ -848,6 +963,31 @@ export function AnomalyDetailTable({ kecFilter }) {
       setPendingResolve(null);
     } catch (e) {
       setResolveError(e.message || 'Gagal menyimpan status penyelesaian.');
+    } finally {
+      setSavingResolve(false);
+    }
+  };
+
+  // Konfirmasi dari modal peringatan -> baru benar-benar batalkan centang (uncheck)
+  const handleConfirmUncheck = async () => {
+    if (!pendingUncheck) return;
+    const { id, code, usaha } = pendingUncheck;
+    const key = `${id}::${code}::${usaha||''}`;
+    const prevVal = resolutionMap[key];
+    setSavingResolve(true);
+    // Optimistic update — langsung hilangkan centang di UI
+    setResolutionMap(prev => { const n = { ...prev }; delete n[key]; return n; });
+    try {
+      await apiFetch('/api/anomali/resolusi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, code, usaha, tab, resolved: false }),
+      });
+      setPendingUncheck(null);
+    } catch (e) {
+      // Gagal -> kembalikan checklist ke status semula
+      setResolutionMap(prev => ({ ...prev, [key]: prevVal }));
+      setResolveError(e.message || 'Gagal membatalkan status penyelesaian.');
     } finally {
       setSavingResolve(false);
     }
@@ -1373,6 +1513,14 @@ export function AnomalyDetailTable({ kecFilter }) {
         error={resolveError}
         onClose={() => { if (!savingResolve) { setPendingResolve(null); setResolveError(null); } }}
         onConfirm={handleConfirmResolve}
+      />
+
+      <UncheckWarningModal
+        target={pendingUncheck}
+        saving={savingResolve}
+        error={resolveError}
+        onClose={() => { if (!savingResolve) { setPendingUncheck(null); setResolveError(null); } }}
+        onConfirm={handleConfirmUncheck}
       />
 
       <style>{`
