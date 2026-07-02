@@ -590,7 +590,7 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         workingDays: WORKING_DAYS,
       },
       avgPerDayPengawas: {
-        total: sr((appr+rej) / WORKING_DAYS),
+        total: sr((appr+sub+rej+draft) / WORKING_DAYS),
         approved: sr(appr / WORKING_DAYS), rejected: sr(rej / WORKING_DAYS),
         workingDays: WORKING_DAYS,
       },
@@ -751,15 +751,16 @@ app.get('/api/evaluasi/timeseries', verifyToken, async (req, res) => {
     const activeDays  = dailySeries.filter(r =>
       (r.approved||0)+(r.submitted||0)+(r.rejected||0)+(r.draft||0) > 0).length;
 
-    // Pencacah: avg = submit+draft | Pengawas: avg = approved+rejected
+    // total = SEMUA aktivitas (approved+submitted+rejected+draft) per hari kerja —
+    // harus sejalan dengan label UI "approved + submitted + rejected + draft per hari kerja".
+    // (Sebelumnya cuma submit+draft utk Pencacah / approved+rejected utk Pengawas —
+    // itu bug, bikin approve/reject tidak ikut kehitung di total.)
     const avgPerDay = {
       approved:    sr(appr  / WORKING_DAYS),
       submitted:   sr(sub   / WORKING_DAYS),
       rejected:    sr(rej   / WORKING_DAYS),
       draft:       sr(draft / WORKING_DAYS),
-      total:       isPws
-        ? sr((appr+rej)   / WORKING_DAYS)
-        : sr((sub+draft)  / WORKING_DAYS),
+      total:       sr((appr + sub + rej + draft) / WORKING_DAYS),
       workingDays: WORKING_DAYS,
       activeDays,
       todayWIB:    todayWIB(),

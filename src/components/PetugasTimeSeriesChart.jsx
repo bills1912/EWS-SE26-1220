@@ -239,8 +239,9 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
 
   const activeDays = avgPerDay.activeDays || 0;
 
-  // avgTotal — pakai field .total dari backend (sudah dihitung dinamis per workingDays)
-  // Pencacah: total = (submit+draft)/workingDays | Pengawas: total = (approved+rejected)/workingDays
+  // avgTotal — pakai field .total dari backend (sudah dihitung dinamis per workingDays,
+  // = approved+submitted+rejected+draft, sama utk Pencacah maupun Pengawas).
+  // Fallback di bawah cuma jaga-jaga kalau backend lama belum kirim field .total.
   const avgTotal = avgPerDay.total ?? Math.round((
     (avgPerDay.approved  || 0) +
     (avgPerDay.submitted || 0) +
