@@ -1790,8 +1790,8 @@ export function EvaluasiPage() {
           <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
           <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
           <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
-          <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;1)</span>
-          <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;1)</span>
+          <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
+          <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
           <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
           <span><strong style={{ color:'var(--text3)' }}>Desa Usaha Terbanyak</strong> = lokasi desa dari assignment tsb</span>
         </div>
