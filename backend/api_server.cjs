@@ -1772,6 +1772,10 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
     const fStatus = (req.query.status || '').trim().toUpperCase();
     const pg    = Math.max(1, parseInt(req.query.page  || '1'));
     const lim   = Math.min(100, Math.max(1, parseInt(req.query.limit || '25')));
+    // Mode export: kembalikan SEMUA hasil yang cocok filter (bukan cuma 1 halaman) —
+    // dipakai tombol "Export CSV" di frontend supaya bisa unduh seluruh data,
+    // bukan cuma 25/100 baris yang lagi tampil.
+    const isExport = req.query.export === '1';
 
     // Ambil dari cache (atau hitung jika cache expired/kosong)
     // Catatan: cache tidak terpisah per status karena status difilter di-memory
@@ -1806,8 +1810,9 @@ app.get('/api/anomali/detail', verifyToken, requireFullAccess, async function(re
         summary[f.code] = (summary[f.code]||0) + 1;
 
     const total = results.length;
-    const pageData = results.slice((pg-1)*lim, pg*lim)
-      .map(({ _usahaKatKbli, ...rest }) => rest); // buang field internal
+    const pageData = isExport
+      ? results.map(({ _usahaKatKbli, ...rest }) => rest) // export: semua baris, tanpa slice
+      : results.slice((pg-1)*lim, pg*lim).map(({ _usahaKatKbli, ...rest }) => rest);
 
     res.json({
       total, summary,

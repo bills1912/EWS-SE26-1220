@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import {
   AlertTriangle, ChevronDown, X, ArrowRight,
   ShieldAlert, Search, ChevronLeft, ChevronRight,
-  ChevronsUpDown, ChevronUp,
+  ChevronsUpDown, ChevronUp, Download,
 } from 'lucide-react';
 // Badge tidak dipakai
 
@@ -108,6 +108,20 @@ async function apiFetch(path) {
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// ── Export CSV helper (lokal, tidak bergantung file lain) ─────────────────
+function exportCSV(data, filename, columns) {
+  const header = columns.map(c => c.label).join(',');
+  const rows   = data.map(row =>
+    columns.map(c => `"${String(row[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
+  );
+  const blob = new Blob(['\uFEFF' + [header, ...rows].join('\n')],
+    { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Custom multiselect dropdown ──────────────────────────────────────────
@@ -635,6 +649,8 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [filterStatus,   setFilterStatus] = useState('all');
   const [sortCol,        setSortCol]      = useState('');
   const [sortDir,        setSortDir]      = useState('asc');
+  const [exporting,      setExporting]    = useState(false);
+  const [exportError,    setExportError]  = useState(null);
   const [tabSummary,     setTabSummary]   = useState({ usaha:null, keluarga:null, missing:null });
 
   const options = OPTIONS_MAP[tab] || [];
@@ -727,6 +743,85 @@ export function AnomalyDetailTable({ kecFilter }) {
                                  : String(vb).localeCompare(String(va), 'id');
       })
     : filtered;
+
+  // ── Export CSV — fetch SEMUA data (bukan cuma halaman aktif) sesuai filter
+  // yang lagi aktif (tab, kode anomali, kecamatan, kategori KBLI, status, search).
+  // Flatten 1 baris per (responden x flag) — biar kode anomali, usaha yang
+  // di-flag, dan penjelasannya masing-masing kebaca jelas per baris.
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const params = new URLSearchParams({
+        tab, export: '1',
+        ...(codes.length ? { codes: codes.join(',') } : {}),
+        ...(kecFilter && kecFilter !== 'all' ? { kec: kecFilter } : {}),
+        ...(filterKategori.length ? { kategori: filterKategori.join(',') } : {}),
+        ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+      });
+      const result = await apiFetch(`/api/anomali/detail?${params}`);
+      let allRows = result?.data || [];
+
+      // Samakan dgn filter pencarian yang lagi aktif di tabel
+      const q = search.trim().toLowerCase();
+      if (q) {
+        allRows = allRows.filter(r =>
+          (r.namaKepala||'').toLowerCase().includes(q) ||
+          (r.id||'').toLowerCase().includes(q) ||
+          (r.kecamatan||'').toLowerCase().includes(q) ||
+          (r.desa||'').toLowerCase().includes(q) ||
+          (r.petugas||'').toLowerCase().includes(q) ||
+          (r.flags||[]).some(f => (f.code||'').toLowerCase().includes(q) ||
+                            (f.ket||'').toLowerCase().includes(q) ||
+                            (f.usaha||'').toLowerCase().includes(q))
+        );
+      }
+
+      if (allRows.length === 0) {
+        setExportError('Tidak ada data untuk diekspor dengan filter saat ini.');
+        setExporting(false);
+        return;
+      }
+
+      const flatRows = [];
+      allRows.forEach((r, i) => {
+        if (!r.flags || r.flags.length === 0) {
+          flatRows.push({
+            no: r.no ?? i+1, id: r.id || '', nama: r.namaKepala || '',
+            kecamatan: r.kecamatan || '', desa: r.desa || '', status: r.status || '',
+            kodeAnomali: '', usaha: '', penjelasan: '',
+          });
+          return;
+        }
+        r.flags.forEach(f => {
+          flatRows.push({
+            no: r.no ?? i+1, id: r.id || '', nama: r.namaKepala || '',
+            kecamatan: r.kecamatan || '', desa: r.desa || '', status: r.status || '',
+            kodeAnomali: f.code || '', usaha: f.usaha || '', penjelasan: f.ket || '',
+          });
+        });
+      });
+
+      const cols = [
+        { key:'no',         label:'No' },
+        { key:'id',          label:'ID' },
+        { key:'nama',        label:'Nama Kepala Keluarga' },
+        { key:'kecamatan',   label:'Kecamatan' },
+        { key:'desa',        label:'Desa' },
+        { key:'status',      label:'Status' },
+        { key:'kodeAnomali', label:'Kode Anomali' },
+        { key:'usaha',       label:'Usaha Yang Anomali' },
+        { key:'penjelasan',  label:'Penjelasan' },
+      ];
+      const tanggal = new Date().toISOString().slice(0,10);
+      const kecPart = kecFilter && kecFilter !== 'all' ? `_${kecFilter.replace(/\s+/g,'-')}` : '';
+      exportCSV(flatRows, `anomali_${tab}${kecPart}_${tanggal}.csv`, cols);
+    } catch (e) {
+      setExportError(e.message || 'Gagal export data.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -937,7 +1032,31 @@ export function AnomalyDetailTable({ kecFilter }) {
           )}
         </div>
 
-        <span style={{ marginLeft:'auto', fontSize:11, color:'var(--text4)' }}>
+        <button
+          onClick={handleExport}
+          disabled={exporting || loading}
+          style={{
+            marginLeft:'auto', display:'flex', alignItems:'center', gap:5,
+            padding:'6px 12px', fontSize:11, borderRadius:8,
+            border:'1px solid rgba(52,211,153,0.4)',
+            background: exporting ? 'var(--bg3)' : 'rgba(52,211,153,0.1)',
+            color: exporting ? 'var(--text4)' : '#34d399',
+            cursor: exporting || loading ? 'default' : 'pointer',
+            fontWeight:600, whiteSpace:'nowrap', transition:'all .15s',
+          }}
+        >
+          {exporting
+            ? <div style={{ width:11, height:11, borderRadius:'50%',
+                border:'2px solid var(--bg4)', borderTopColor:'#34d399',
+                animation:'spin .8s linear infinite' }}/>
+            : <Download size={11} strokeWidth={2}/>}
+          {exporting ? 'Menyiapkan…' : 'Export CSV'}
+        </button>
+        {exportError && (
+          <span style={{ fontSize:10, color:'#f87171' }}>{exportError}</span>
+        )}
+
+        <span style={{ fontSize:11, color:'var(--text4)' }}>
           {loading ? 'Memuat...'
             : search && filtered.length !== rawRows.length
               ? `${filtered.length} dari ${rawRows.length} (hal ini)`
