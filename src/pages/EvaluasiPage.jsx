@@ -5,11 +5,12 @@
  * Kolom: # | Nama | Kecamatan | Total | Submit | Approved | Rejected | Open | Progress | Avg Durasi/Latensi | Avg/Hari
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
   Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
-  Star, Inbox, Columns,
+  Star, Inbox, Columns, X,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -17,6 +18,15 @@ import DesaFilter from '../components/DesaFilter.jsx';
 import { PetugasTimeSeriesChart } from '../components/PetugasTimeSeriesChart.jsx';
 
 const TOKEN_KEY = 'ews_token';
+
+// Timestamp export sampai detik, pakai waktu lokal browser (WIB utk user di Indonesia)
+// Format: YYYY-MM-DD_HH-mm-ss (aman utk nama file, tidak pakai ':' krn Windows tolak)
+function fmtExportTimestamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+       + `_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
 const BASE      = () => (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 const PAGE_SIZE = 20;
 const DETAIL_PAGE_SIZE = 25;
@@ -720,11 +730,13 @@ function SumCard({ label, value, sub, color, icon: Icon }) {
 }
 
 // ── Generate PDF Evaluasi (jsPDF — download langsung) ──────────────────────
-async function generatePDF({ activeTab, filtered, summary, effectiveSummary }) {
+async function generatePDF({ activeTab, filtered, summary, effectiveSummary, selectedCols }) {
   const isPengawas = activeTab === 'pengawas';
   const roleLabel  = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
   const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
+  // Kalau selectedCols tidak diberikan (dipanggil dari tempat lain), tampilkan semua kolom
+  const on = key => !selectedCols || selectedCols.has(key);
 
   // Load jsPDF dari CDN
   if (!window.jspdf) {
@@ -821,34 +833,51 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary }) {
   y += 22;
 
   // ── Tabel data — langsung di halaman yang sama ─────────────────────────
-  const cols = isPengawas
+  const colsAll = isPengawas
     ? [
-        { h:'#',        w:8,  key: (_,i) => i+1,                    align:'center' },
-        { h:'Nama',     w:42, key: p => p.nama||'—' },
-        { h:'Kec.',     w:28, key: p => p.kecamatan||'—' },
-        { h:'Total',    w:16, key: p => p.total||0,                  align:'right' },
-        { h:'Approved', w:18, key: p => p.approved||0,               align:'right', color: GREEN },
-        { h:'Submit',   w:16, key: p => p.submit||0,                 align:'right', color: YELLOW },
-        { h:'Rejected', w:16, key: p => p.reject||0,                 align:'right', color: RED },
-        { h:'Draft',    w:14, key: p => p.draft||0,                  align:'right', color: BLUE },
-        { h:'Open',     w:14, key: p => p.open||0,                   align:'right' },
+        { key:'no',   h:'#',        w:8,  key_: (_,i) => i+1,                    align:'center' },
+        { key:'nama', h:'Nama',     w:42, key_: p => p.nama||'—' },
+        { key:'kecamatan', h:'Kec.',     w:28, key_: p => p.kecamatan||'—' },
+        { key:'total',     h:'Total',    w:16, key_: p => p.total||0,                  align:'right' },
+        { key:'approved',  h:'Approved', w:18, key_: p => p.approved||0,               align:'right', color: GREEN },
+        { key:'submit',    h:'Submit',   w:16, key_: p => p.submit||0,                 align:'right', color: YELLOW },
+        { key:'rejected',  h:'Rejected', w:16, key_: p => p.reject||0,                 align:'right', color: RED },
+        { key:'draft',     h:'Draft',    w:14, key_: p => p.draft||0,                  align:'right', color: BLUE },
+        { key:'open',      h:'Open',     w:14, key_: p => p.open||0,                   align:'right' },
+        { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
+        { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
+        { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
+        { key:'usahaMaxDesa', h:'Desa Usaha Max', w:26, key_: p => p.usahaMaxDesa||'—' },
         // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
-        { h:'Avg/Hari', w:20, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
+        { key:'avgPerDay', h:'Avg/Hari', w:20, key_: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ]
     : [
-        { h:'#',        w:8,  key: (_,i) => i+1,                    align:'center' },
-        { h:'Nama',     w:36, key: p => p.nama||'—' },
-        { h:'Kec.',     w:24, key: p => p.kecamatan||'—' },
-        { h:'Pengawas', w:30, key: p => p.pengawas?.nama||'—' },
-        { h:'Total',    w:14, key: p => p.total||0,                  align:'right' },
-        { h:'Approved', w:16, key: p => p.approved||0,               align:'right', color: GREEN },
-        { h:'Submit',   w:14, key: p => p.submit||0,                 align:'right', color: YELLOW },
-        { h:'Rejected', w:14, key: p => p.reject||0,                 align:'right', color: RED },
-        { h:'Draft',    w:12, key: p => p.draft||0,                  align:'right', color: BLUE },
-        { h:'Open',     w:12, key: p => p.open||0,                   align:'right' },
+        { key:'no',   h:'#',        w:8,  key_: (_,i) => i+1,                    align:'center' },
+        { key:'nama', h:'Nama',     w:36, key_: p => p.nama||'—' },
+        { key:'kecamatan', h:'Kec.',     w:24, key_: p => p.kecamatan||'—' },
+        { key:'pengawas',  h:'Pengawas', w:30, key_: p => p.pengawas?.nama||'—' },
+        { key:'total',     h:'Total',    w:14, key_: p => p.total||0,                  align:'right' },
+        { key:'approved',  h:'Approved', w:16, key_: p => p.approved||0,               align:'right', color: GREEN },
+        { key:'submit',    h:'Submit',   w:14, key_: p => p.submit||0,                 align:'right', color: YELLOW },
+        { key:'rejected',  h:'Rejected', w:14, key_: p => p.reject||0,                 align:'right', color: RED },
+        { key:'draft',     h:'Draft',    w:12, key_: p => p.draft||0,                  align:'right', color: BLUE },
+        { key:'open',      h:'Open',     w:12, key_: p => p.open||0,                   align:'right' },
+        { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
+        { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
+        { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
+        { key:'usahaMaxDesa', h:'Desa Usaha Max', w:24, key_: p => p.usahaMaxDesa||'—' },
         // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
-        { h:'Avg/Hari', w:18, key: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
+        { key:'avgPerDay', h:'Avg/Hari', w:18, key_: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ];
+  // "no" dan "nama" selalu ikut; sisanya cuma yang dipilih user di modal
+  const cols = colsAll
+    .filter(c => c.key==='no' || c.key==='nama' || on(c.key))
+    .map(c => ({ ...c, key: c.key_ })); // 'key' dipakai render loop sbg accessor function (kompatibel kode lama)
+
+  // Skalakan lebar kolom biar tabel tetap penuh selebar halaman walau kolomnya sedikit
+  const usedW = cols.reduce((a,c) => a+c.w, 0);
+  const scale = usedW > 0 ? COL / usedW : 1;
+  cols.forEach(c => { c.w = c.w * scale; });
 
   const ROW_H    = 7;
   const HEAD_H   = 8;
@@ -921,17 +950,18 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary }) {
   );
 
   // ── Download ──────────────────────────────────────────────────────────────
-  const fname = `evaluasi_${isPengawas?'pengawas':'pencacah'}_se2026_${snap}.pdf`;
+  const fname = `evaluasi_${isPengawas?'pengawas':'pencacah'}_se2026_${snap}_${fmtExportTimestamp()}.pdf`;
   doc.save(fname);
 }
 
 
 // ── Generate Excel Evaluasi (CSV — tanpa library eksternal) ───────────────
-function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas }) {
+function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas, selectedCols }) {
   const roleLabel   = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap        = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
   const es          = effectiveSummary || {};
   const GRADE_LABEL = { A:'Unggul', B:'Baik', C:'Cukup', D:'Perlu Perhatian' };
+  const on = key => !selectedCols || selectedCols.has(key);
 
   // Escape nilai agar aman di CSV
   const esc = v => {
@@ -942,29 +972,36 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
   const row  = cols => cols.map(esc).join(',');
   const rows = arr  => arr.map(row).join('\n');
 
-  // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
-  const headers1 = [
-    'No','Nama','Email','Kecamatan',
-    ...(!isPengawas ? ['Pengawas (PML)','Email Pengawas'] : []),
-    'Total','Approved','Submit',
-    'Rejected','Draft','Open','Avg per Hari (total)',
+  // ── Definisi kolom opsional (selain No/Nama/Email yang selalu ikut) ────
+  const OPT_COLS = [
+    ...(!isPengawas ? [
+      { key:'pengawas', label:'Pengawas (PML)',  get:p=>p.pengawas?.nama||'—' },
+      { key:'pengawas', label:'Email Pengawas',   get:p=>p.pengawas?.email||'—' },
+    ] : []),
+    { key:'kecamatan',    label:'Kecamatan',      get:p=>p.kecamatan||'' },
+    { key:'total',        label:'Total',          get:p=>p.total||0 },
+    { key:'approved',     label:'Approved',       get:p=>p.approved||0 },
+    { key:'submit',       label:'Submit',         get:p=>p.submit||0 },
+    { key:'rejected',     label:'Rejected',       get:p=>p.reject||0 },
+    { key:'draft',        label:'Draft',          get:p=>p.draft||0 },
+    { key:'open',         label:'Open',           get:p=>p.open||0 },
+    { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
+    { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
+    { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },
+    { key:'usahaMaxDesa', label:'Desa Usaha Terbanyak', get:p=>p.usahaMaxDesa||'—' },
+    { key:'avgPerDay',    label:'Avg per Hari (total)', get:p=>{
+        const avg = p.avgPerDay || {};
+        return ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
+      } },
     // KOLOM PROGRESS — dikecualikan dari export (tidak ditampilkan ke petugas)
-    // 'Progress (%)',
-    // KOLOM PERF SCORE + GRADE — uncomment jika diperlukan:
-    // 'Perf Score','Grade','Keterangan Grade',
-  ];
-  const data1 = filtered.map((p, i) => {
-    const avg  = p.avgPerDay || {};
-    const avgT = ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
-    return [
-      i+1, p.nama||'', p.email||'', p.kecamatan||'',
-      ...(!isPengawas ? [p.pengawas?.nama||'—', p.pengawas?.email||'—'] : []),
-      p.total||0, p.approved||0, p.submit||0, p.reject||0, p.draft||0, p.open||0,
-      // Progress dihapus dari export
-      +avgT||'',
+    // KOLOM PERF SCORE + GRADE — uncomment jika diperlukan
+  ].filter(c => on(c.key));
 
-    ];
-  });
+  // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
+  const headers1 = ['No','Nama','Email', ...OPT_COLS.map(c => c.label)];
+  const data1 = filtered.map((p, i) => [
+    i+1, p.nama||'', p.email||'', ...OPT_COLS.map(c => c.get(p)),
+  ]);
 
   // ── Sheet 2: Ringkasan per Kecamatan ─────────────────────────────────
   const kecMap = {};
@@ -996,12 +1033,143 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), {
     href: url,
-    download: `evaluasi_${roleLabel.toLowerCase()}_se2026_${snap}.csv`,
+    download: `evaluasi_${roleLabel.toLowerCase()}_se2026_${snap}_${fmtExportTimestamp()}.csv`,
   });
   a.click();
   URL.revokeObjectURL(url);
 }
 
+
+// ── Modal pemilihan kolom sebelum export ───────────────────────────────────
+// Kolom yang bisa dipilih sama persis dengan ALL_COLS_PENCACAH/PENGAWAS
+// (dikurangi 'progress' — memang sengaja dikecualikan dari export).
+function ExportColumnModal({ format, isPengawas, selected, onChange, onCancel, onConfirm }) {
+  const options = (isPengawas ? ALL_COLS_PENGAWAS : ALL_COLS_PENCACAH)
+    .filter(c => c.key !== 'progress');
+
+  const toggle = (key) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    onChange(next);
+  };
+  const selectAll   = () => onChange(new Set(options.map(o => o.key)));
+  const clearAll    = () => onChange(new Set());
+  const allSelected = selected.size === options.length;
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex',
+      alignItems:'center', justifyContent:'center', padding:'24px',
+      background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}
+      onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background:'var(--bg2)', border:'1px solid var(--border2)',
+          borderRadius:16, width:420, maxWidth:'100%', maxHeight:'85vh',
+          display:'flex', flexDirection:'column', overflow:'hidden',
+          boxShadow:'0 24px 64px rgba(0,0,0,0.6)', animation:'modalIn .25s ease both' }}>
+
+        {/* Header */}
+        <div style={{ padding:'16px 18px', borderBottom:'1px solid var(--border)',
+          display:'flex', alignItems:'center', gap:10 }}>
+          {format === 'pdf'
+            ? <Printer size={16} color="var(--orange3)"/>
+            : <FileText size={16} color="var(--blue3)"/>}
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)' }}>
+              Pilih Kolom untuk Export {format === 'pdf' ? 'PDF' : 'Excel (CSV)'}
+            </div>
+            <div style={{ fontSize:10, color:'var(--text4)', marginTop:2 }}>
+              No, Nama, dan Email selalu ikut — pilih kolom tambahan di bawah
+            </div>
+          </div>
+          <button onClick={onCancel} style={{ background:'none', border:'none',
+            cursor:'pointer', padding:4, borderRadius:6, display:'flex' }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+            onMouseLeave={e=>e.currentTarget.style.background='none'}>
+            <X size={15} color="var(--text3)"/>
+          </button>
+        </div>
+
+        {/* Pilih semua / kosongkan */}
+        <div style={{ padding:'10px 18px', borderBottom:'1px solid var(--border)',
+          display:'flex', gap:8 }}>
+          <button onClick={selectAll} disabled={allSelected}
+            style={{ fontSize:10.5, fontWeight:600, padding:'4px 10px', borderRadius:6,
+              border:'1px solid var(--border)', background:'var(--bg3)',
+              color: allSelected ? 'var(--text4)' : 'var(--text2)',
+              cursor: allSelected ? 'default' : 'pointer' }}>
+            Pilih semua
+          </button>
+          <button onClick={clearAll} disabled={selected.size===0}
+            style={{ fontSize:10.5, fontWeight:600, padding:'4px 10px', borderRadius:6,
+              border:'1px solid var(--border)', background:'var(--bg3)',
+              color: selected.size===0 ? 'var(--text4)' : 'var(--text2)',
+              cursor: selected.size===0 ? 'default' : 'pointer' }}>
+            Kosongkan
+          </button>
+          <span style={{ marginLeft:'auto', fontSize:10.5, color:'var(--text4)',
+            alignSelf:'center' }}>
+            {selected.size} dari {options.length} dipilih
+          </span>
+        </div>
+
+        {/* List kolom */}
+        <div style={{ padding:'8px 10px', overflowY:'auto', flex:1 }}>
+          {/* No/Nama/Email — selalu ikut, ditampilkan sbg info, tidak bisa di-uncheck */}
+          {['No','Nama','Email'].map(label => (
+            <div key={label} style={{ display:'flex', alignItems:'center', gap:10,
+              padding:'8px 10px', borderRadius:8, opacity:0.55 }}>
+              <div style={{ width:16, height:16, borderRadius:4, background:'var(--orange)',
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ color:'#fff', fontSize:10, fontWeight:900 }}>✓</span>
+              </div>
+              <span style={{ fontSize:12, color:'var(--text2)' }}>{label}</span>
+              <span style={{ marginLeft:'auto', fontSize:9, color:'var(--text4)' }}>selalu ikut</span>
+            </div>
+          ))}
+          <div style={{ height:1, background:'var(--border)', margin:'6px 4px' }}/>
+          {options.map(opt => {
+            const checked = selected.has(opt.key);
+            return (
+              <div key={opt.key} onClick={() => toggle(opt.key)}
+                style={{ display:'flex', alignItems:'center', gap:10,
+                  padding:'8px 10px', borderRadius:8, cursor:'pointer' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                <div style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+                  border: `1.5px solid ${checked ? 'var(--orange)' : 'var(--border2)'}`,
+                  background: checked ? 'var(--orange)' : 'transparent',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  transition:'all .12s' }}>
+                  {checked && <span style={{ color:'#fff', fontSize:10, fontWeight:900 }}>✓</span>}
+                </div>
+                <span style={{ fontSize:12, color:'var(--text2)' }}>{opt.label}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)',
+          display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onCancel}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8,
+              border:'1px solid var(--border)', background:'var(--bg3)',
+              color:'var(--text2)', cursor:'pointer' }}>
+            Batal
+          </button>
+          <button onClick={onConfirm}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px',
+              fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
+              background:'var(--orange)', color:'#fff',
+              boxShadow:'0 1px 4px rgba(232,84,28,0.3)' }}>
+            <Download size={13} strokeWidth={2}/> Export {format === 'pdf' ? 'PDF' : 'Excel'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 // ── InaktifSection — pencacah belum submit N hari ─────────────────────────
 function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
@@ -1363,6 +1531,8 @@ export function EvaluasiPage() {
   const [filterDesa,setFilterDesa]= useState('');
   const [desaList,  setDesaList]  = useState([]);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportModal, setExportModal] = useState(null);   // null | 'pdf' | 'excel'
+  const [exportCols,  setExportCols]  = useState(new Set());
   const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols());
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
@@ -1738,7 +1908,7 @@ export function EvaluasiPage() {
                       boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
                       animation:'fadeSlideDown .12s ease' }}>
                       <button onClick={()=>{ setShowExportMenu(false);
-                        generatePDF({activeTab,filtered,summary,effectiveSummary:filteredSummary??summary}).catch(e=>alert('Error: '+e.message)); }}
+                        setExportCols(new Set(visibleCols)); setExportModal('pdf'); }}
                         style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                           padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
                           fontSize:12,color:'var(--text1)',borderBottom:'1px solid var(--border)',
@@ -1752,7 +1922,7 @@ export function EvaluasiPage() {
                         </div>
                       </button>
                       <button onClick={()=>{ setShowExportMenu(false);
-                        generateExcel({activeTab,filtered,summary,effectiveSummary:filteredSummary??summary,isPengawas:activeTab==='pengawas'}); }}
+                        setExportCols(new Set(visibleCols)); setExportModal('excel'); }}
                         style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                           padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
                           fontSize:12,color:'var(--text1)',textAlign:'left' }}
@@ -1935,6 +2105,34 @@ export function EvaluasiPage() {
         </div>
       </>}
       </Card>
+
+      {/* Modal pilih kolom sebelum export */}
+      {exportModal && (
+        <ExportColumnModal
+          format={exportModal}
+          isPengawas={activeTab === 'pengawas'}
+          selected={exportCols}
+          onChange={setExportCols}
+          onCancel={() => setExportModal(null)}
+          onConfirm={() => {
+            if (exportModal === 'pdf') {
+              generatePDF({
+                activeTab, filtered, summary,
+                effectiveSummary: filteredSummary ?? summary,
+                selectedCols: exportCols,
+              }).catch(e => alert('Error: ' + e.message));
+            } else {
+              generateExcel({
+                activeTab, filtered, summary,
+                effectiveSummary: filteredSummary ?? summary,
+                isPengawas: activeTab === 'pengawas',
+                selectedCols: exportCols,
+              });
+            }
+            setExportModal(null);
+          }}
+        />
+      )}
     </div>
   );
 }
