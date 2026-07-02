@@ -1465,6 +1465,25 @@ function parseNum(v) {
 }
 function is9999(v) { return v === 9999 || v === '9999' || String(v).trim() === '9999'; }
 
+// Cek apakah field BENAR-BENAR terisi (beda dari parseNum yang menyamakan
+// "0 asli" dengan "belum diisi" — keduanya sama-sama jadi 0 di parseNum).
+function hasValue(v) {
+  if (v == null) return false;
+  if (typeof v === 'string' && v.trim() === '') return false;
+  if (typeof v === 'string' && ['none','nan','null','undefined'].includes(v.trim().toLowerCase())) return false;
+  return true;
+}
+// Nilai valid utk dipakai hitung anomali keuangan: terisi DAN bukan sentinel 9999
+// ("tidak dapat memberikan informasi" — itu tanggung jawab anomali Missing Value M1/M2/M4)
+function hasRealValue(v) { return hasValue(v) && !is9999(v); }
+// Pilih raw value pertama yang benar-benar terisi dari beberapa field kandidat —
+// BUKAN yang hasil parseNum-nya truthy (spy nilai 0 yang valid tidak ketiban fallback,
+// beda dgn pola lama `parseNum(a) || parseNum(b)` yang salah anggap 0 asli = kosong)
+function pickPresent(...vals) {
+  for (const v of vals) { if (hasRealValue(v)) return v; }
+  return undefined;
+}
+
 function kbliToKategori(kbli) {
   if (!kbli) return '';
   var n = parseInt(String(kbli).slice(0,2), 10);
@@ -1500,20 +1519,31 @@ function checkAnomaliUsaha(r) {
     const biayaProd  = parseNum(u.biayaProduksi);
     const operasional= parseNum(u.operasional);
     const nonOp      = parseNum(u.nonOperasional);
-    const totKeluar  = parseNum(u.totalPengeluaranRaw) || parseNum(u.totalPengeluaran);
-    const totPend    = parseNum(u.nilaiPendapatanRaw)  || parseNum(u.nilaiPendapatan);
-    const totAset    = parseNum(u.totalAset) || parseNum(u.asetUsaha);
+    const totKeluarRaw = pickPresent(u.totalPengeluaranRaw, u.totalPengeluaran);
+    const totPendRaw   = pickPresent(u.nilaiPendapatanRaw, u.nilaiPendapatan);
+    const totAsetRaw   = pickPresent(u.totalAset, u.asetUsaha);
+    const totKeluar  = parseNum(totKeluarRaw);
+    const totPend    = parseNum(totPendRaw);
+    const totAset    = parseNum(totAsetRaw);
+    // Terisi (dan bukan sentinel 9999) — dipakai gantikan pengecekan "> 0" yang salah
+    // anggap nilai 0 ASLI (mis. pendapatan benar-benar Rp 0) sebagai "data kosong"
+    const hasKeluar  = hasRealValue(totKeluarRaw);
+    const hasPend    = hasRealValue(totPendRaw);
+    const hasAset    = hasRealValue(totAsetRaw);
     const tk         = parseInt(u.totalTK || '0') || 0;
     const korPubik   = parseNum(u.modalKorPublik);
 
     // A1: Biaya Produksi Dominan — biaya_produksi > 50% total pengeluaran (R26b/R30b)
-    if (totKeluar > 0 && biayaProd > 0 && biayaProd / totKeluar > 0.5) {
+    if (hasKeluar && totKeluar > 0 && biayaProd > 0 && biayaProd / totKeluar > 0.5) {
       flags.push({ code:'A1', usaha: nama,
         ket: `Biaya produksi ${Math.round(biayaProd/totKeluar*100)}% dari total pengeluaran (R26b/R30b) — periksa R13.a dan R13.b1` });
     }
 
     // A2: Keuntungan Usaha Negatif — R27c/R31c < R26f/R30f
-    if (totPend > 0 && totKeluar > 0 && totPend < totKeluar) {
+    // PENTING: pakai hasPend/hasKeluar (cek "terisi", bukan "> 0"), supaya kasus
+    // pendapatan/pengeluaran BENAR-BENAR bernilai 0 tetap ikut tercek, bukan malah
+    // dianggap "data kosong" lalu dilewati.
+    if (hasPend && hasKeluar && totPend < totKeluar) {
       flags.push({ code:'A2', usaha: nama,
         ket: `Pengeluaran Rp ${(totKeluar/1e6).toFixed(1)} jt > Pendapatan Rp ${(totPend/1e6).toFixed(1)} jt — pastikan R27 lebih besar dari R26` });
     }
@@ -1537,7 +1567,7 @@ function checkAnomaliUsaha(r) {
     // A4: Data Keuangan MBG — SPPG/supplier dengan rasio tidak wajar
     const isMBG = peranMBG.includes('sppg') || peranMBG.includes('supplier') ||
                   peranMBG.includes('1.') || peranMBG.includes('2.');
-    if (isMBG && totPend > 0 && totKeluar > 0) {
+    if (isMBG && hasPend && hasKeluar && totKeluar > 0) {
       const rasioMBG = totPend / totKeluar;
       if (rasioMBG > 10 || rasioMBG < 0.1) {
         flags.push({ code:'A4', usaha: nama,
@@ -1546,11 +1576,11 @@ function checkAnomaliUsaha(r) {
     }
 
     // A5: Hubungan Aset, Pekerja, Produksi — inkonsistensi signifikan
-    if (totPend > 5e8 && tk === 0 && totAset === 0) {
+    if (hasPend && totPend > 5e8 && tk === 0 && hasAset && totAset === 0) {
       flags.push({ code:'A5', usaha: nama,
         ket: `Pendapatan Rp ${(totPend/1e6).toFixed(0)} jt tapi TK=0 dan Aset=Rp 0 — periksa R24, R28/R32` });
     }
-    if (tk > 50 && totPend > 0 && totPend / tk < 500000) {
+    if (tk > 50 && hasPend && totPend / tk < 500000) {
       flags.push({ code:'A5', usaha: nama,
         ket: `TK ${tk} orang tapi pendapatan/TK hanya Rp ${(totPend/tk/1e3).toFixed(0)} rb — tidak proporsional` });
     }
@@ -1587,8 +1617,12 @@ function checkAnomaliKeluarga(r) {
   const luasPerKap = jumlahAk > 0 ? luasLantai / jumlahAk : 0;
   const aset = r.asetRumahTangga || {};
 
-  const totalPendKlrg = parseNum(r.totalPendapatanKeluarga) || parseNum(r.pendapatanKeluarga) || parseNum(r.totalPendapatan);
-  const totalPengKlrg = parseNum(r.pengeluaranKeluarga) || parseNum(r.totalPengeluaranKeluarga);
+  const totalPendKlrgRaw = pickPresent(r.totalPendapatanKeluarga, r.pendapatanKeluarga, r.totalPendapatan);
+  const totalPengKlrgRaw = pickPresent(r.pengeluaranKeluarga, r.totalPengeluaranKeluarga);
+  const totalPendKlrg = parseNum(totalPendKlrgRaw);
+  const totalPengKlrg = parseNum(totalPengKlrgRaw);
+  const hasPendKlrg   = hasRealValue(totalPendKlrgRaw);
+  const hasPengKlrg   = hasRealValue(totalPengKlrgRaw);
   const pungListrik   = parseNum(r.pengeluaranListrik) || parseNum(aset.listrikSebulan);
   const statusKep     = (r.statusKepemilikan || '').toLowerCase();
   const penerangan    = (r.penerangan || r.sumberPenerangan || '').toLowerCase();
@@ -1625,7 +1659,9 @@ function checkAnomaliKeluarga(r) {
   }
 
   // K5: Selisih Pendapatan Negatif — pengeluaran > pendapatan keluarga
-  if (totalPendKlrg > 0 && totalPengKlrg > 0 && totalPendKlrg < totalPengKlrg) {
+  // (pakai hasPendKlrg/hasPengKlrg — cek "terisi", bukan "> 0" — supaya pendapatan/
+  // pengeluaran yang BENAR-BENAR 0 tetap ikut tercek, bukan dilewati sbg "data kosong")
+  if (hasPendKlrg && hasPengKlrg && totalPendKlrg < totalPengKlrg) {
     flags.push({ code:'K5',
       ket: `Pengeluaran Rp ${(totalPengKlrg/1e6).toFixed(1)} jt > Pendapatan Rp ${(totalPendKlrg/1e6).toFixed(1)} jt (defisit Rp ${((totalPengKlrg-totalPendKlrg)/1e6).toFixed(1)} jt)` });
   }
