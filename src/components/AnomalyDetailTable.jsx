@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import {
   AlertTriangle, ChevronDown, X, ArrowRight,
   ShieldAlert, Search, ChevronLeft, ChevronRight,
-  ChevronsUpDown, ChevronUp, Download,
+  ChevronsUpDown, ChevronUp, Download, Check, Loader2,
 } from 'lucide-react';
 // Badge tidak dipakai
 
@@ -86,16 +86,18 @@ function getBaseURL() {
   return 'http://localhost:3001';
 }
 
-async function apiFetch(path) {
+async function apiFetch(path, options = {}) {
   const BASE_URL = getBaseURL();
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) throw new Error('Token tidak ditemukan. Silakan login.');
   let res;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+        ...(options.headers || {}),
       },
     });
   } catch {
@@ -488,7 +490,117 @@ function KategoriSelect({ value, onChange }) {
 }
 
 // ── Flag badge ────────────────────────────────────────────────────────────
-function FlagBadge({ flag }) {
+// ── Modal klarifikasi saat menandai anomali selesai ─────────────────────
+// Selalu render via createPortal ke document.body supaya posisinya ngikut
+// viewport asli, bukan ke-influence CSS parent (transform/filter dll).
+function ResolutionModal({ target, onClose, onConfirm, saving, error }) {
+  const [catatan, setCatatan] = useState('');
+
+  useEffect(() => { if (target) setCatatan(''); }, [target]);
+
+  if (!target) return null;
+
+  return createPortal(
+    <div
+      style={{ position:'fixed', inset:0, zIndex:9999, display:'flex',
+        alignItems:'center', justifyContent:'center', padding:'24px',
+        background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}
+      onClick={saving ? undefined : onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background:'var(--bg2)', border:'1px solid var(--border2)',
+          borderRadius:16, width:440, maxWidth:'100%', maxHeight:'85vh',
+          display:'flex', flexDirection:'column', overflow:'hidden',
+          boxShadow:'0 24px 64px rgba(0,0,0,0.6)', animation:'modalIn .25s ease both' }}
+      >
+        {/* Header */}
+        <div style={{ padding:'16px 18px', borderBottom:'1px solid var(--border)',
+          display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
+            background:'rgba(52,211,153,0.15)', display:'flex',
+            alignItems:'center', justifyContent:'center' }}>
+            <Check size={15} color="#34d399" strokeWidth={2.5}/>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)' }}>
+              Tandai Anomali Selesai
+            </div>
+            <div style={{ fontSize:10, color:'var(--text4)', marginTop:2,
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {target.namaKepala} · <span style={{ fontFamily:'var(--mono)' }}>{target.code}</span>
+              {target.usaha ? ` · ${target.usaha}` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} disabled={saving}
+            style={{ background:'none', border:'none', cursor: saving ? 'default' : 'pointer',
+              padding:4, borderRadius:6, display:'flex', flexShrink:0 }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+            onMouseLeave={e=>e.currentTarget.style.background='none'}>
+            <X size={15} color="var(--text3)"/>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'16px 18px', overflowY:'auto' }}>
+          <div style={{ background:'var(--bg3)', border:'1px solid var(--border)',
+            borderRadius:8, padding:'8px 10px', marginBottom:14, fontSize:10.5,
+            color:'var(--text3)', lineHeight:1.5 }}>
+            <strong style={{ color: codeColor(target.code) }}>{target.code}</strong> — {target.ket}
+          </div>
+          <label style={{ fontSize:10.5, fontWeight:600, color:'var(--text3)',
+            display:'block', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>
+            Catatan klarifikasi (opsional)
+          </label>
+          <textarea
+            value={catatan}
+            onChange={e => setCatatan(e.target.value)}
+            disabled={saving}
+            placeholder="Contoh: Sudah dicek ulang ke lapangan/Fasih, data ternyata sudah benar..."
+            rows={4}
+            style={{ width:'100%', padding:'9px 11px', fontSize:12, borderRadius:8,
+              border:'1px solid var(--border2)', background:'var(--bg1)', color:'var(--text1)',
+              resize:'vertical', fontFamily:'inherit', boxSizing:'border-box' }}
+          />
+          <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:6 }}>
+            Catatan ini akan tersimpan bersama nama & waktu penyelesaian, dan bisa dilihat pengguna lain.
+          </div>
+          {error && (
+            <div style={{ marginTop:10, padding:'8px 10px', borderRadius:8,
+              background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)',
+              fontSize:11, color:'#f87171' }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 18px', borderTop:'1px solid var(--border)',
+          display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8,
+              border:'1px solid var(--border)', background:'var(--bg3)',
+              color:'var(--text2)', cursor: saving ? 'default' : 'pointer' }}>
+            Batal
+          </button>
+          <button onClick={() => onConfirm(catatan)} disabled={saving}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 18px',
+              fontSize:12, fontWeight:700, borderRadius:8, border:'none',
+              cursor: saving ? 'default' : 'pointer',
+              background: saving ? 'var(--bg4)' : '#34d399', color: saving ? 'var(--text4)' : '#06281c',
+              boxShadow: saving ? 'none' : '0 1px 4px rgba(52,211,153,0.35)' }}>
+            {saving
+              ? <><Loader2 size={13} strokeWidth={2} style={{ animation:'spin .8s linear infinite' }}/> Menyimpan…</>
+              : <><Check size={13} strokeWidth={2.5}/> Tandai Selesai</>}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function FlagBadge({ flag, resolved, onToggle }) {
   const [hover, setHover] = useState(false);
   const [pos,   setPos]   = useState({ above: true, left: 0 });
   const badgeRef          = useRef(null);
@@ -507,10 +619,22 @@ function FlagBadge({ flag }) {
   return (
     <div
       ref={badgeRef}
-      style={{ position:'relative', display:'inline-block' }}
+      style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:4 }}
       onMouseEnter={handleEnter}
       onMouseLeave={() => setHover(false)}
     >
+      {/* Checklist selesai/belum — klik utk toggle */}
+      <div
+        onClick={(e) => { e.stopPropagation(); onToggle && onToggle(!resolved); }}
+        title={resolved ? 'Sudah ditindaklanjuti — klik utk batalkan' : 'Tandai sudah ditindaklanjuti'}
+        style={{ width:15, height:15, borderRadius:4, flexShrink:0, cursor:'pointer',
+          border: `1.5px solid ${resolved ? '#34d399' : 'var(--border2)'}`,
+          background: resolved ? '#34d399' : 'transparent',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          transition:'all .12s' }}
+      >
+        {resolved && <Check size={10} strokeWidth={3} color="#06281c"/>}
+      </div>
       <span style={{
         display:'inline-flex', alignItems:'center', gap:3,
         padding:'2px 7px', borderRadius:4, fontSize:10, fontWeight:700,
@@ -518,6 +642,8 @@ function FlagBadge({ flag }) {
         background: `${codeColor(flag.code)}22`,
         color: codeColor(flag.code),
         border: `1px solid ${codeColor(flag.code)}44`,
+        opacity: resolved ? 0.55 : 1,
+        textDecoration: resolved ? 'line-through' : 'none',
       }}>
         {flag.code}
       </span>
@@ -535,7 +661,7 @@ function FlagBadge({ flag }) {
           animation:'dropIn .12s ease both',
         }}>
           <div style={{ fontWeight:700, marginBottom:3, color: codeColor(flag.code) }}>
-            {flag.code}
+            {flag.code} {resolved && <span style={{ color:'#34d399', fontWeight:600 }}>· Selesai</span>}
           </div>
           {flag.usaha && (
             <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>
@@ -551,7 +677,7 @@ function FlagBadge({ flag }) {
 }
 
 // ── Baris tabel ──────────────────────────────────────────────────────────
-function AnomalyRow({ rec, onNavigate, idx }) {
+function AnomalyRow({ rec, onNavigate, idx, resolutionMap, onToggleResolved }) {
   const isEven = idx % 2 === 0;
   return (
     <tr style={{ background: isEven ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
@@ -574,8 +700,18 @@ function AnomalyRow({ rec, onNavigate, idx }) {
         </span>
       </td>
       <td style={{ ...td, maxWidth:220 }}>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:3 }}>
-          {rec.flags.map((f, i) => <FlagBadge key={i} flag={f}/>)}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+          {rec.flags.map((f, i) => {
+            const key = `${rec.id}::${f.code}::${f.usaha||''}`;
+            return (
+              <FlagBadge
+                key={i}
+                flag={f}
+                resolved={!!resolutionMap[key]?.resolved}
+                onToggle={(next) => onToggleResolved(rec, f, next)}
+              />
+            );
+          })}
         </div>
       </td>
       <td style={{ ...td, textAlign:'right', paddingRight:12 }}>
@@ -652,11 +788,70 @@ export function AnomalyDetailTable({ kecFilter }) {
   const [exporting,      setExporting]    = useState(false);
   const [exportError,    setExportError]  = useState(null);
   const [tabSummary,     setTabSummary]   = useState({ usaha:null, keluarga:null, missing:null });
+  const [resolutionMap,  setResolutionMap] = useState({});   // { "id::code::usaha": {...} }
+  const [pendingResolve, setPendingResolve] = useState(null); // target lagi diklarifikasi di modal
+  const [savingResolve,  setSavingResolve]  = useState(false);
+  const [resolveError,   setResolveError]   = useState(null);
 
   const options = OPTIONS_MAP[tab] || [];
 
   // Reset page & codes saat ganti tab
   const switchTab = (t) => { setTab(t); setCodes([]); setFilterKategori([]); setPage(1); setData(null); setSearch(''); setFilterStatus('all'); setSortCol(''); setSortDir('asc'); };
+
+  // Ambil status penyelesaian anomali (checklist) — refetch tiap ganti tab
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/anomali/resolusi?tab=${tab}`)
+      .then(result => { if (!cancelled) setResolutionMap(result?.data || {}); })
+      .catch(() => { if (!cancelled) setResolutionMap({}); });
+    return () => { cancelled = true; };
+  }, [tab]);
+
+  // Klik checkbox pada satu flag anomali:
+  // - kalau mau DICENTANG (belum -> selesai) -> buka modal klarifikasi dulu
+  // - kalau mau DIBATALKAN (selesai -> belum) -> langsung toggle, tanpa modal
+  const handleToggleResolved = (rec, flag, next) => {
+    if (next) {
+      setResolveError(null);
+      setPendingResolve({
+        id: rec.id, code: flag.code, usaha: flag.usaha || '',
+        namaKepala: rec.namaKepala, ket: flag.ket,
+      });
+      return;
+    }
+    const key = `${rec.id}::${flag.code}::${flag.usaha||''}`;
+    // Optimistic update — langsung hilangkan centang di UI
+    setResolutionMap(prev => { const n = { ...prev }; delete n[key]; return n; });
+    apiFetch('/api/anomali/resolusi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rec.id, code: flag.code, usaha: flag.usaha || '', tab, resolved: false }),
+    }).catch(() => {
+      // Gagal -> kembalikan checklist ke status semula
+      setResolutionMap(prev => ({ ...prev, [key]: { resolved: true } }));
+    });
+  };
+
+  // Konfirmasi dari modal klarifikasi -> simpan sbg selesai + catatan
+  const handleConfirmResolve = async (catatan) => {
+    if (!pendingResolve) return;
+    const { id, code, usaha } = pendingResolve;
+    const key = `${id}::${code}::${usaha||''}`;
+    setSavingResolve(true);
+    try {
+      const result = await apiFetch('/api/anomali/resolusi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, code, usaha, tab, resolved: true, catatan }),
+      });
+      setResolutionMap(prev => ({ ...prev, [key]: result }));
+      setPendingResolve(null);
+    } catch (e) {
+      setResolveError(e.message || 'Gagal menyimpan status penyelesaian.');
+    } finally {
+      setSavingResolve(false);
+    }
+  };
 
   // Fetch ringkasan jumlah RESPONDEN per tab untuk BADGE di capsule tab
   // Hanya filter kec + status (bukan codes/kategori) agar badge selalu tampil
@@ -1127,7 +1322,8 @@ export function AnomalyDetailTable({ kecFilter }) {
               </td></tr>
             )}
             {!loading && rows.map((rec, i) => (
-              <AnomalyRow key={rec.id} rec={rec} idx={i} onNavigate={navigate}/>
+              <AnomalyRow key={rec.id} rec={rec} idx={i} onNavigate={navigate}
+                resolutionMap={resolutionMap} onToggleResolved={handleToggleResolved}/>
             ))}
           </tbody>
         </table>
@@ -1171,9 +1367,18 @@ export function AnomalyDetailTable({ kecFilter }) {
         </div>
       )}
 
+      <ResolutionModal
+        target={pendingResolve}
+        saving={savingResolve}
+        error={resolveError}
+        onClose={() => { if (!savingResolve) { setPendingResolve(null); setResolveError(null); } }}
+        onConfirm={handleConfirmResolve}
+      />
+
       <style>{`
         @keyframes spin { to { transform:rotate(360deg); } }
         @keyframes dropIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none} }
+        @keyframes modalIn { from{opacity:0;transform:scale(.96) translateY(6px)} to{opacity:1;transform:none} }
       `}</style>
     </div>
   );

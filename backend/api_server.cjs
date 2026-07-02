@@ -1862,3 +1862,53 @@ app.get('/api/anomali/summary', verifyToken, requireFullAccess, async function(r
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Checklist penyelesaian anomali — simpan status "sudah ditindaklanjuti"
+// per (id responden, kode anomali), supaya persisten lintas sesi/pengguna.
+// Koleksi: anomali_resolusi, key unik = `${id}::${code}`
+// ══════════════════════════════════════════════════════════════════════════
+
+// GET /api/anomali/resolusi?tab=usaha — ambil semua status penyelesaian
+// (dikembalikan sbg map { "SE26-0191::A1::NamaUsaha": {resolved, catatan, resolvedBy, resolvedAt} })
+app.get('/api/anomali/resolusi', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const fTab = (req.query.tab || '').trim();
+    const match = fTab ? { tab: fTab } : {};
+    const docs = await db.collection('anomali_resolusi')
+      .find(match, { projection: { _id: 0 } }).toArray();
+    const map = {};
+    docs.forEach(d => { map[`${d.id}::${d.code}::${d.usaha||''}`] = d; });
+    res.json({ data: map });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/anomali/resolusi — tandai satu anomali selesai/belum selesai
+// Body: { id, code, usaha?, tab, resolved: boolean, catatan?: string }
+app.post('/api/anomali/resolusi', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const { id, code, usaha, tab, resolved, catatan } = req.body || {};
+    if (!id || !code || !tab || typeof resolved !== 'boolean') {
+      return res.status(400).json({ error: 'Field id, code, tab, dan resolved (boolean) wajib diisi.' });
+    }
+    const usahaKey = usaha || '';
+    if (!resolved) {
+      // Uncheck — hapus record (dianggap kembali ke status belum ditindaklanjuti)
+      await db.collection('anomali_resolusi').deleteOne({ id, code, usaha: usahaKey });
+      return res.json({ success: true, key: `${id}::${code}::${usahaKey}`, resolved: false });
+    }
+    const doc = {
+      id, code, usaha: usahaKey, tab,
+      resolved: true,
+      catatan: (catatan || '').trim(),
+      resolvedBy: req.user.nama || req.user.username || 'unknown',
+      resolvedAt: new Date().toISOString(),
+    };
+    await db.collection('anomali_resolusi').updateOne(
+      { id, code, usaha: usahaKey },
+      { $set: doc },
+      { upsert: true }
+    );
+    res.json({ success: true, key: `${id}::${code}::${usahaKey}`, ...doc });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
