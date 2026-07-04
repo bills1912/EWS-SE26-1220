@@ -1901,12 +1901,24 @@ app.get('/api/anomali/summary', verifyToken, requireFullAccess, async function(r
 
 // ══════════════════════════════════════════════════════════════════════════
 // Checklist penyelesaian anomali — simpan status "sudah ditindaklanjuti"
-// per (id responden, kode anomali), supaya persisten lintas sesi/pengguna.
-// Koleksi: anomali_resolusi, key unik = `${id}::${code}`
+// per (responden, kode anomali), supaya persisten lintas sesi/pengguna
+// DAN lintas snapshot data (upload ulang isian_se2026).
+//
+// PENTING: key utama pakai `assignmentId` (UUID Fasih, stabil selamanya),
+// BUKAN `id` (format SE26-XXXX) — id itu bisa berubah kalau urutan baris di
+// sumber data (CSV/Excel/JSON) berubah antar snapshot (lihat stabilize_ids()
+// di convert_se2026.py). Kalau checklist masih pakai id sbg key, centang bisa
+// "hilang" begitu saja pas convert_se2026.py + upload_to_mongo.py dijalankan
+// ulang dengan data yang urutannya sedikit beda — walau responden fisiknya
+// sama & belum pernah diapa-apakan.
+//
+// `id` tetap dikirim & disimpan (utk fallback pencocokan pada record lama
+// yang belum punya assignmentId, dan utk keperluan debug/tampilan saja).
+// Koleksi: anomali_resolusi, key unik = `${assignmentId||id}::${code}::${usaha}`
 // ══════════════════════════════════════════════════════════════════════════
 
 // GET /api/anomali/resolusi?tab=usaha — ambil semua status penyelesaian
-// (dikembalikan sbg map { "SE26-0191::A1::NamaUsaha": {resolved, catatan, resolvedBy, resolvedAt} })
+// (dikembalikan sbg map { "<assignmentId atau id>::A1::NamaUsaha": {...} })
 app.get('/api/anomali/resolusi', verifyToken, requireFullAccess, async function(req, res) {
   try {
     const fTab = (req.query.tab || '').trim();
@@ -1914,37 +1926,47 @@ app.get('/api/anomali/resolusi', verifyToken, requireFullAccess, async function(
     const docs = await db.collection('anomali_resolusi')
       .find(match, { projection: { _id: 0 } }).toArray();
     const map = {};
-    docs.forEach(d => { map[`${d.id}::${d.code}::${d.usaha||''}`] = d; });
+    docs.forEach(d => {
+      const stableId = d.assignmentId || d.id; // sama persis dgn logika di frontend
+      map[`${stableId}::${d.code}::${d.usaha||''}`] = d;
+    });
     res.json({ data: map });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // POST /api/anomali/resolusi — tandai satu anomali selesai/belum selesai
-// Body: { id, code, usaha?, tab, resolved: boolean, catatan?: string }
+// Body: { id, assignmentId?, code, usaha?, tab, resolved: boolean, catatan?: string }
 app.post('/api/anomali/resolusi', verifyToken, requireFullAccess, async function(req, res) {
   try {
-    const { id, code, usaha, tab, resolved, catatan } = req.body || {};
+    const { id, assignmentId, code, usaha, tab, resolved, catatan } = req.body || {};
     if (!id || !code || !tab || typeof resolved !== 'boolean') {
       return res.status(400).json({ error: 'Field id, code, tab, dan resolved (boolean) wajib diisi.' });
     }
-    const usahaKey = usaha || '';
+    const usahaKey  = usaha || '';
+    // Filter pencocokan dokumen: assignmentId dulu (stabil), fallback ke id lama
+    // supaya checklist yang SUDAH tersimpan sebelum fix ini tidak tiba-tiba
+    // ke-anggap "belum ada" (masih bisa ketemu & ke-migrate otomatis ke assignmentId).
+    const filter = assignmentId
+      ? { code, usaha: usahaKey, $or: [{ assignmentId }, { id, assignmentId: { $exists: false } }] }
+      : { id, code, usaha: usahaKey };
+
     if (!resolved) {
       // Uncheck — hapus record (dianggap kembali ke status belum ditindaklanjuti)
-      await db.collection('anomali_resolusi').deleteOne({ id, code, usaha: usahaKey });
-      return res.json({ success: true, key: `${id}::${code}::${usahaKey}`, resolved: false });
+      await db.collection('anomali_resolusi').deleteMany(filter);
+      return res.json({ success: true, key: `${assignmentId||id}::${code}::${usahaKey}`, resolved: false });
     }
     const doc = {
-      id, code, usaha: usahaKey, tab,
+      id, assignmentId: assignmentId || null, code, usaha: usahaKey, tab,
       resolved: true,
       catatan: (catatan || '').trim(),
       resolvedBy: req.user.nama || req.user.username || 'unknown',
       resolvedAt: new Date().toISOString(),
     };
     await db.collection('anomali_resolusi').updateOne(
-      { id, code, usaha: usahaKey },
+      filter,
       { $set: doc },
       { upsert: true }
     );
-    res.json({ success: true, key: `${id}::${code}::${usahaKey}`, ...doc });
+    res.json({ success: true, key: `${assignmentId||id}::${code}::${usahaKey}`, ...doc });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
