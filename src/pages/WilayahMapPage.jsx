@@ -264,6 +264,31 @@ function SubSlsDetailPanel({ data, onClose }) {
   );
 }
 
+// ── Auto-fit/zoom peta ke bounds data yang lagi ditampilkan ────────────────
+// PENTING: komponen ini di-render sbg CHILD dari <MapContainer>, dan pakai
+// hook useMap() (pola resmi react-leaflet) — bukan ref dari komponen induk.
+// Ini menghindari race condition timing waktu MapContainer di-mount ULANG
+// (mis. saat ganti kecamatan, yang bikin peta unmount total krn state
+// loading, lalu mount lagi) — ref dari luar (mapRef.current) sempat
+// null/stale persis di momen itu, sedangkan useMap() dijamin SELALU
+// mengembalikan instance peta yang valid, karena cuma bisa dipanggil
+// dari dalam pohon komponen yang memang sudah ter-mount oleh MapContainer.
+function AutoFitBounds({ data }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!data || !data.features.length) return;
+    try {
+      const bounds = L.geoJSON(data).getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [24, 24] });
+      }
+    } catch (e) {
+      console.warn('[WilayahMapPage] Gagal fit bounds:', e);
+    }
+  }, [data, map]);
+  return null;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 export function WilayahMapPage() {
   const { selectedKec } = useKecamatan(); // dikontrol dari dropdown global di Topbar
@@ -325,21 +350,7 @@ export function WilayahMapPage() {
     return displayData.features.reduce((a,f) => a + (f.properties.total || 0), 0);
   }, [displayData]);
 
-  // Auto-fit/zoom peta ke bounds data yang lagi ditampilkan, tiap kali filter berubah.
-  // Bounds dihitung LANGSUNG dari data (bukan dari ref layer yang dirender) —
-  // supaya tidak tergantung timing mount/unmount MapContainer (yang sempat
-  // unmount total pas loading), jadi selalu jalan konsisten.
-  useEffect(() => {
-    if (!displayData || !displayData.features.length || !mapRef.current) return;
-    try {
-      const bounds = L.geoJSON(displayData).getBounds();
-      if (bounds.isValid()) {
-        mapRef.current.fitBounds(bounds, { padding: [24, 24] });
-      }
-    } catch (e) {
-      console.warn('[WilayahMapPage] Gagal fit bounds:', e);
-    }
-  }, [displayData]);
+
 
   const styleFeature = (feature) => {
     const p = feature.properties;
@@ -492,6 +503,7 @@ export function WilayahMapPage() {
               style={styleFeature}
               onEachFeature={onEachFeature}
             />
+            <AutoFitBounds data={displayData}/>
           </MapContainer>
         )}
         {displayData && !loading && !error && <MapLegend mode={colorMode}/>}
