@@ -1970,3 +1970,113 @@ app.post('/api/anomali/resolusi', verifyToken, requireFullAccess, async function
     res.json({ success: true, key: `${assignmentId||id}::${code}::${usahaKey}`, ...doc });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// PETA PROGRESS WILAYAH — gabungkan batas wilayah sub-SLS (geo_subsls) dengan
+// progress pencacahan per sub-SLS (assignment_subsls), siap di-render Leaflet.
+//
+// Join key: idsubsls (16 digit: prov+kab+kec+desa+sls+subsls) — format sama
+// persis di geo_subsls, assignment_subsls, dan level6_fullCode di assignment.csv.
+// ══════════════════════════════════════════════════════════════════════════
+
+const WILAYAH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit — geometri jarang berubah,
+                                             // progress ikut refresh tiap upload baru
+const wilayahCache = new Map(); // key: kec filter (atau '' utk semua) -> { data, computedAt }
+
+// GET /api/wilayah/geojson?kec=Padang%20Bolak — GeoJSON siap-render
+app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const fKec = (req.query.kec || '').trim();
+    const cacheKey = fKec.toLowerCase();
+    const cached = wilayahCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && (now - cached.computedAt) < WILAYAH_CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
+
+    const geoMatch = {};
+    if (fKec) geoMatch.nmkec = { $regex: new RegExp('^' + fKec + '$', 'i') };
+
+    const [geoDocs, progressDocs] = await Promise.all([
+      db.collection('geo_subsls').find(geoMatch, { projection: { _id: 0 } }).toArray(),
+      db.collection('assignment_subsls').find({}, { projection: { _id: 0 } }).toArray(),
+    ]);
+
+    const progressMap = {};
+    progressDocs.forEach(d => { progressMap[d.idsubsls] = d; });
+
+    const features = geoDocs.map(g => {
+      const p = progressMap[g.idsubsls] || null;
+      return {
+        type: 'Feature',
+        geometry: g.geometry,
+        properties: {
+          idsubsls: g.idsubsls,
+          kecamatan: g.nmkec, desa: g.nmdesa, sls: g.nmsls,
+          luas: g.luas,
+          // null (bukan 0) kalau sub-SLS ini memang belum ada assignment
+          // sama sekali — biar frontend bisa bedakan "0%" vs "belum ada data"
+          total:    p?.total ?? 0,
+          approved: p?.approved ?? 0,
+          submit:   p?.submit ?? 0,
+          reject:   p?.reject ?? 0,
+          draft:    p?.draft ?? 0,
+          open:     p?.open ?? 0,
+          progressPct: p ? p.progressPct : null,
+          usahaAssignmentCount: p?.usahaAssignmentCount ?? 0,
+          totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
+          usahaMaxCount: p?.usahaMaxCount ?? 0,
+          usahaMaxDesa:  p?.usahaMaxDesa  ?? null,
+          pencacahNama:  p?.pencacahNama  ?? '—',
+          pencacahEmail: p?.pencacahEmail ?? '',
+          pengawasNama:  p?.pengawasNama  ?? '—',
+          pengawasEmail: p?.pengawasEmail ?? '',
+        },
+      };
+    });
+
+    const result = {
+      type: 'FeatureCollection',
+      features,
+      meta: {
+        total: features.length,
+        withData: features.filter(f => f.properties.progressPct !== null).length,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    wilayahCache.set(cacheKey, { data: result, computedAt: now });
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/wilayah/summary — ringkasan agregat per kecamatan (utk kartu ringkasan/legend)
+app.get('/api/wilayah/summary', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const docs = await db.collection('assignment_subsls').find({}, { projection: { _id: 0 } }).toArray();
+    const byKec = {};
+    docs.forEach(d => {
+      const k = d.kecamatan || '—';
+      if (!byKec[k]) byKec[k] = { kecamatan: k, total:0, approved:0, submit:0, reject:0, draft:0, open:0, subslsCount:0 };
+      byKec[k].total    += d.total    || 0;
+      byKec[k].approved += d.approved || 0;
+      byKec[k].submit   += d.submit   || 0;
+      byKec[k].reject   += d.reject   || 0;
+      byKec[k].draft    += d.draft    || 0;
+      byKec[k].open     += d.open     || 0;
+      byKec[k].subslsCount += 1;
+    });
+    const result = Object.values(byKec).map(k => ({
+      ...k,
+      progressPct: k.total > 0
+        ? Math.round((k.approved + k.submit + k.reject + k.draft) / k.total * 1000) / 10
+        : 0,
+    })).sort((a, b) => b.total - a.total);
+    res.json({ data: result, totalSubSls: docs.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/wilayah/cache/clear — bersihkan cache peta (panggil manual setelah upload baru)
+app.post('/api/wilayah/cache/clear', verifyToken, requireFullAccess, async function(req, res) {
+  wilayahCache.clear();
+  res.json({ ok: true, message: 'Cache peta wilayah dibersihkan' });
+});
