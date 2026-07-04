@@ -9,6 +9,7 @@ import { AnomalyPage } from './pages/AnomalyPage.jsx';
 import { TargetPage, KBLIPage } from './pages/OtherPages.jsx';
 import RespondenPage from './pages/RespondenPage.jsx';
 import { EvaluasiPage } from './pages/EvaluasiPage.jsx';
+import { WilayahMapPage } from './pages/WilayahMapPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { KecamatanProvider } from './context/KecamatanContext.jsx';
@@ -21,6 +22,7 @@ const ALL_PAGES = {
   KBLI:      <KBLIPage />,
   Responden: <RespondenPage />,
   Evaluasi:  <EvaluasiPage />,
+  Wilayah:   <WilayahMapPage />,
 };
 
 function Footer({ role }) {
@@ -67,14 +69,14 @@ export default function App() {
   // Persist tab aktif ke URL hash agar tidak reset saat reload
   const getInitialTab = () => {
     const hash = window.location.hash.replace('#', '').trim();
-    const allowed = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi'];
+    const allowed = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi', 'Wilayah'];
     return allowed.includes(hash) ? hash : 'Overview';
   };
   const [tab, setTab] = useState(getInitialTab);
 
   // Ambil daftar tab yang boleh diakses dari token user
   // Semua pegawai BPS mendapat akses penuh ke semua tab
-  const allowedTabs = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi'];
+  const allowedTabs = ['Overview', 'Anomali', 'Target', 'KBLI', 'Responden', 'Evaluasi', 'Wilayah'];
 
   // Pastikan tab aktif selalu valid (misalnya setelah logout/login ulang dengan role berbeda)
   useEffect(() => {

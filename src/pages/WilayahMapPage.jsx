@@ -1,0 +1,512 @@
+// src/pages/WilayahMapPage.jsx
+// Tab baru: Peta Progress Wilayah — choropleth sub-SLS (Leaflet) + panel detail
+// pencacah/pengawas/progress per sub-SLS. Data digabung backend dari
+// geo_subsls (batas wilayah) + assignment_subsls (progress), join by idsubsls.
+//
+// Terintegrasi dengan KecamatanContext (selector kecamatan global di Topbar —
+// tidak ada dropdown kecamatan duplikat di halaman ini) dan komponen ui.jsx
+// (Card, SectionTitle, Badge, PulseDot) yang sama dipakai tab lain.
+//
+// Dependency baru: leaflet, react-leaflet (sudah ditambahkan ke package.json).
+// Tambahkan baris ini SEKALI SAJA di entry point app (main.jsx):
+//     import 'leaflet/dist/leaflet.css';
+
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import {
+  MapPin, Users, TrendingUp, X, Loader2, RefreshCw,
+  Layers, Building2, ShieldCheck,
+} from 'lucide-react';
+import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
+import { useKecamatan } from '../context/KecamatanContext.jsx';
+import DesaFilter from '../components/DesaFilter.jsx';
+
+const TOKEN_KEY = 'ews_token';
+
+function getBaseURL() {
+  return (window.__API_URL__ || import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+}
+
+async function apiFetch(path) {
+  const BASE_URL = getBaseURL();
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) throw new Error('Token tidak ditemukan. Silakan login.');
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('Tidak dapat terhubung ke server API.');
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── Basemap Google (Hybrid = satelit+label, Satellite = citra polos ala
+// Google Earth) — pakai XYZ tile endpoint Google langsung. Ini pola yang umum
+// dipakai utk internal tool/prototyping, TAPI perlu dicatat: ini bukan jalur
+// resmi Google Maps Platform (tidak lewat API key/billing resmi), jadi utk
+// pemakaian produksi jangka panjang idealnya migrasi ke Google Maps JS API
+// atau layanan tile berbayar resmi supaya sesuai Terms of Service Google.
+const BASEMAP_TILES = {
+  hybrid: {
+    url: 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    label: 'Hybrid',
+    sub: 'Satelit + jalan/label',
+  },
+  satellite: {
+    url: 'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    label: 'Satelit',
+    sub: 'Citra polos (ala Google Earth)',
+  },
+};
+const GOOGLE_SUBDOMAINS = ['mt0', 'mt1', 'mt2', 'mt3'];
+
+// ── Skala warna ────────────────────────────────────────────────────────────
+// Progress: merah (0%) -> kuning (50%) -> hijau (100%)
+function colorForProgress(pct) {
+  if (pct == null) return '#3a3f52'; // abu-abu = belum ada data sama sekali
+  const p = Math.max(0, Math.min(100, pct));
+  if (p < 50) {
+    const t = p / 50;
+    return lerpColor('#ef4444', '#fbbf24', t);
+  }
+  const t = (p - 50) / 50;
+  return lerpColor('#fbbf24', '#34d399', t);
+}
+
+// Total assignment: biru muda -> biru tua, skala relatif thd max
+function colorForTotal(total, maxTotal) {
+  if (!total) return '#3a3f52';
+  const t = Math.max(0, Math.min(1, total / (maxTotal || 1)));
+  return lerpColor('#bfdbfe', '#1d4ed8', t);
+}
+
+function lerpColor(hexA, hexB, t) {
+  const a = hexToRgb(hexA), b = hexToRgb(hexB);
+  const r = Math.round(a[0] + (b[0] - a[0]) * t);
+  const g = Math.round(a[1] + (b[1] - a[1]) * t);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+// ── Kartu ringkasan angka di atas (pakai Card dari ui.jsx, konsisten dgn tab lain)
+function StatCard({ icon: Icon, label, value, sub, color }) {
+  return (
+    <Card style={{ flex:'1 1 160px', padding:'14px 16px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+        <Icon size={13} color={color || 'var(--text4)'}/>
+        <span style={{ fontSize:9.5, fontWeight:700, color:'var(--text4)',
+          textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
+      </div>
+      <div style={{ fontSize:24, fontWeight:800, color: color || 'var(--text1)', fontFamily:'var(--mono)' }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize:10, color:'var(--text4)', marginTop:2 }}>{sub}</div>}
+    </Card>
+  );
+}
+
+// ── Legend skala warna, pojok bawah peta ───────────────────────────────────
+function MapLegend({ mode }) {
+  const stops = mode === 'progress'
+    ? [{c:'#ef4444',l:'0%'},{c:'#fbbf24',l:'50%'},{c:'#34d399',l:'100%'}]
+    : [{c:'#bfdbfe',l:'Sedikit'},{c:'#3b82f6',l:'Sedang'},{c:'#1d4ed8',l:'Banyak'}];
+  return (
+    <div style={{ position:'absolute', bottom:16, left:16, zIndex:1000,
+      background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:10,
+      padding:'10px 14px', boxShadow:'0 4px 16px rgba(0,0,0,0.4)', fontSize:10.5 }}>
+      <div style={{ fontWeight:700, color:'var(--text2)', marginBottom:6, fontSize:9.5,
+        textTransform:'uppercase', letterSpacing:'0.05em' }}>
+        {mode === 'progress' ? 'Progress Pencacahan' : 'Jumlah Assignment'}
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        {stops.map((s, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <div style={{ width:12, height:12, borderRadius:3, background:s.c }}/>
+            <span style={{ color:'var(--text3)' }}>{s.l}</span>
+          </div>
+        ))}
+        <div style={{ display:'flex', alignItems:'center', gap:4, marginLeft:4 }}>
+          <div style={{ width:12, height:12, borderRadius:3, background:'#3a3f52' }}/>
+          <span style={{ color:'var(--text4)' }}>Belum ada data</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Panel detail sub-SLS yang diklik ───────────────────────────────────────
+function SubSlsDetailPanel({ data, onClose }) {
+  if (!data) return null;
+  const p = data.properties;
+  const Row = ({ label, value, color }) => (
+    <div style={{ display:'flex', justifyContent:'space-between', padding:'6px 0',
+      borderBottom:'1px solid var(--border)' }}>
+      <span style={{ fontSize:11, color:'var(--text3)' }}>{label}</span>
+      <span style={{ fontSize:11.5, fontWeight:700, color: color || 'var(--text1)',
+        fontFamily:'var(--mono)' }}>{value}</span>
+    </div>
+  );
+  return (
+    <div style={{ position:'absolute', top:16, right:16, zIndex:1000, width:300,
+      maxHeight:'calc(100% - 32px)', overflowY:'auto',
+      background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:14,
+      boxShadow:'0 12px 32px rgba(0,0,0,0.5)', animation:'wilayahPanelIn .2s ease both' }}>
+      <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--border)',
+        display:'flex', alignItems:'flex-start', gap:8 }}>
+        <MapPin size={15} color="var(--orange3)" style={{ marginTop:2, flexShrink:0 }}/>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)' }}>{p.desa || '—'}</div>
+          <div style={{ fontSize:10.5, color:'var(--text4)', marginTop:2 }}>
+            {p.kecamatan} · SLS {p.sls}
+          </div>
+          <div style={{ fontSize:9, color:'var(--text4)', fontFamily:'var(--mono)', marginTop:2 }}>
+            {p.idsubsls}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer',
+          padding:4, borderRadius:6, flexShrink:0 }}
+          onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+          onMouseLeave={e=>e.currentTarget.style.background='none'}>
+          <X size={14} color="var(--text3)"/>
+        </button>
+      </div>
+
+      <div style={{ padding:'12px 16px' }}>
+        {p.progressPct === null ? (
+          <div style={{ padding:'10px', background:'rgba(148,163,184,0.1)', borderRadius:8,
+            fontSize:11, color:'var(--text4)', textAlign:'center' }}>
+            Belum ada assignment tercatat di sub-SLS ini
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ fontSize:10, color:'var(--text4)', fontWeight:600,
+                  textTransform:'uppercase', letterSpacing:'0.05em' }}>Progress</span>
+                <span style={{ fontSize:13, fontWeight:800, color: colorForProgress(p.progressPct) }}>
+                  {p.progressPct}%
+                </span>
+              </div>
+              <div style={{ height:8, borderRadius:99, background:'var(--bg3)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${p.progressPct}%`,
+                  background: colorForProgress(p.progressPct), borderRadius:99,
+                  transition:'width .3s' }}/>
+              </div>
+            </div>
+
+            <Row label="Total Assignment" value={p.total} />
+            <Row label="Approved" value={p.approved} color="#34d399" />
+            <Row label="Submit"   value={p.submit}   color="#fbbf24" />
+            <Row label="Rejected" value={p.reject}   color="#f87171" />
+            <Row label="Draft"    value={p.draft}    color="#60a5fa" />
+            <Row label="Open"     value={p.open}     color="var(--text4)" />
+
+            <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
+
+            <Row label="Assignment Usaha Ditemukan" value={p.usahaAssignmentCount} color="#a78bfa" />
+            <Row label="Total Usaha" value={p.totalUsahaDitemukan} color="#a78bfa" />
+            {p.usahaMaxCount > 0 && (
+              <Row label="Usaha Terbanyak" value={`${p.usahaMaxCount} (${p.usahaMaxDesa||'—'})`} color="#a78bfa" />
+            )}
+          </>
+        )}
+
+        <div style={{ height:1, background:'var(--border)', margin:'12px 0' }}/>
+
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+          <div style={{ width:26, height:26, borderRadius:8, background:'rgba(96,165,250,0.15)',
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <Users size={13} color="#60a5fa"/>
+          </div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase',
+              letterSpacing:'0.05em', fontWeight:600 }}>Pencacah</div>
+            <div style={{ fontSize:11.5, fontWeight:700, color:'var(--text1)',
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {p.pencacahNama || '—'}
+            </div>
+            {p.pencacahEmail && (
+              <div style={{ fontSize:9.5, color:'var(--text4)', overflow:'hidden',
+                textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pencacahEmail}</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ width:26, height:26, borderRadius:8, background:'rgba(167,139,250,0.15)',
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <ShieldCheck size={13} color="#a78bfa"/>
+          </div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase',
+              letterSpacing:'0.05em', fontWeight:600 }}>Pengawas</div>
+            <div style={{ fontSize:11.5, fontWeight:700, color:'var(--text1)',
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {p.pengawasNama || '—'}
+            </div>
+            {p.pengawasEmail && (
+              <div style={{ fontSize:9.5, color:'var(--text4)', overflow:'hidden',
+                textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pengawasEmail}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+export function WilayahMapPage() {
+  const { selectedKec } = useKecamatan(); // dikontrol dari dropdown global di Topbar
+  const [geoData, setGeoData]       = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [colorMode, setColorMode]   = useState('progress'); // 'progress' | 'total'
+  const [basemapMode, setBasemapMode] = useState('hybrid'); // 'hybrid' | 'satellite'
+  const [selectedDesa, setSelectedDesa] = useState(''); // '' = semua desa, konvensi sama dgn DesaFilter
+  const [selectedFeature, setSelectedFeature] = useState(null);
+  const geoLayerRef = useRef(null);
+  const mapRef = useRef(null);
+
+  const fetchGeo = () => {
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams(selectedKec !== 'all' ? { kec: selectedKec } : {});
+    apiFetch(`/api/wilayah/geojson?${params}`)
+      .then(result => { setGeoData(result); setLoading(false); })
+      .catch(e => { setError(e.message || 'Gagal memuat data peta.'); setLoading(false); });
+  };
+
+  useEffect(() => { fetchGeo(); /* eslint-disable-next-line */ }, [selectedKec]);
+  // Reset filter desa tiap kali kecamatan (global) berganti — daftar desa ikut berubah
+  useEffect(() => { setSelectedDesa(''); }, [selectedKec]);
+
+  // Daftar desa unik dari data yang sudah ke-fetch (tidak perlu request baru ke server)
+  const desaList = useMemo(() => {
+    if (!geoData) return [];
+    return [...new Set(geoData.features.map(f => f.properties.desa).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'id'));
+  }, [geoData]);
+
+  // Data yang benar-benar dirender di peta + dipakai hitung kartu ringkasan —
+  // hasil filter desa (client-side) di atas geoData yang sudah difilter kecamatan (server-side)
+  const displayData = useMemo(() => {
+    if (!geoData) return null;
+    if (!selectedDesa) return geoData;
+    return {
+      ...geoData,
+      features: geoData.features.filter(f => f.properties.desa === selectedDesa),
+    };
+  }, [geoData, selectedDesa]);
+
+  const maxTotal = useMemo(() => {
+    if (!displayData) return 1;
+    return Math.max(1, ...displayData.features.map(f => f.properties.total || 0));
+  }, [displayData]);
+
+  const avgProgress = useMemo(() => {
+    if (!displayData || !displayData.features.length) return 0;
+    const withData = displayData.features.filter(f => f.properties.progressPct !== null);
+    if (!withData.length) return 0;
+    return Math.round(withData.reduce((a,f) => a + f.properties.progressPct, 0) / withData.length * 10) / 10;
+  }, [displayData]);
+
+  const totalAssignment = useMemo(() => {
+    if (!displayData) return 0;
+    return displayData.features.reduce((a,f) => a + (f.properties.total || 0), 0);
+  }, [displayData]);
+
+  // Auto-fit/zoom peta ke bounds data yang lagi ditampilkan, tiap kali filter berubah.
+  // Bounds dihitung LANGSUNG dari data (bukan dari ref layer yang dirender) —
+  // supaya tidak tergantung timing mount/unmount MapContainer (yang sempat
+  // unmount total pas loading), jadi selalu jalan konsisten.
+  useEffect(() => {
+    if (!displayData || !displayData.features.length || !mapRef.current) return;
+    try {
+      const bounds = L.geoJSON(displayData).getBounds();
+      if (bounds.isValid()) {
+        mapRef.current.fitBounds(bounds, { padding: [24, 24] });
+      }
+    } catch (e) {
+      console.warn('[WilayahMapPage] Gagal fit bounds:', e);
+    }
+  }, [displayData]);
+
+  const styleFeature = (feature) => {
+    const p = feature.properties;
+    const fillColor = colorMode === 'progress'
+      ? colorForProgress(p.progressPct)
+      : colorForTotal(p.total, maxTotal);
+    const isSelected = selectedFeature?.properties?.idsubsls === p.idsubsls;
+    return {
+      fillColor,
+      // Opacity lebih rendah drpd sebelumnya (dulu di atas basemap gelap polos) —
+      // biar citra satelit/hybrid di baliknya tetap kelihatan jelas lokasinya.
+      fillOpacity: isSelected ? 0.75 : 0.45,
+      color: isSelected ? '#ffffff' : 'rgba(255,255,255,0.55)',
+      weight: isSelected ? 2.5 : 1,
+    };
+  };
+
+  const onEachFeature = (feature, layer) => {
+    layer.on({
+      click: () => setSelectedFeature(feature),
+      mouseover: (e) => { e.target.setStyle({ weight: 2, color: '#fff', fillOpacity: 0.65 }); },
+      mouseout:  (e) => { if (geoLayerRef.current) geoLayerRef.current.resetStyle(e.target); },
+    });
+    const p = feature.properties;
+    layer.bindTooltip(
+      `<strong>${p.desa}</strong><br/>${p.sls}<br/>` +
+      (p.progressPct !== null ? `Progress: ${p.progressPct}% (${p.total} assignment)` : 'Belum ada data'),
+      { sticky: true }
+    );
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      {/* Header */}
+      <SectionTitle
+        icon={MapPin}
+        right={
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            {selectedKec !== 'all' && <Badge variant="info">{selectedKec}</Badge>}
+            <button onClick={fetchGeo} disabled={loading}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px',
+                fontSize:11, fontWeight:600, borderRadius:8, border:'1px solid var(--border2)',
+                background:'var(--bg3)', color:'var(--text2)', cursor: loading ? 'default':'pointer' }}>
+              <RefreshCw size={12} style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}/>
+              Refresh
+            </button>
+          </div>
+        }
+      >
+        Peta Progress Wilayah — per Sub-SLS
+      </SectionTitle>
+
+      {/* Kartu ringkasan */}
+      <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+        <StatCard icon={Layers} label="Total Sub-SLS" value={displayData?.features.length ?? '—'} color="var(--text1)"/>
+        <StatCard icon={TrendingUp} label="Rata-rata Progress" value={`${avgProgress}%`} color={colorForProgress(avgProgress)}/>
+        <StatCard icon={Building2} label="Total Assignment" value={totalAssignment.toLocaleString('id')} color="#60a5fa"/>
+        <StatCard icon={ShieldCheck} label="Sub-SLS Ada Data"
+          value={displayData
+            ? `${displayData.features.filter(f => f.properties.progressPct !== null).length}/${displayData.features.length}`
+            : '—'} color="#34d399"/>
+      </div>
+
+      {/* Filter Desa — komponen shared, sama persis dgn yang dipakai EvaluasiPage */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Filter Desa:</span>
+        <DesaFilter
+          value={selectedDesa}
+          onChange={setSelectedDesa}
+          desaList={desaList}
+          disabled={loading}
+        />
+        {selectedKec === 'all' && desaList.length > 0 && (
+          <span style={{ fontSize:9.5, color:'var(--text4)', fontStyle:'italic' }}>
+            Tip: pilih kecamatan dulu di atas biar daftar desa lebih ringkas
+          </span>
+        )}
+      </div>
+
+      {/* Toggle mode warna + basemap */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Tampilkan warna:</span>
+        {[
+          { key:'progress', label:'Persentase Progress' },
+          { key:'total', label:'Jumlah Assignment' },
+        ].map(opt => (
+          <button key={opt.key} onClick={() => setColorMode(opt.key)}
+            style={{ padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
+              border: colorMode===opt.key ? '1px solid var(--orange)' : '1px solid var(--border2)',
+              background: colorMode===opt.key ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
+              color: colorMode===opt.key ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
+            {opt.label}
+          </button>
+        ))}
+
+        <div style={{ width:1, height:20, background:'var(--border2)', margin:'0 4px' }}/>
+
+        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Peta dasar:</span>
+        {Object.entries(BASEMAP_TILES).map(([key, cfg]) => (
+          <button key={key} onClick={() => setBasemapMode(key)} title={cfg.sub}
+            style={{ padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
+              border: basemapMode===key ? '1px solid var(--orange)' : '1px solid var(--border2)',
+              background: basemapMode===key ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
+              color: basemapMode===key ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
+            {cfg.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:-10 }}>
+        {BASEMAP_TILES[basemapMode].sub}
+      </div>
+
+      {/* Peta */}
+      <Card style={{ padding:0, position:'relative', width:'100%', height:600, overflow:'hidden' }}>
+        {loading && (
+          <div style={{ position:'absolute', inset:0, zIndex:1000, display:'flex',
+            alignItems:'center', justifyContent:'center', background:'var(--bg1)', gap:8 }}>
+            <Loader2 size={16} color="var(--orange3)" style={{ animation:'spin 0.8s linear infinite' }}/>
+            <span style={{ fontSize:12, color:'var(--text3)' }}>Memuat peta wilayah…</span>
+          </div>
+        )}
+        {error && !loading && (
+          <div style={{ position:'absolute', inset:0, zIndex:1000, display:'flex',
+            flexDirection:'column', alignItems:'center', justifyContent:'center',
+            background:'var(--bg1)', gap:8, padding:24, textAlign:'center' }}>
+            <span style={{ fontSize:12, color:'#f87171' }}>{error}</span>
+            <button onClick={fetchGeo} style={{ padding:'6px 14px', fontSize:11, fontWeight:600,
+              borderRadius:8, border:'1px solid var(--border2)', background:'var(--bg2)',
+              color:'var(--text2)', cursor:'pointer' }}>Coba lagi</button>
+          </div>
+        )}
+        {displayData && !loading && !error && (
+          <MapContainer
+            ref={mapRef}
+            center={[1.65, 99.75]}
+            zoom={10}
+            style={{ width:'100%', height:'100%', background:'var(--bg1)' }}
+          >
+            <TileLayer
+              key={basemapMode /* force reload layer saat basemap diganti */}
+              url={BASEMAP_TILES[basemapMode].url}
+              subdomains={GOOGLE_SUBDOMAINS}
+              maxZoom={20}
+              attribution='&copy; Google'
+            />
+            <LeafletGeoJSON
+              key={`${selectedKec}-${selectedDesa}-${colorMode}` /* recreate layer saat filter ATAU mode warna berubah — cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
+              ref={geoLayerRef}
+              data={displayData}
+              style={styleFeature}
+              onEachFeature={onEachFeature}
+            />
+          </MapContainer>
+        )}
+        {displayData && !loading && !error && <MapLegend mode={colorMode}/>}
+        {selectedFeature && (
+          <SubSlsDetailPanel data={selectedFeature} onClose={() => setSelectedFeature(null)}/>
+        )}
+      </Card>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes wilayahPanelIn { from { opacity:0; transform: translateX(8px); } to { opacity:1; transform:none; } }
+        .leaflet-tooltip { background: var(--bg2) !important; color: var(--text1) !important;
+          border: 1px solid var(--border2) !important; font-size: 11px !important; }
+        .leaflet-container { font-family: inherit; }
+      `}</style>
+    </div>
+  );
+}

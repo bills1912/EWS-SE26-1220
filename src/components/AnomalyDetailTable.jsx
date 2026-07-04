@@ -821,7 +821,10 @@ function AnomalyRow({ rec, onNavigate, idx, resolutionMap, onToggleResolved }) {
       <td style={{ ...td, maxWidth:220 }}>
         <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
           {rec.flags.map((f, i) => {
-            const key = `${rec.id}::${f.code}::${f.usaha||''}`;
+            // Pakai assignmentId (stabil lintas snapshot data) sbg key utama,
+            // fallback ke id (SE26-XXXX) kalau assignmentId tidak ada
+            const stableId = rec.assignmentId || rec.id;
+            const key = `${stableId}::${f.code}::${f.usaha||''}`;
             return (
               <FlagBadge
                 key={i}
@@ -932,16 +935,19 @@ export function AnomalyDetailTable({ kecFilter }) {
   // - kalau mau DIBATALKAN (selesai -> belum) -> buka modal PERINGATAN dulu (jangan langsung hilang)
   const handleToggleResolved = (rec, flag, next) => {
     setResolveError(null);
+    const stableId = rec.assignmentId || rec.id;
     if (next) {
       setPendingResolve({
-        id: rec.id, code: flag.code, usaha: flag.usaha || '',
+        id: rec.id, assignmentId: rec.assignmentId || null,
+        code: flag.code, usaha: flag.usaha || '',
         namaKepala: rec.namaKepala, ket: flag.ket,
       });
       return;
     }
-    const key = `${rec.id}::${flag.code}::${flag.usaha||''}`;
+    const key = `${stableId}::${flag.code}::${flag.usaha||''}`;
     setPendingUncheck({
-      id: rec.id, code: flag.code, usaha: flag.usaha || '',
+      id: rec.id, assignmentId: rec.assignmentId || null,
+      code: flag.code, usaha: flag.usaha || '',
       namaKepala: rec.namaKepala, ket: flag.ket,
       existing: resolutionMap[key] || null,
     });
@@ -950,14 +956,15 @@ export function AnomalyDetailTable({ kecFilter }) {
   // Konfirmasi dari modal klarifikasi -> simpan sbg selesai + catatan
   const handleConfirmResolve = async (catatan) => {
     if (!pendingResolve) return;
-    const { id, code, usaha } = pendingResolve;
-    const key = `${id}::${code}::${usaha||''}`;
+    const { id, assignmentId, code, usaha } = pendingResolve;
+    const stableId = assignmentId || id;
+    const key = `${stableId}::${code}::${usaha||''}`;
     setSavingResolve(true);
     try {
       const result = await apiFetch('/api/anomali/resolusi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, code, usaha, tab, resolved: true, catatan }),
+        body: JSON.stringify({ id, assignmentId, code, usaha, tab, resolved: true, catatan }),
       });
       setResolutionMap(prev => ({ ...prev, [key]: result }));
       setPendingResolve(null);
@@ -971,8 +978,9 @@ export function AnomalyDetailTable({ kecFilter }) {
   // Konfirmasi dari modal peringatan -> baru benar-benar batalkan centang (uncheck)
   const handleConfirmUncheck = async () => {
     if (!pendingUncheck) return;
-    const { id, code, usaha } = pendingUncheck;
-    const key = `${id}::${code}::${usaha||''}`;
+    const { id, assignmentId, code, usaha } = pendingUncheck;
+    const stableId = assignmentId || id;
+    const key = `${stableId}::${code}::${usaha||''}`;
     const prevVal = resolutionMap[key];
     setSavingResolve(true);
     // Optimistic update — langsung hilangkan centang di UI
@@ -981,7 +989,7 @@ export function AnomalyDetailTable({ kecFilter }) {
       await apiFetch('/api/anomali/resolusi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, code, usaha, tab, resolved: false }),
+        body: JSON.stringify({ id, assignmentId, code, usaha, tab, resolved: false }),
       });
       setPendingUncheck(null);
     } catch (e) {

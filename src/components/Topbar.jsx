@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useStatistik } from '../hooks/useEWSData.js';
 
 // Semua tab yang mungkin (urutan tetap)
-const ALL_TABS = ['Overview','Anomali','Target','KBLI','Responden','Evaluasi'];
+const ALL_TABS = ['Overview','Anomali','Target','KBLI','Responden','Evaluasi', 'Wilayah'];
 
 // Label badge per role
 const ROLE_BADGE = {
