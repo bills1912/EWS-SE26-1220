@@ -2068,8 +2068,30 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
     const progressMap = {};
     progressDocs.forEach(d => { progressMap[d.idsubsls] = d; });
 
+    // Build reverse map emailPml → namaPml dari cache (key: pml_${email}) —
+    // SAMA PERSIS dgn logika di /api/evaluasi, supaya nama pencacah/pengawas
+    // di peta identik dgn yang ditampilkan di tab Evaluasi (bukan nama mentah
+    // dari Excel wilayah tugas, yang casing-nya suka tidak konsisten).
+    const pmlNameMap = new Map();
+    if (petugasCache) {
+      for (const [k, v] of petugasCache.entries()) {
+        if (k.startsWith('pml_') && v.namaPengawas) {
+          pmlNameMap.set(k.replace('pml_', ''), v.namaPengawas);
+        }
+      }
+    }
+
     const features = geoDocs.map(g => {
       const p = progressMap[g.idsubsls] || null;
+
+      // Resolve nama resmi (SOBAT) dari petugasCache — bukan nama mentah dari
+      // Excel wilayah tugas — fallback ke nama mentah kalau tidak ketemu di cache.
+      const pencacahEmailKey = (p?.pencacahEmail || '').toLowerCase().trim();
+      const pengawasEmailKey = (p?.pengawasEmail || '').toLowerCase().trim();
+      const cacheByPencacah  = petugasCache && pencacahEmailKey ? petugasCache.get(pencacahEmailKey) : null;
+      const namaPencacahResmi = cacheByPencacah?.namaPencacah || p?.pencacahNama || '—';
+      const namaPengawasResmi = pmlNameMap.get(pengawasEmailKey) || cacheByPencacah?.namaPengawas || p?.pengawasNama || '—';
+
       return {
         type: 'Feature',
         geometry: g.geometry,
@@ -2090,9 +2112,9 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
           totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
           usahaMaxCount: p?.usahaMaxCount ?? 0,
           usahaMaxDesa:  p?.usahaMaxDesa  ?? null,
-          pencacahNama:  p?.pencacahNama  ?? '—',
+          pencacahNama:  p ? namaPencacahResmi : '—',
           pencacahEmail: p?.pencacahEmail ?? '',
-          pengawasNama:  p?.pengawasNama  ?? '—',
+          pengawasNama:  p ? namaPengawasResmi : '—',
           pengawasEmail: p?.pengawasEmail ?? '',
         },
       };

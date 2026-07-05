@@ -22,6 +22,7 @@ import {
 import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
+import PetugasFilter from '../components/PetugasFilter.jsx';
 
 const TOKEN_KEY = 'ews_token';
 
@@ -298,6 +299,8 @@ export function WilayahMapPage() {
   const [colorMode, setColorMode]   = useState('progress'); // 'progress' | 'total'
   const [basemapMode, setBasemapMode] = useState('hybrid'); // 'hybrid' | 'satellite'
   const [selectedDesa, setSelectedDesa] = useState(''); // '' = semua desa, konvensi sama dgn DesaFilter
+  const [selectedPencacah, setSelectedPencacah] = useState(''); // '' = semua pencacah
+  const [selectedPengawas, setSelectedPengawas] = useState(''); // '' = semua pengawas
   const [selectedFeature, setSelectedFeature] = useState(null);
   const geoLayerRef = useRef(null);
   const mapRef = useRef(null);
@@ -312,26 +315,44 @@ export function WilayahMapPage() {
   };
 
   useEffect(() => { fetchGeo(); /* eslint-disable-next-line */ }, [selectedKec]);
-  // Reset filter desa tiap kali kecamatan (global) berganti — daftar desa ikut berubah
-  useEffect(() => { setSelectedDesa(''); }, [selectedKec]);
+  // Reset semua filter turunan tiap kali kecamatan (global) berganti — daftar2nya ikut berubah
+  useEffect(() => { setSelectedDesa(''); setSelectedPencacah(''); setSelectedPengawas(''); }, [selectedKec]);
 
-  // Daftar desa unik dari data yang sudah ke-fetch (tidak perlu request baru ke server)
+  // Daftar desa/pencacah/pengawas unik dari data yang sudah ke-fetch (tidak
+  // perlu request baru ke server tiap ganti filter — semua turunan client-side)
   const desaList = useMemo(() => {
     if (!geoData) return [];
     return [...new Set(geoData.features.map(f => f.properties.desa).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'id'));
   }, [geoData]);
 
+  const pencacahList = useMemo(() => {
+    if (!geoData) return [];
+    return [...new Set(geoData.features.map(f => f.properties.pencacahNama).filter(v => v && v !== '—'))]
+      .sort((a, b) => a.localeCompare(b, 'id'));
+  }, [geoData]);
+
+  const pengawasList = useMemo(() => {
+    if (!geoData) return [];
+    return [...new Set(geoData.features.map(f => f.properties.pengawasNama).filter(v => v && v !== '—'))]
+      .sort((a, b) => a.localeCompare(b, 'id'));
+  }, [geoData]);
+
   // Data yang benar-benar dirender di peta + dipakai hitung kartu ringkasan —
-  // hasil filter desa (client-side) di atas geoData yang sudah difilter kecamatan (server-side)
+  // hasil filter desa/pencacah/pengawas (client-side, semua AND) di atas geoData
+  // yang sudah difilter kecamatan (server-side)
   const displayData = useMemo(() => {
     if (!geoData) return null;
-    if (!selectedDesa) return geoData;
+    if (!selectedDesa && !selectedPencacah && !selectedPengawas) return geoData;
     return {
       ...geoData,
-      features: geoData.features.filter(f => f.properties.desa === selectedDesa),
+      features: geoData.features.filter(f =>
+        (!selectedDesa     || f.properties.desa         === selectedDesa) &&
+        (!selectedPencacah || f.properties.pencacahNama  === selectedPencacah) &&
+        (!selectedPengawas || f.properties.pengawasNama  === selectedPengawas)
+      ),
     };
-  }, [geoData, selectedDesa]);
+  }, [geoData, selectedDesa, selectedPencacah, selectedPengawas]);
 
   const maxTotal = useMemo(() => {
     if (!displayData) return 1;
@@ -414,18 +435,34 @@ export function WilayahMapPage() {
             : '—'} color="#34d399"/>
       </div>
 
-      {/* Filter Desa — komponen shared, sama persis dgn yang dipakai EvaluasiPage */}
+      {/* Filter Desa/Pencacah/Pengawas — komponen shared/serupa DesaFilter */}
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Filter Desa:</span>
+        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Filter:</span>
         <DesaFilter
           value={selectedDesa}
           onChange={setSelectedDesa}
           desaList={desaList}
           disabled={loading}
         />
-        {selectedKec === 'all' && desaList.length > 0 && (
+        <PetugasFilter
+          value={selectedPencacah}
+          onChange={setSelectedPencacah}
+          list={pencacahList}
+          disabled={loading}
+          label="Pencacah"
+          icon={Users}
+        />
+        <PetugasFilter
+          value={selectedPengawas}
+          onChange={setSelectedPengawas}
+          list={pengawasList}
+          disabled={loading}
+          label="Pengawas"
+          icon={ShieldCheck}
+        />
+        {selectedKec === 'all' && (desaList.length > 0 || pencacahList.length > 0) && (
           <span style={{ fontSize:9.5, color:'var(--text4)', fontStyle:'italic' }}>
-            Tip: pilih kecamatan dulu di atas biar daftar desa lebih ringkas
+            Tip: pilih kecamatan dulu di atas biar daftar lebih ringkas
           </span>
         )}
       </div>
@@ -497,7 +534,7 @@ export function WilayahMapPage() {
               attribution='&copy; Google'
             />
             <LeafletGeoJSON
-              key={`${selectedKec}-${selectedDesa}-${colorMode}` /* recreate layer saat filter ATAU mode warna berubah — cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
+              key={`${selectedKec}-${selectedDesa}-${selectedPencacah}-${selectedPengawas}-${colorMode}` /* recreate layer TOTAL saat filter (kec/desa/pencacah/pengawas) ATAU mode warna berubah — react-leaflet TIDAK otomatis re-render geometri hanya krn prop `data` berubah, harus lewat key. Ini juga sekalian cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
               ref={geoLayerRef}
               data={displayData}
               style={styleFeature}
