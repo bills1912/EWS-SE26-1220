@@ -60,6 +60,52 @@ function sr(v, n = 2) {
   return Math.round(v * Math.pow(10, n)) / Math.pow(10, n);
 }
 
+// ── Metrik "Usaha Ditemukan" (data7) — DIHITUNG LIVE dari assignment_detail,
+// BUKAN passthrough dari summary/pencacah/pengawas hasil convert_assignment.py.
+// Alasan: supaya "Assignment Usaha Ditemukan" (jml assignment) dan "Total Usaha
+// Ditemukan" (sum data7) DIJAMIN linear — dihitung dari baris yang PERSIS sama,
+// bukan dari 2 sumber terpisah yang berpotensi drift kalau data belum di-refresh
+// lewat convert_assignment.py + upload_assignment.py.
+//
+// Filter: status submit/approve/reject, data7 tidak NaN, data7 >= 1.
+const STATUS_USAHA_ALIASES = [
+  'SUBMITTED BY Pencacah', 'APPROVED BY Pengawas',
+  'REJECTED BY Pengawas', 'REVOKED BY Pengawas', 'COMPLETED BY Admin Kabupaten',
+];
+const USAHA_MIN_COUNT = 0; // data7 > 0  <=>  data7 >= 1 (integer) — samakan dgn convert_assignment.py
+
+async function computeUsahaLive() {
+  const docs = await db.collection('assignment_detail').find(
+    { status: { $in: STATUS_USAHA_ALIASES }, data7: { $ne: null, $gt: USAHA_MIN_COUNT } },
+    { projection: { _id: 0, data7: 1, pencacahEmail: 1, kecamatan: 1 } }
+  ).toArray();
+
+  let globalCount = 0, globalSum = 0;
+  const byPencacah  = new Map(); // emailLower -> { count, sum }
+  const byKecamatan = new Map(); // kecamatan  -> { count, sum }
+
+  for (const d of docs) {
+    const v = Number(d.data7) || 0;
+    globalCount += 1;
+    globalSum   += v;
+
+    const pEmail = (d.pencacahEmail || '').toLowerCase().trim();
+    if (pEmail) {
+      const cur = byPencacah.get(pEmail) || { count: 0, sum: 0 };
+      cur.count += 1; cur.sum += v;
+      byPencacah.set(pEmail, cur);
+    }
+    const kec = d.kecamatan || '';
+    if (kec) {
+      const cur = byKecamatan.get(kec) || { count: 0, sum: 0 };
+      cur.count += 1; cur.sum += v;
+      byKecamatan.set(kec, cur);
+    }
+  }
+
+  return { global: { count: globalCount, sum: globalSum }, byPencacah, byKecamatan };
+}
+
 // ── Role definitions ──────────────────────────────────────────────────────
 // Level akses: semakin tinggi angka, semakin banyak yang bisa diakses
 const ROLE_LEVEL = {
@@ -543,12 +589,13 @@ app.get('/api/kecamatan', verifyToken, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 app.get('/api/evaluasi', verifyToken, async (req, res) => {
   try {
-    const [pencacah, pengawas, kecamatan, statDoc, latestSnap] = await Promise.all([
+    const [pencacah, pengawas, kecamatan, statDoc, latestSnap, usahaLive] = await Promise.all([
       db.collection('assignment_pencacah').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
       db.collection('assignment_pengawas').find({}, { projection: { _id: 0 } }).sort({ approved: -1 }).toArray().catch(() => []),
       db.collection('assignment_kecamatan').find({}, { projection: { _id: 0 } }).toArray().catch(() => []),
       db.collection('statistik_se2026').findOne({ _id: 'statistik_utama' }, { projection: { assignmentSummary: 1 } }).catch(() => null),
       db.collection('assignment_snapshots').findOne({}, { sort: { snapshotAt: -1 }, projection: { summary: 1, _id: 0 } }).catch(() => null),
+      computeUsahaLive().catch(() => ({ global: { count: 0, sum: 0 }, byPencacah: new Map(), byKecamatan: new Map() })),
     ]);
 
     const assignSummary = statDoc?.assignmentSummary;
@@ -570,10 +617,11 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       workingDays:    WORKING_DAYS,
       todayWIB:       todayWIB(),
       pendataanStart: PENDATAAN_START_STR,
-      // Metrik Usaha Ditemukan (data7) — passthrough dari convert_assignment.py,
-      // fallback 0 untuk snapshot lama yang belum punya field ini
-      usahaAssignmentCount: rawSummary.usahaAssignmentCount || 0,
-      totalUsahaDitemukan:  rawSummary.totalUsahaDitemukan  || 0,
+      // Metrik Usaha Ditemukan (data7) — DIHITUNG LIVE dari assignment_detail
+      // (bukan passthrough dari convert_assignment.py) supaya kedua angka ini
+      // selalu linear/konsisten satu sama lain.
+      usahaAssignmentCount: usahaLive.global.count,
+      totalUsahaDitemukan:  usahaLive.global.sum,
       usahaMaxCount: rawSummary.usahaMaxCount || 0,
       usahaMaxDesa:  rawSummary.usahaMaxDesa  || null,
       avgPerDay: {
@@ -613,6 +661,10 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       const cacheByEmail = petugasCache && p.email ? petugasCache.get(p.email.toLowerCase().trim()) : null;
       const cacheByNama  = petugasCache && p.nama  ? petugasCache.get(p.nama.toLowerCase().trim())  : null;
       const cache = cacheByEmail || cacheByNama;
+      // Metrik Usaha Ditemukan (data7) LIVE — key by email (bukan passthrough
+      // dari convert_assignment.py), supaya konsisten dgn perhitungan global
+      // dan dijamin "Assignment Usaha Ditemukan" & "Total Usaha Ditemukan" linear.
+      const usahaEntry = usahaLive.byPencacah.get((p.email || '').toLowerCase().trim()) || { count: 0, sum: 0 };
       return { ...p,
         // Override nama dengan nama SOBAT resmi jika ada
         nama:          cache?.namaPencacah  || p.nama,
@@ -623,10 +675,8 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
           email: cache?.emailPengawas || p.pengawas?.email || '',
         },
         progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
-        // Metrik Usaha Ditemukan (data7) — auto-passthrough dari convert_assignment.py,
-        // fallback 0 untuk snapshot lama yang belum punya field ini
-        usahaAssignmentCount: p.usahaAssignmentCount || 0,
-        totalUsahaDitemukan:  p.totalUsahaDitemukan  || 0,
+        usahaAssignmentCount: usahaEntry.count,
+        totalUsahaDitemukan:  usahaEntry.sum,
         usahaMaxCount: p.usahaMaxCount || 0,
         usahaMaxDesa:  p.usahaMaxDesa  || null,
         avgPerDay: { ...(p.avgPerDay||{}),
@@ -636,6 +686,19 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         },
       };
     });
+    // Rollup usaha per PENGAWAS — dari pencacahFixed yang sudah live (bukan dari
+    // assignment_detail langsung, krn assignment_detail tidak simpan info pengawas).
+    // Ini menjaga konsistensi: total pengawas = SUM persis dari pencacah yg diawasi.
+    const usahaByPengawas = new Map(); // emailPengawasLower -> { count, sum }
+    for (const p of pencacahFixed) {
+      const pgwEmail = (p.pengawas?.email || '').toLowerCase().trim();
+      if (!pgwEmail) continue;
+      const cur = usahaByPengawas.get(pgwEmail) || { count: 0, sum: 0 };
+      cur.count += p.usahaAssignmentCount || 0;
+      cur.sum   += p.totalUsahaDitemukan  || 0;
+      usahaByPengawas.set(pgwEmail, cur);
+    }
+
     const pengawasFixed = (pengawas || []).map(p => {
       const pA=p.approved||0, pR=p.reject||0, pT=p.total||0;
       // Lookup nama pengawas dari reverse map (by emailPml)
@@ -643,13 +706,13 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
       const namaFromXlsx = pmlNameMap.get(emailKey) || null;
       // Fallback: cari by email di cache langsung (jika pengawas juga terdaftar sebagai PCL)
       const cacheEntry = petugasCache ? petugasCache.get(emailKey) : null;
+      const usahaEntry = usahaByPengawas.get(emailKey) || { count: 0, sum: 0 };
       return { ...p,
         nama:      namaFromXlsx || p.username || p.nama,
         namaSobat: namaFromXlsx || p.username || p.nama,
         progressScore: pT>0 ? sr((pA+pR)/pT*100,1) : 0,
-        // Metrik Usaha Ditemukan (data7) — sudah agregat dari pencacah di convert_assignment.py
-        usahaAssignmentCount: p.usahaAssignmentCount || 0,
-        totalUsahaDitemukan:  p.totalUsahaDitemukan  || 0,
+        usahaAssignmentCount: usahaEntry.count,
+        totalUsahaDitemukan:  usahaEntry.sum,
         usahaMaxCount: p.usahaMaxCount || 0,
         usahaMaxDesa:  p.usahaMaxDesa  || null,
         avgPerDay: { ...(p.avgPerDay||{}),

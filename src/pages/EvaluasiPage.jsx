@@ -10,7 +10,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp,
   Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
-  Star, Inbox, Columns, X,
+  Star, Inbox, Columns, X, Percent, Building2,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -714,7 +714,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
 }
 
 // ── Summary card animasi ───────────────────────────────────────────────────
-function SumCard({ label, value, sub, color, icon: Icon }) {
+function SumCard({ label, value, sub, color, icon: Icon, suffix = '', decimals = 0 }) {
   return (
     <Card>
       <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:8 }}>
@@ -722,7 +722,7 @@ function SumCard({ label, value, sub, color, icon: Icon }) {
         <span style={{ fontSize:9,color:'var(--text3)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.07em' }}>{label}</span>
       </div>
       <div style={{ fontSize:24,fontWeight:700,color,fontFamily:'var(--mono)' }}>
-        <AnimatedNumber value={value} duration={800}/>
+        <AnimatedNumber value={value} duration={800} suffix={suffix} decimals={decimals}/>
       </div>
       {sub && <div style={{ fontSize:10,color:'var(--text4)',marginTop:4 }}>{sub}</div>}
     </Card>
@@ -1679,6 +1679,7 @@ export function EvaluasiPage() {
     reject:   filtered.reduce((a,p)=>a+(p.reject||0),   0),
     draft:    filtered.reduce((a,p)=>a+(p.draft||0),    0),
     open:     filtered.reduce((a,p)=>a+(p.open||0),     0),
+    totalUsahaDitemukan: filtered.reduce((a,p)=>a+(p.totalUsahaDitemukan||0), 0),
     count:    filtered.length,
   } : null;
 
@@ -1831,6 +1832,33 @@ export function EvaluasiPage() {
             return `${tot ? Math.round(rej/tot*100) : 0}% dari total`;
           })()}/>
       </div>
+
+      {/* Baris tambahan: progress keseluruhan + total usaha yang berhasil didata */}
+      {(() => {
+        const tot   = (filteredSummary?.total    ?? summary.totalAssignment) || 0;
+        const appr  = (filteredSummary?.approved ?? summary.approved)        || 0;
+        const sub_  = (filteredSummary?.submit   ?? summary.submit)          || 0;
+        const rej   = (filteredSummary?.reject   ?? summary.reject)         || 0;
+        const draft = (filteredSummary?.draft    ?? summary.draft)          || 0;
+        const usaha = (filteredSummary?.totalUsahaDitemukan ?? summary.totalUsahaDitemukan) || 0;
+
+        const pctTotal   = tot ? +((appr + sub_ + rej + draft) / tot * 100).toFixed(2) : 0;
+        const pctSelesai = tot ? +((appr + sub_ + rej) / tot * 100).toFixed(2) : 0;
+
+        return (
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12 }}>
+            <SumCard label="Progress Total (+Draft)"
+              value={pctTotal} suffix="%" decimals={2} color="#818cf8" icon={TrendingUp}
+              sub="(submit+approved+reject+draft) / total"/>
+            <SumCard label="Progress Selesai (-Draft)"
+              value={pctSelesai} suffix="%" decimals={2} color="#34d399" icon={Percent}
+              sub="(submit+approved+reject) / total, draft tidak dihitung"/>
+            <SumCard label="Total Usaha Didata"
+              value={usaha} color="#a78bfa" icon={Building2}
+              sub="total data7 dari assignment yang sama (data7≥1)"/>
+          </div>
+        );
+      })()}
 
       {/* Tabel */}
       <Card>
