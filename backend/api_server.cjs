@@ -71,6 +71,7 @@ function sr(v, n = 2) {
 const STATUS_USAHA_ALIASES = [
   'SUBMITTED BY Pencacah', 'APPROVED BY Pengawas',
   'REJECTED BY Pengawas', 'REVOKED BY Pengawas', 'COMPLETED BY Admin Kabupaten',
+  'EDITED BY Admin Kabupaten',
 ];
 const USAHA_MIN_COUNT = 0; // data7 > 0  <=>  data7 >= 1 (integer) — samakan dgn convert_assignment.py
 
@@ -675,6 +676,8 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
           email: cache?.emailPengawas || p.pengawas?.email || '',
         },
         progressScore: pT>0 ? sr((pS+pD+pA+pR)/pT*100,1) : 0,
+        editedByAdmin:    p.editedByAdmin    || 0,
+        completedByAdmin: p.completedByAdmin || 0,
         usahaAssignmentCount: usahaEntry.count,
         totalUsahaDitemukan:  usahaEntry.sum,
         usahaMaxCount: p.usahaMaxCount || 0,
@@ -711,6 +714,8 @@ app.get('/api/evaluasi', verifyToken, async (req, res) => {
         nama:      namaFromXlsx || p.username || p.nama,
         namaSobat: namaFromXlsx || p.username || p.nama,
         progressScore: pT>0 ? sr((pA+pR)/pT*100,1) : 0,
+        editedByAdmin:    p.editedByAdmin    || 0,
+        completedByAdmin: p.completedByAdmin || 0,
         usahaAssignmentCount: usahaEntry.count,
         totalUsahaDitemukan:  usahaEntry.sum,
         usahaMaxCount: p.usahaMaxCount || 0,
@@ -1426,6 +1431,7 @@ app.get('/api/anomali/boxplot-usaha', verifyToken, async function(req, res) {
     var STATUS_USAHA = [
       'SUBMITTED BY Pencacah', 'APPROVED BY Pengawas',
       'REJECTED BY Pengawas', 'REVOKED BY Pengawas', 'COMPLETED BY Admin Kabupaten',
+      'EDITED BY Admin Kabupaten',
     ];
     var match = { status: { $in: STATUS_USAHA }, data7: { $ne: null } };
     if (fKec) match.kecamatan = { $regex: new RegExp('^' + fKec + '$', 'i') };
