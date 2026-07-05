@@ -210,6 +210,12 @@ function SubSlsDetailPanel({ data, onClose }) {
             <Row label="Rejected" value={p.reject}   color="#f87171" />
             <Row label="Draft"    value={p.draft}    color="#60a5fa" />
             <Row label="Open"     value={p.open}     color="var(--text4)" />
+            {p.editedByAdmin > 0 && (
+              <Row label="Edit oleh Admin" value={p.editedByAdmin} color="#f59e0b" />
+            )}
+            {p.completedByAdmin > 0 && (
+              <Row label="Diselesaikan oleh Admin" value={p.completedByAdmin} color="#10b981" />
+            )}
 
             <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
 
