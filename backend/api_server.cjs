@@ -2113,6 +2113,8 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
           reject:   p?.reject ?? 0,
           draft:    p?.draft ?? 0,
           open:     p?.open ?? 0,
+          editedByAdmin:    p?.editedByAdmin    ?? 0,
+          completedByAdmin: p?.completedByAdmin ?? 0,
           progressPct: p ? p.progressPct : null,
           usahaAssignmentCount: p?.usahaAssignmentCount ?? 0,
           totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
@@ -2147,13 +2149,15 @@ app.get('/api/wilayah/summary', verifyToken, requireFullAccess, async function(r
     const byKec = {};
     docs.forEach(d => {
       const k = d.kecamatan || '—';
-      if (!byKec[k]) byKec[k] = { kecamatan: k, total:0, approved:0, submit:0, reject:0, draft:0, open:0, subslsCount:0 };
+      if (!byKec[k]) byKec[k] = { kecamatan: k, total:0, approved:0, submit:0, reject:0, draft:0, open:0, editedByAdmin:0, completedByAdmin:0, subslsCount:0 };
       byKec[k].total    += d.total    || 0;
       byKec[k].approved += d.approved || 0;
       byKec[k].submit   += d.submit   || 0;
       byKec[k].reject   += d.reject   || 0;
       byKec[k].draft    += d.draft    || 0;
       byKec[k].open     += d.open     || 0;
+      byKec[k].editedByAdmin    += d.editedByAdmin    || 0;
+      byKec[k].completedByAdmin += d.completedByAdmin || 0;
       byKec[k].subslsCount += 1;
     });
     const result = Object.values(byKec).map(k => ({
