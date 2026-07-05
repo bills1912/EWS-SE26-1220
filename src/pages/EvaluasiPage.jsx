@@ -1666,9 +1666,21 @@ export function EvaluasiPage() {
       const rej  = dd.reduce((a,d) => a + d.reject,       0);
       const dr   = dd.reduce((a,d) => a + (d.draft || 0), 0);
       const op   = dd.reduce((a,d) => a + d.open,         0);
+      // PENTING: usaha & status-admin juga HARUS di-scope ke filter aktif —
+      // sebelumnya field ini tidak disentuh sama sekali di sini, jadi
+      // filteredSummary (yang men-sum p.totalUsahaDitemukan) salah pakai
+      // angka GLOBAL tiap pencacah (semua desa mereka), bukan cuma yang
+      // sesuai kecamatan/desa yang lagi difilter — bikin "Total Usaha"
+      // jauh lebih besar dari yang seharusnya saat filter aktif.
+      const usahaCnt = dd.reduce((a,d) => a + (d.usahaAssignmentCount || 0), 0);
+      const usahaTot = dd.reduce((a,d) => a + (d.totalUsahaDitemukan  || 0), 0);
+      const editAdm  = dd.reduce((a,d) => a + (d.editedByAdmin        || 0), 0);
+      const compAdm  = dd.reduce((a,d) => a + (d.completedByAdmin     || 0), 0);
       const wd = summary?.workingDays || p.avgPerDay?.workingDays || 1;
       const sr2 = v => Math.round(v * 100) / 100;
       return { ...p, total:tot, approved:appr, submit:sub, reject:rej, draft:dr, open:op,
+               usahaAssignmentCount: usahaCnt, totalUsahaDitemukan: usahaTot,
+               editedByAdmin: editAdm, completedByAdmin: compAdm,
                pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0,
                // Recompute avgPerDay — total = submit+approved+rejected+draft / hari kerja
                avgPerDay: {
@@ -1693,6 +1705,7 @@ export function EvaluasiPage() {
     reject:   filtered.reduce((a,p)=>a+(p.reject||0),   0),
     draft:    filtered.reduce((a,p)=>a+(p.draft||0),    0),
     open:     filtered.reduce((a,p)=>a+(p.open||0),     0),
+    usahaAssignmentCount: filtered.reduce((a,p)=>a+(p.usahaAssignmentCount||0), 0),
     totalUsahaDitemukan: filtered.reduce((a,p)=>a+(p.totalUsahaDitemukan||0), 0),
     count:    filtered.length,
   } : null;
@@ -1849,26 +1862,30 @@ export function EvaluasiPage() {
           })()}/>
       </div>
 
-      {/* Baris tambahan: progress keseluruhan + total usaha yang berhasil didata */}
+      {/* Baris tambahan: progress keseluruhan + jumlah & total usaha yang berhasil didata */}
       {(() => {
         const tot   = (filteredSummary?.total    ?? summary.totalAssignment) || 0;
         const appr  = (filteredSummary?.approved ?? summary.approved)        || 0;
         const sub_  = (filteredSummary?.submit   ?? summary.submit)          || 0;
         const rej   = (filteredSummary?.reject   ?? summary.reject)         || 0;
         const draft = (filteredSummary?.draft    ?? summary.draft)          || 0;
+        const usahaCount = (filteredSummary?.usahaAssignmentCount ?? summary.usahaAssignmentCount) || 0;
         const usaha = (filteredSummary?.totalUsahaDitemukan ?? summary.totalUsahaDitemukan) || 0;
 
         const pctTotal   = tot ? +((appr + sub_ + rej + draft) / tot * 100).toFixed(2) : 0;
         const pctSelesai = tot ? +((appr + sub_ + rej) / tot * 100).toFixed(2) : 0;
 
         return (
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12 }}>
             <SumCard label="Progress Total (+Draft)"
               value={pctTotal} suffix="%" decimals={2} color="#818cf8" icon={TrendingUp}
               sub="(submit+approved+reject+draft) / total"/>
             <SumCard label="Progress Selesai (-Draft)"
               value={pctSelesai} suffix="%" decimals={2} color="#34d399" icon={Percent}
               sub="(submit+approved+reject) / total, draft tidak dihitung"/>
+            <SumCard label="Assignment Usaha Ditemukan"
+              value={usahaCount} color="var(--orange3)" icon={Building2}
+              sub="jml assignment dgn data7≥1, status submit/approved/reject/dll"/>
             <SumCard label="Total Usaha Didata"
               value={usaha} color="#a78bfa" icon={Building2}
               sub="total data7 dari assignment yang sama (data7≥1)"/>
