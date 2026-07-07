@@ -2123,13 +2123,24 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
           editedByAdmin:    p?.editedByAdmin    ?? 0,
           completedByAdmin: p?.completedByAdmin ?? 0,
           progressPct: p ? p.progressPct : null,
-          // Prelist Keluarga/Usaha — dipakai tab "Distribusi Prelist" di peta
+          // Prelist Keluarga/Usaha (murni prelist) — dipakai detail panel
           prelistKeluargaTotal:   p?.prelistKeluargaTotal   ?? 0,
           prelistKeluargaSelesai: p?.prelistKeluargaSelesai ?? 0,
-          prelistKeluargaPct:     p ? (p.prelistKeluargaPct ?? null) : null,
           prelistUsahaTotal:      p?.prelistUsahaTotal      ?? 0,
           prelistUsahaSelesai:    p?.prelistUsahaSelesai    ?? 0,
-          prelistUsahaPct:        p ? (p.prelistUsahaPct ?? null) : null,
+          // Assignment tambahan (usaha/keluarga baru di luar prelist)
+          additionalKeluargaTotal:   p?.additionalKeluargaTotal   ?? 0,
+          additionalKeluargaSelesai: p?.additionalKeluargaSelesai ?? 0,
+          additionalUsahaTotal:      p?.additionalUsahaTotal      ?? 0,
+          additionalUsahaSelesai:    p?.additionalUsahaSelesai    ?? 0,
+          // "assignmentKeluarga/UsahaPct" = metrik RESMI (gabungan prelist +
+          // tambahan / total prelist saja) — dipakai sbg warna choropleth tab Prelist
+          assignmentKeluargaSelesai: p?.assignmentKeluargaSelesai ?? 0,
+          assignmentKeluargaTotal:   p?.assignmentKeluargaTotal   ?? 0,
+          assignmentKeluargaPct:     p ? (p.assignmentKeluargaPct ?? null) : null,
+          assignmentUsahaSelesai:    p?.assignmentUsahaSelesai ?? 0,
+          assignmentUsahaTotal:      p?.assignmentUsahaTotal   ?? 0,
+          assignmentUsahaPct:        p ? (p.assignmentUsahaPct ?? null) : null,
           usahaAssignmentCount: p?.usahaAssignmentCount ?? 0,
           totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
           usahaMaxCount: p?.usahaMaxCount ?? 0,
