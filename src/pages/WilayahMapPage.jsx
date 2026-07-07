@@ -223,14 +223,24 @@ function SubSlsDetailPanel({ data, onClose }) {
             {(p.prelistKeluargaTotal > 0 || p.prelistUsahaTotal > 0) && (
               <>
                 {p.prelistKeluargaTotal > 0 && (
-                  <Row label="Prelist Keluarga"
-                    value={`${p.prelistKeluargaSelesai}/${p.prelistKeluargaTotal} (${p.prelistKeluargaPct}%)`}
+                  <Row label="Assignment Keluarga"
+                    value={`${p.assignmentKeluargaSelesai}/${p.prelistKeluargaTotal} (${p.assignmentKeluargaPct}%)`}
                     color="#38bdf8" />
                 )}
+                {p.prelistKeluargaTotal > 0 && p.additionalKeluargaTotal > 0 && (
+                  <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:-4, marginBottom:6, paddingLeft:2 }}>
+                    ({p.prelistKeluargaSelesai} prelist + {p.additionalKeluargaSelesai} baru dari {p.additionalKeluargaTotal} ditemukan)
+                  </div>
+                )}
                 {p.prelistUsahaTotal > 0 && (
-                  <Row label="Prelist Usaha"
-                    value={`${p.prelistUsahaSelesai}/${p.prelistUsahaTotal} (${p.prelistUsahaPct}%)`}
+                  <Row label="Assignment Usaha"
+                    value={`${p.assignmentUsahaSelesai}/${p.prelistUsahaTotal} (${p.assignmentUsahaPct}%)`}
                     color="#a78bfa" />
+                )}
+                {p.prelistUsahaTotal > 0 && p.additionalUsahaTotal > 0 && (
+                  <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:-4, marginBottom:6, paddingLeft:2 }}>
+                    ({p.prelistUsahaSelesai} prelist + {p.additionalUsahaSelesai} baru dari {p.additionalUsahaTotal} ditemukan)
+                  </div>
                 )}
                 <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
               </>
@@ -397,12 +407,14 @@ export function WilayahMapPage() {
   }, [displayData]);
 
   // Statistik ringkasan utk tab "Distribusi Prelist" — dihitung sesuai
-  // prelistType (keluarga/usaha) yang lagi aktif
+  // prelistType (keluarga/usaha) yang lagi aktif. "total"/"selesai" di sini
+  // pakai metrik GABUNGAN (prelist + assignment tambahan yg ditemukan &
+  // selesai), penyebut tetap total prelist saja — sesuai definisi resmi.
   const prelistStats = useMemo(() => {
     if (!displayData) return { total: 0, selesai: 0, avgPct: 0, subslsAda: 0 };
-    const totalKey   = prelistType === 'keluarga' ? 'prelistKeluargaTotal'   : 'prelistUsahaTotal';
-    const selesaiKey = prelistType === 'keluarga' ? 'prelistKeluargaSelesai' : 'prelistUsahaSelesai';
-    const pctKey     = prelistType === 'keluarga' ? 'prelistKeluargaPct'     : 'prelistUsahaPct';
+    const totalKey   = prelistType === 'keluarga' ? 'prelistKeluargaTotal'      : 'prelistUsahaTotal';
+    const selesaiKey = prelistType === 'keluarga' ? 'assignmentKeluargaSelesai' : 'assignmentUsahaSelesai';
+    const pctKey     = prelistType === 'keluarga' ? 'assignmentKeluargaPct'     : 'assignmentUsahaPct';
     let total = 0, selesai = 0, subslsAda = 0;
     const pcts = [];
     displayData.features.forEach(f => {
@@ -421,7 +433,7 @@ export function WilayahMapPage() {
     const p = feature.properties;
     let fillColor;
     if (viewMode === 'prelist') {
-      const pct = prelistType === 'keluarga' ? p.prelistKeluargaPct : p.prelistUsahaPct;
+      const pct = prelistType === 'keluarga' ? p.assignmentKeluargaPct : p.assignmentUsahaPct;
       const hasPrelist = (prelistType === 'keluarga' ? p.prelistKeluargaTotal : p.prelistUsahaTotal) > 0;
       fillColor = hasPrelist ? colorForProgress(pct) : '#3a3f52';
     } else {
@@ -449,10 +461,10 @@ export function WilayahMapPage() {
     const p = feature.properties;
     const tooltipBody = viewMode === 'prelist'
       ? (() => {
-          const total   = prelistType === 'keluarga' ? p.prelistKeluargaTotal   : p.prelistUsahaTotal;
-          const selesai = prelistType === 'keluarga' ? p.prelistKeluargaSelesai : p.prelistUsahaSelesai;
-          const pct     = prelistType === 'keluarga' ? p.prelistKeluargaPct     : p.prelistUsahaPct;
-          const label   = prelistType === 'keluarga' ? 'Prelist Keluarga' : 'Prelist Usaha';
+          const total   = prelistType === 'keluarga' ? p.prelistKeluargaTotal      : p.prelistUsahaTotal;
+          const selesai = prelistType === 'keluarga' ? p.assignmentKeluargaSelesai : p.assignmentUsahaSelesai;
+          const pct     = prelistType === 'keluarga' ? p.assignmentKeluargaPct     : p.assignmentUsahaPct;
+          const label   = prelistType === 'keluarga' ? 'Assignment Keluarga' : 'Assignment Usaha';
           return total > 0 ? `${label}: ${pct}% (${selesai}/${total} selesai)` : `${label}: tidak ada`;
         })()
       : (p.progressPct !== null ? `Progress: ${p.progressPct}% (${p.total} assignment)` : 'Belum ada data');
