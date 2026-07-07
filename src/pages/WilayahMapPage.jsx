@@ -17,7 +17,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   MapPin, Users, TrendingUp, X, Loader2, RefreshCw,
-  Layers, Building2, ShieldCheck,
+  Layers, Building2, ShieldCheck, Home, ClipboardList,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -116,17 +116,18 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 }
 
 // ── Legend skala warna, pojok bawah peta ───────────────────────────────────
-function MapLegend({ mode }) {
-  const stops = mode === 'progress'
-    ? [{c:'#ef4444',l:'0%'},{c:'#fbbf24',l:'50%'},{c:'#34d399',l:'100%'}]
-    : [{c:'#bfdbfe',l:'Sedikit'},{c:'#3b82f6',l:'Sedang'},{c:'#1d4ed8',l:'Banyak'}];
+function MapLegend({ mode, label }) {
+  const stops = mode === 'total'
+    ? [{c:'#bfdbfe',l:'Sedikit'},{c:'#3b82f6',l:'Sedang'},{c:'#1d4ed8',l:'Banyak'}]
+    : [{c:'#ef4444',l:'0%'},{c:'#fbbf24',l:'50%'},{c:'#34d399',l:'100%'}];
+  const title = label || (mode === 'progress' ? 'Progress Pencacahan' : 'Jumlah Assignment');
   return (
     <div style={{ position:'absolute', bottom:16, left:16, zIndex:1000,
       background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:10,
       padding:'10px 14px', boxShadow:'0 4px 16px rgba(0,0,0,0.4)', fontSize:10.5 }}>
       <div style={{ fontWeight:700, color:'var(--text2)', marginBottom:6, fontSize:9.5,
         textTransform:'uppercase', letterSpacing:'0.05em' }}>
-        {mode === 'progress' ? 'Progress Pencacahan' : 'Jumlah Assignment'}
+        {title}
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
         {stops.map((s, i) => (
@@ -219,6 +220,22 @@ function SubSlsDetailPanel({ data, onClose }) {
 
             <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
 
+            {(p.prelistKeluargaTotal > 0 || p.prelistUsahaTotal > 0) && (
+              <>
+                {p.prelistKeluargaTotal > 0 && (
+                  <Row label="Prelist Keluarga"
+                    value={`${p.prelistKeluargaSelesai}/${p.prelistKeluargaTotal} (${p.prelistKeluargaPct}%)`}
+                    color="#38bdf8" />
+                )}
+                {p.prelistUsahaTotal > 0 && (
+                  <Row label="Prelist Usaha"
+                    value={`${p.prelistUsahaSelesai}/${p.prelistUsahaTotal} (${p.prelistUsahaPct}%)`}
+                    color="#a78bfa" />
+                )}
+                <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
+              </>
+            )}
+
             <Row label="Assignment Usaha Ditemukan" value={p.usahaAssignmentCount} color="#a78bfa" />
             <Row label="Total Usaha" value={p.totalUsahaDitemukan} color="#a78bfa" />
             {p.usahaMaxCount > 0 && (
@@ -304,6 +321,8 @@ export function WilayahMapPage() {
   const [error, setError]           = useState(null);
   const [colorMode, setColorMode]   = useState('progress'); // 'progress' | 'total'
   const [basemapMode, setBasemapMode] = useState('hybrid'); // 'hybrid' | 'satellite'
+  const [viewMode, setViewMode] = useState('progress'); // 'progress' | 'prelist' — tab utama
+  const [prelistType, setPrelistType] = useState('keluarga'); // 'keluarga' | 'usaha' — sub-toggle utk tab prelist
   const [selectedDesa, setSelectedDesa] = useState(''); // '' = semua desa, konvensi sama dgn DesaFilter
   const [selectedPencacah, setSelectedPencacah] = useState(''); // '' = semua pencacah
   const [selectedPengawas, setSelectedPengawas] = useState(''); // '' = semua pengawas
@@ -377,13 +396,39 @@ export function WilayahMapPage() {
     return displayData.features.reduce((a,f) => a + (f.properties.total || 0), 0);
   }, [displayData]);
 
+  // Statistik ringkasan utk tab "Distribusi Prelist" — dihitung sesuai
+  // prelistType (keluarga/usaha) yang lagi aktif
+  const prelistStats = useMemo(() => {
+    if (!displayData) return { total: 0, selesai: 0, avgPct: 0, subslsAda: 0 };
+    const totalKey   = prelistType === 'keluarga' ? 'prelistKeluargaTotal'   : 'prelistUsahaTotal';
+    const selesaiKey = prelistType === 'keluarga' ? 'prelistKeluargaSelesai' : 'prelistUsahaSelesai';
+    const pctKey     = prelistType === 'keluarga' ? 'prelistKeluargaPct'     : 'prelistUsahaPct';
+    let total = 0, selesai = 0, subslsAda = 0;
+    const pcts = [];
+    displayData.features.forEach(f => {
+      const t = f.properties[totalKey] || 0;
+      total   += t;
+      selesai += f.properties[selesaiKey] || 0;
+      if (t > 0) { subslsAda++; pcts.push(f.properties[pctKey] ?? 0); }
+    });
+    const avgPct = pcts.length ? Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length*10)/10 : 0;
+    return { total, selesai, avgPct, subslsAda };
+  }, [displayData, prelistType]);
+
 
 
   const styleFeature = (feature) => {
     const p = feature.properties;
-    const fillColor = colorMode === 'progress'
-      ? colorForProgress(p.progressPct)
-      : colorForTotal(p.total, maxTotal);
+    let fillColor;
+    if (viewMode === 'prelist') {
+      const pct = prelistType === 'keluarga' ? p.prelistKeluargaPct : p.prelistUsahaPct;
+      const hasPrelist = (prelistType === 'keluarga' ? p.prelistKeluargaTotal : p.prelistUsahaTotal) > 0;
+      fillColor = hasPrelist ? colorForProgress(pct) : '#3a3f52';
+    } else {
+      fillColor = colorMode === 'progress'
+        ? colorForProgress(p.progressPct)
+        : colorForTotal(p.total, maxTotal);
+    }
     const isSelected = selectedFeature?.properties?.idsubsls === p.idsubsls;
     return {
       fillColor,
@@ -402,9 +447,17 @@ export function WilayahMapPage() {
       mouseout:  (e) => { if (geoLayerRef.current) geoLayerRef.current.resetStyle(e.target); },
     });
     const p = feature.properties;
+    const tooltipBody = viewMode === 'prelist'
+      ? (() => {
+          const total   = prelistType === 'keluarga' ? p.prelistKeluargaTotal   : p.prelistUsahaTotal;
+          const selesai = prelistType === 'keluarga' ? p.prelistKeluargaSelesai : p.prelistUsahaSelesai;
+          const pct     = prelistType === 'keluarga' ? p.prelistKeluargaPct     : p.prelistUsahaPct;
+          const label   = prelistType === 'keluarga' ? 'Prelist Keluarga' : 'Prelist Usaha';
+          return total > 0 ? `${label}: ${pct}% (${selesai}/${total} selesai)` : `${label}: tidak ada`;
+        })()
+      : (p.progressPct !== null ? `Progress: ${p.progressPct}% (${p.total} assignment)` : 'Belum ada data');
     layer.bindTooltip(
-      `<strong>${p.desa}</strong><br/>${p.sls}<br/>` +
-      (p.progressPct !== null ? `Progress: ${p.progressPct}% (${p.total} assignment)` : 'Belum ada data'),
+      `<strong>${p.desa}</strong><br/>${p.sls}<br/>` + tooltipBody,
       { sticky: true }
     );
   };
@@ -430,16 +483,51 @@ export function WilayahMapPage() {
         Peta Progress Wilayah — per Sub-SLS
       </SectionTitle>
 
-      {/* Kartu ringkasan */}
-      <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard icon={Layers} label="Total Sub-SLS" value={displayData?.features.length ?? '—'} color="var(--text1)"/>
-        <StatCard icon={TrendingUp} label="Rata-rata Progress" value={`${avgProgress}%`} color={colorForProgress(avgProgress)}/>
-        <StatCard icon={Building2} label="Total Assignment" value={totalAssignment.toLocaleString('id')} color="#60a5fa"/>
-        <StatCard icon={ShieldCheck} label="Sub-SLS Ada Data"
-          value={displayData
-            ? `${displayData.features.filter(f => f.properties.progressPct !== null).length}/${displayData.features.length}`
-            : '—'} color="#34d399"/>
+      {/* Tab utama: Progress Wilayah vs Distribusi Prelist */}
+      <div style={{ display:'flex', gap:4, borderBottom:'1px solid var(--border)' }}>
+        {[
+          { key:'progress', label:'Progress Wilayah', icon: TrendingUp },
+          { key:'prelist',  label:'Distribusi Prelist', icon: ClipboardList },
+        ].map(t => {
+          const Icon = t.icon;
+          const active = viewMode === t.key;
+          return (
+            <button key={t.key} onClick={() => setViewMode(t.key)}
+              style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 16px',
+                fontSize:12, fontWeight:600, border:'none', cursor:'pointer',
+                borderBottom: active ? '2px solid var(--orange)' : '2px solid transparent',
+                marginBottom:-1, background:'transparent',
+                color: active ? 'var(--orange3)' : 'var(--text3)' }}>
+              <Icon size={13}/>
+              {t.label}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Kartu ringkasan */}
+      {viewMode === 'progress' ? (
+        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+          <StatCard icon={Layers} label="Total Sub-SLS" value={displayData?.features.length ?? '—'} color="var(--text1)"/>
+          <StatCard icon={TrendingUp} label="Rata-rata Progress" value={`${avgProgress}%`} color={colorForProgress(avgProgress)}/>
+          <StatCard icon={Building2} label="Total Assignment" value={totalAssignment.toLocaleString('id')} color="#60a5fa"/>
+          <StatCard icon={ShieldCheck} label="Sub-SLS Ada Data"
+            value={displayData
+              ? `${displayData.features.filter(f => f.properties.progressPct !== null).length}/${displayData.features.length}`
+              : '—'} color="#34d399"/>
+        </div>
+      ) : (
+        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+          <StatCard icon={prelistType==='keluarga' ? Home : Building2}
+            label={`Total Prelist ${prelistType==='keluarga' ? 'Keluarga' : 'Usaha'}`}
+            value={prelistStats.total.toLocaleString('id')}
+            color={prelistType==='keluarga' ? '#38bdf8' : '#a78bfa'}/>
+          <StatCard icon={ShieldCheck} label="Sudah Selesai" value={prelistStats.selesai.toLocaleString('id')} color="#34d399"/>
+          <StatCard icon={TrendingUp} label="Rata-rata Progress Prelist" value={`${prelistStats.avgPct}%`} color={colorForProgress(prelistStats.avgPct)}/>
+          <StatCard icon={Layers} label="Sub-SLS Ada Prelist"
+            value={displayData ? `${prelistStats.subslsAda}/${displayData.features.length}` : '—'} color="var(--text1)"/>
+        </div>
+      )}
 
       {/* Filter Desa/Pencacah/Pengawas — komponen shared/serupa DesaFilter */}
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -473,21 +561,45 @@ export function WilayahMapPage() {
         )}
       </div>
 
-      {/* Toggle mode warna + basemap */}
+      {/* Toggle mode warna (beda tergantung tab) + basemap */}
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-        <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Tampilkan warna:</span>
-        {[
-          { key:'progress', label:'Persentase Progress' },
-          { key:'total', label:'Jumlah Assignment' },
-        ].map(opt => (
-          <button key={opt.key} onClick={() => setColorMode(opt.key)}
-            style={{ padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
-              border: colorMode===opt.key ? '1px solid var(--orange)' : '1px solid var(--border2)',
-              background: colorMode===opt.key ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
-              color: colorMode===opt.key ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
-            {opt.label}
-          </button>
-        ))}
+        {viewMode === 'progress' ? (
+          <>
+            <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Tampilkan warna:</span>
+            {[
+              { key:'progress', label:'Persentase Progress' },
+              { key:'total', label:'Jumlah Assignment' },
+            ].map(opt => (
+              <button key={opt.key} onClick={() => setColorMode(opt.key)}
+                style={{ padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
+                  border: colorMode===opt.key ? '1px solid var(--orange)' : '1px solid var(--border2)',
+                  background: colorMode===opt.key ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
+                  color: colorMode===opt.key ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
+                {opt.label}
+              </button>
+            ))}
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Jenis prelist:</span>
+            {[
+              { key:'keluarga', label:'Keluarga (DTSEN)', icon: Home },
+              { key:'usaha', label:'Usaha (UB/UM/UMK/UMKM)', icon: Building2 },
+            ].map(opt => {
+              const Icon = opt.icon;
+              return (
+                <button key={opt.key} onClick={() => setPrelistType(opt.key)}
+                  style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
+                    border: prelistType===opt.key ? '1px solid var(--orange)' : '1px solid var(--border2)',
+                    background: prelistType===opt.key ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
+                    color: prelistType===opt.key ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
+                  <Icon size={12}/>
+                  {opt.label}
+                </button>
+              );
+            })}
+          </>
+        )}
 
         <div style={{ width:1, height:20, background:'var(--border2)', margin:'0 4px' }}/>
 
@@ -540,7 +652,7 @@ export function WilayahMapPage() {
               attribution='&copy; Google'
             />
             <LeafletGeoJSON
-              key={`${selectedKec}-${selectedDesa}-${selectedPencacah}-${selectedPengawas}-${colorMode}` /* recreate layer TOTAL saat filter (kec/desa/pencacah/pengawas) ATAU mode warna berubah — react-leaflet TIDAK otomatis re-render geometri hanya krn prop `data` berubah, harus lewat key. Ini juga sekalian cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
+              key={`${selectedKec}-${selectedDesa}-${selectedPencacah}-${selectedPengawas}-${colorMode}-${viewMode}-${prelistType}` /* recreate layer TOTAL saat filter (kec/desa/pencacah/pengawas) ATAU mode warna/tab/jenis prelist berubah — react-leaflet TIDAK otomatis re-render geometri hanya krn prop `data` berubah, harus lewat key. Ini juga sekalian cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
               ref={geoLayerRef}
               data={displayData}
               style={styleFeature}
@@ -549,7 +661,12 @@ export function WilayahMapPage() {
             <AutoFitBounds data={displayData}/>
           </MapContainer>
         )}
-        {displayData && !loading && !error && <MapLegend mode={colorMode}/>}
+        {displayData && !loading && !error && (
+          <MapLegend
+            mode={viewMode === 'prelist' ? 'progress' : colorMode}
+            label={viewMode === 'prelist' ? `Progress Prelist ${prelistType==='keluarga'?'Keluarga':'Usaha'}` : undefined}
+          />
+        )}
         {selectedFeature && (
           <SubSlsDetailPanel data={selectedFeature} onClose={() => setSelectedFeature(null)}/>
         )}
