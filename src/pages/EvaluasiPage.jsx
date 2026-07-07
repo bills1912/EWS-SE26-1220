@@ -43,6 +43,9 @@ const ALL_COLS_PENCACAH = [
   { key:'open',      label:'Open',       always: false },
   { key:'editedByAdmin',    label:'Edit oleh Admin',        always: false },
   { key:'completedByAdmin', label:'Diselesaikan oleh Admin', always: false },
+  { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
+  { key:'prelistKeluarga', label:'Penyelesaian Prelist Keluarga', always: false },
+  { key:'prelistUsaha',    label:'Penyelesaian Prelist Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
@@ -60,6 +63,9 @@ const ALL_COLS_PENGAWAS = [
   { key:'open',      label:'Open',       always: false },
   { key:'editedByAdmin',    label:'Edit oleh Admin',        always: false },
   { key:'completedByAdmin', label:'Diselesaikan oleh Admin', always: false },
+  { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
+  { key:'prelistKeluarga', label:'Penyelesaian Prelist Keluarga', always: false },
+  { key:'prelistUsaha',    label:'Penyelesaian Prelist Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
@@ -482,6 +488,13 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('open')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>}
         {visibleCols.has('editedByAdmin')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right' }}>{p.editedByAdmin||0}</td>}
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
+        {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
+        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
+          {p.prelistKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0}</span>
+        </td>}
+        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
+          {p.prelistUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0}</span>
+        </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
@@ -509,7 +522,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={20} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
+          <td colSpan={23} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
             {p.inaktif && (
               <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'8px 12px',
@@ -640,6 +653,13 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('open')     && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{p.open||0}</td>}
         {visibleCols.has('editedByAdmin')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right' }}>{p.editedByAdmin||0}</td>}
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
+        {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
+        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
+          {p.prelistKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0}</span>
+        </td>}
+        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
+          {p.prelistUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0}</span>
+        </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
@@ -667,7 +687,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={20} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
+          <td colSpan={23} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Diawasi"   value={p.total}                                        icon={BarChart2}   animate/>
               <Mini label="Belum Dikerjakan" value={p.open}     color="var(--text4)"               icon={Inbox}       animate/>
@@ -854,6 +874,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'open',      h:'Open',     w:14, key_: p => p.open||0,                   align:'right' },
         { key:'editedByAdmin',    h:'Edit Admin', w:16, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:18, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
+        { key:'totalWorked', h:'Total Dikerjakan', w:20, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
+        { key:'prelistKeluarga', h:'Prelist Keluarga', w:22, key_: p => `${p.prelistKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Prelist Usaha', w:20, key_: p => `${p.prelistUsahaSelesai||0}/${p.prelistUsahaTotal||0}`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -874,6 +897,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'open',      h:'Open',     w:12, key_: p => p.open||0,                   align:'right' },
         { key:'editedByAdmin',    h:'Edit Admin', w:14, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:16, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
+        { key:'totalWorked', h:'Total Dikerjakan', w:18, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
+        { key:'prelistKeluarga', h:'Prelist Keluarga', w:20, key_: p => `${p.prelistKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Prelist Usaha', w:18, key_: p => `${p.prelistUsahaSelesai||0}/${p.prelistUsahaTotal||0}`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -999,6 +1025,9 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'open',         label:'Open',           get:p=>p.open||0 },
     { key:'editedByAdmin',    label:'Edit oleh Admin',        get:p=>p.editedByAdmin||0 },
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
+    { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
+    { key:'prelistKeluarga', label:'Penyelesaian Prelist Keluarga', get:p=>`${p.prelistKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}` },
+    { key:'prelistUsaha', label:'Penyelesaian Prelist Usaha', get:p=>`${p.prelistUsahaSelesai||0}/${p.prelistUsahaTotal||0}` },
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
     { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },
@@ -1548,6 +1577,7 @@ export function EvaluasiPage() {
   const [exportModal, setExportModal] = useState(null);   // null | 'pdf' | 'excel'
   const [exportCols,  setExportCols]  = useState(new Set());
   const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols());
+  const [showLegend, setShowLegend] = useState(false); // keterangan kolom — collapsed by default
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -1676,11 +1706,21 @@ export function EvaluasiPage() {
       const usahaTot = dd.reduce((a,d) => a + (d.totalUsahaDitemukan  || 0), 0);
       const editAdm  = dd.reduce((a,d) => a + (d.editedByAdmin        || 0), 0);
       const compAdm  = dd.reduce((a,d) => a + (d.completedByAdmin     || 0), 0);
+      // Sama alasannya: Total Pekerjaan & Prelist Keluarga/Usaha juga HARUS
+      // di-scope ke filter aktif, bukan pakai angka global tiap pencacah.
+      const worked      = dd.reduce((a,d) => a + (d.totalWorked            || 0), 0);
+      const kelTotal    = dd.reduce((a,d) => a + (d.prelistKeluargaTotal   || 0), 0);
+      const kelSelesai  = dd.reduce((a,d) => a + (d.prelistKeluargaSelesai || 0), 0);
+      const usahaPrTotal   = dd.reduce((a,d) => a + (d.prelistUsahaTotal      || 0), 0);
+      const usahaPrSelesai = dd.reduce((a,d) => a + (d.prelistUsahaSelesai    || 0), 0);
       const wd = summary?.workingDays || p.avgPerDay?.workingDays || 1;
       const sr2 = v => Math.round(v * 100) / 100;
       return { ...p, total:tot, approved:appr, submit:sub, reject:rej, draft:dr, open:op,
                usahaAssignmentCount: usahaCnt, totalUsahaDitemukan: usahaTot,
                editedByAdmin: editAdm, completedByAdmin: compAdm,
+               totalWorked: worked,
+               prelistKeluargaTotal: kelTotal, prelistKeluargaSelesai: kelSelesai,
+               prelistUsahaTotal: usahaPrTotal, prelistUsahaSelesai: usahaPrSelesai,
                pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0,
                // Recompute avgPerDay — total = submit+approved+rejected+draft / hari kerja
                avgPerDay: {
@@ -1707,6 +1747,11 @@ export function EvaluasiPage() {
     open:     filtered.reduce((a,p)=>a+(p.open||0),     0),
     usahaAssignmentCount: filtered.reduce((a,p)=>a+(p.usahaAssignmentCount||0), 0),
     totalUsahaDitemukan: filtered.reduce((a,p)=>a+(p.totalUsahaDitemukan||0), 0),
+    totalWorked: filtered.reduce((a,p)=>a+(p.totalWorked||0), 0),
+    prelistKeluargaTotal:   filtered.reduce((a,p)=>a+(p.prelistKeluargaTotal||0),   0),
+    prelistKeluargaSelesai: filtered.reduce((a,p)=>a+(p.prelistKeluargaSelesai||0), 0),
+    prelistUsahaTotal:      filtered.reduce((a,p)=>a+(p.prelistUsahaTotal||0),      0),
+    prelistUsahaSelesai:    filtered.reduce((a,p)=>a+(p.prelistUsahaSelesai||0),    0),
     count:    filtered.length,
   } : null;
 
@@ -1751,6 +1796,9 @@ export function EvaluasiPage() {
     if (sortBy==='open')      return d*((b.open??0)-(a.open??0));
     if (sortBy==='editedByAdmin')    return d*((b.editedByAdmin??0)-(a.editedByAdmin??0));
     if (sortBy==='completedByAdmin') return d*((b.completedByAdmin??0)-(a.completedByAdmin??0));
+    if (sortBy==='totalWorked') return d*((b.totalWorked??0)-(a.totalWorked??0));
+    if (sortBy==='prelistKeluargaSelesai') return d*((b.prelistKeluargaSelesai??0)-(a.prelistKeluargaSelesai??0));
+    if (sortBy==='prelistUsahaSelesai') return d*((b.prelistUsahaSelesai??0)-(a.prelistUsahaSelesai??0));
     if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
     if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
     if (sortBy==='usahaCount') return d*((b.usahaAssignmentCount??0)-(a.usahaAssignmentCount??0));
@@ -2012,21 +2060,42 @@ export function EvaluasiPage() {
 
         {/* Tabel + Paginator */}
         {activeTab !== 'inaktif' && <>
-        {/* Keterangan kolom */}
-        <div style={{ fontSize:10,color:'var(--text4)',marginBottom:10,padding:'7px 10px',
-                       background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:7,
-                       display:'flex',gap:20,flexWrap:'wrap' }}>
-          <span><strong style={{ color:'var(--text2)' }}>Total</strong> = semua tugas yang diberikan</span>
-          <span><strong style={{ color:'#f59e0b' }}>Submit</strong> = sudah diisi, menunggu diapprove pengawas</span>
-          <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
-          <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
-          <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
-          <span><strong style={{ color:'#f59e0b' }}>Edit oleh Admin</strong> = status EDITED BY Admin Kabupaten (ikut terhitung "Approved")</span>
-          <span><strong style={{ color:'#10b981' }}>Diselesaikan oleh Admin</strong> = status COMPLETED BY Admin Kabupaten (ikut terhitung "Approved")</span>
-          <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
-          <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
-          <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
-          <span><strong style={{ color:'var(--text3)' }}>Desa Usaha Terbanyak</strong> = lokasi desa dari assignment tsb</span>
+        {/* Keterangan kolom — accordion, collapsed by default biar tidak makan tempat */}
+        <div style={{ marginBottom:10 }}>
+          <button onClick={() => setShowLegend(v => !v)}
+            style={{ display:'flex', alignItems:'center', gap:8, width:'100%',
+                     fontSize:10, color:'var(--text3)', padding:'7px 10px',
+                     background:'var(--bg3)', border:'1px solid var(--border)',
+                     borderRadius: showLegend ? '7px 7px 0 0' : 7,
+                     borderBottom: showLegend ? 'none' : '1px solid var(--border)',
+                     cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+            <span style={{ flex:1 }}>
+              <strong style={{ color:'var(--text2)' }}>Keterangan kolom</strong>
+              <span style={{ color:'var(--text4)' }}> — klik untuk lihat arti tiap kolom di tabel</span>
+            </span>
+            {showLegend ? <ChevronUp size={12} color="var(--text4)"/> : <ChevronDown size={12} color="var(--text4)"/>}
+          </button>
+          {showLegend && (
+            <div style={{ fontSize:10,color:'var(--text4)',padding:'10px',
+                           background:'var(--bg3)',border:'1px solid var(--border)',borderTop:'none',
+                           borderRadius:'0 0 7px 7px',
+                           display:'flex',gap:20,flexWrap:'wrap' }}>
+              <span><strong style={{ color:'var(--text2)' }}>Total</strong> = semua tugas yang diberikan</span>
+              <span><strong style={{ color:'#f59e0b' }}>Submit</strong> = sudah diisi, menunggu diapprove pengawas</span>
+              <span><strong style={{ color:'#10b981' }}>Approved</strong> = selesai &amp; disetujui</span>
+              <span><strong style={{ color:'var(--blue3)' }}>Draft</strong> = sedang diisi, belum disubmit</span>
+              <span><strong style={{ color:'var(--text4)' }}>Open</strong> = belum disentuh</span>
+              <span><strong style={{ color:'#f59e0b' }}>Edit oleh Admin</strong> = status EDITED BY Admin Kabupaten (ikut terhitung "Approved")</span>
+              <span><strong style={{ color:'#10b981' }}>Diselesaikan oleh Admin</strong> = status COMPLETED BY Admin Kabupaten (ikut terhitung "Approved")</span>
+              <span><strong style={{ color:'var(--orange3)' }}>Total Pekerjaan Dikerjakan</strong> = submit+approved+reject (assignment yang sudah disentuh, bukan sekadar Open)</span>
+              <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Prelist Keluarga</strong> = strata PRIMARY & codeIdentity DTSEN, yang sudah submit/approved/reject (selesai/total)</span>
+              <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Prelist Usaha</strong> = strata PRIMARY & codeIdentity UB/UM/UMK/UMKM, yang sudah submit/approved/reject (selesai/total)</span>
+              <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
+              <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
+              <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
+              <span><strong style={{ color:'var(--text3)' }}>Desa Usaha Terbanyak</strong> = lokasi desa dari assignment tsb</span>
+            </div>
+          )}
         </div>
 
         <div style={{ overflowX:'auto' }}>
@@ -2045,6 +2114,9 @@ export function EvaluasiPage() {
                 {visibleCols.has('open')     && <H label="Open"     col="open"    right/>}
                 {visibleCols.has('editedByAdmin')    && <H label="Edit oleh Admin" col="editedByAdmin" right/>}
                 {visibleCols.has('completedByAdmin') && <H label="Diselesaikan oleh Admin" col="completedByAdmin" right/>}
+                {visibleCols.has('totalWorked') && <H label="Total Pekerjaan Dikerjakan" col="totalWorked" right/>}
+                {visibleCols.has('prelistKeluarga') && <H label="Penyelesaian Prelist Keluarga" col="prelistKeluargaSelesai" right/>}
+                {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Prelist Usaha" col="prelistUsahaSelesai" right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
                 {visibleCols.has('usahaCount')&& <H label="Assignment Usaha Ditemukan" col="usahaCount" right/>}
@@ -2056,7 +2128,7 @@ export function EvaluasiPage() {
             </thead>
             <tbody>
               {paginated.length===0
-                ? <tr><td colSpan={18} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                ? <tr><td colSpan={21} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
                       ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
