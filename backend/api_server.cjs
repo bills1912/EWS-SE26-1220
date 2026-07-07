@@ -74,10 +74,17 @@ const STATUS_USAHA_ALIASES = [
   'EDITED BY Admin Kabupaten',
 ];
 const USAHA_MIN_COUNT = 0; // data7 > 0  <=>  data7 >= 1 (integer) — samakan dgn convert_assignment.py
+// Sanity cap — data7 di atas ini dianggap ANOMALI/kesalahan input (mis. kode
+// pos yang ke-input ke kolom "jumlah usaha ditemukan"), bukan usaha sungguhan.
+// Kasus nyata: 1 assignment ter-edit admin dgn data7=22753 (kode pos yg salah
+// ke-input), sendirian menyumbang 64% dari total usaha se-kabupaten. Samakan
+// dgn USAHA_MAX_COUNT di convert_assignment.py.
+const USAHA_MAX_COUNT = 200;
 
 async function computeUsahaLive() {
   const docs = await db.collection('assignment_detail').find(
-    { status: { $in: STATUS_USAHA_ALIASES }, data7: { $ne: null, $gt: USAHA_MIN_COUNT } },
+    { status: { $in: STATUS_USAHA_ALIASES },
+      data7: { $ne: null, $gt: USAHA_MIN_COUNT, $lte: USAHA_MAX_COUNT } },
     { projection: { _id: 0, data7: 1, pencacahEmail: 1, kecamatan: 1 } }
   ).toArray();
 
@@ -2116,6 +2123,13 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
           editedByAdmin:    p?.editedByAdmin    ?? 0,
           completedByAdmin: p?.completedByAdmin ?? 0,
           progressPct: p ? p.progressPct : null,
+          // Prelist Keluarga/Usaha — dipakai tab "Distribusi Prelist" di peta
+          prelistKeluargaTotal:   p?.prelistKeluargaTotal   ?? 0,
+          prelistKeluargaSelesai: p?.prelistKeluargaSelesai ?? 0,
+          prelistKeluargaPct:     p ? (p.prelistKeluargaPct ?? null) : null,
+          prelistUsahaTotal:      p?.prelistUsahaTotal      ?? 0,
+          prelistUsahaSelesai:    p?.prelistUsahaSelesai    ?? 0,
+          prelistUsahaPct:        p ? (p.prelistUsahaPct ?? null) : null,
           usahaAssignmentCount: p?.usahaAssignmentCount ?? 0,
           totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
           usahaMaxCount: p?.usahaMaxCount ?? 0,
