@@ -490,10 +490,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0}</span>
+          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0} ({p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0}</span>
+          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0} ({p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -655,10 +655,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0}</span>
+          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0} ({p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0}</span>
+          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0} ({p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -875,8 +875,8 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:16, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:18, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:20, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:22, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:20, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0}`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Assignment Keluarga', w:22, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Assignment Usaha', w:20, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -898,8 +898,8 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:14, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:16, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:18, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:20, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:18, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0}`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Assignment Keluarga', w:20, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Assignment Usaha', w:18, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1026,8 +1026,8 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'editedByAdmin',    label:'Edit oleh Admin',        get:p=>p.editedByAdmin||0 },
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
     { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
-    { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0}"` },
-    { key:'prelistUsaha', label:'Penyelesaian Assignment Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0}"` },
+    { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)"` },
+    { key:'prelistUsaha', label:'Penyelesaian Assignment Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)"` },
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
     { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },

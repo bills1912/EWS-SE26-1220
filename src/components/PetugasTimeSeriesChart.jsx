@@ -239,15 +239,12 @@ export function PetugasTimeSeriesChart({ email, role = 'Pencacah', nama }) {
 
   const activeDays = avgPerDay.activeDays || 0;
 
-  // avgTotal — pakai field .total dari backend (sudah dihitung dinamis per workingDays,
-  // = approved+submitted+rejected+draft, sama utk Pencacah maupun Pengawas).
-  // Fallback di bawah cuma jaga-jaga kalau backend lama belum kirim field .total.
-  const avgTotal = avgPerDay.total ?? Math.round((
-    (avgPerDay.approved  || 0) +
-    (avgPerDay.submitted || 0) +
-    (avgPerDay.rejected  || 0) +
-    (avgPerDay.draft     || 0)
-  ) * 10) / 10;
+  // avgTotal — SELALU dari field .total yang dikirim backend (dihitung LIVE
+  // dari database di /api/evaluasi/timeseries: approved+submitted+rejected+draft
+  // / hari kerja). TIDAK ADA fallback hitung manual di sini lagi — supaya cuma
+  // ada SATU sumber kebenaran (API/database), tidak ada risiko angka di chart
+  // ini menyimpang dari angka yang sama di tabel/kartu lain.
+  const avgTotal = avgPerDay.total ?? 0;
 
   return (
     <div>
