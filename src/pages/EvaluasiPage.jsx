@@ -44,8 +44,8 @@ const ALL_COLS_PENCACAH = [
   { key:'editedByAdmin',    label:'Edit oleh Admin',        always: false },
   { key:'completedByAdmin', label:'Diselesaikan oleh Admin', always: false },
   { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
-  { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', always: false },
-  { key:'prelistUsaha',    label:'Penyelesaian Assignment Usaha',    always: false },
+  { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
+  { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'deltaProgress', label:'Delta Progress', always: false },
@@ -65,8 +65,8 @@ const ALL_COLS_PENGAWAS = [
   { key:'editedByAdmin',    label:'Edit oleh Admin',        always: false },
   { key:'completedByAdmin', label:'Diselesaikan oleh Admin', always: false },
   { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
-  { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', always: false },
-  { key:'prelistUsaha',    label:'Penyelesaian Assignment Usaha',    always: false },
+  { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
+  { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'deltaProgress', label:'Delta Progress', always: false },
@@ -1040,8 +1040,8 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'editedByAdmin',    label:'Edit oleh Admin',        get:p=>p.editedByAdmin||0 },
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
     { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
-    { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)"` },
-    { key:'prelistUsaha', label:'Penyelesaian Assignment Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)"` },
+    { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)"` },
+    { key:'prelistUsaha', label:'Penyelesaian Pendataan Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)"` },
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
     { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },
@@ -2130,8 +2130,8 @@ export function EvaluasiPage() {
               <span><strong style={{ color:'#f59e0b' }}>Edit oleh Admin</strong> = status EDITED BY Admin Kabupaten (ikut terhitung "Approved")</span>
               <span><strong style={{ color:'#10b981' }}>Diselesaikan oleh Admin</strong> = status COMPLETED BY Admin Kabupaten (ikut terhitung "Approved")</span>
               <span><strong style={{ color:'var(--orange3)' }}>Total Pekerjaan Dikerjakan</strong> = submit+approved+reject (assignment yang sudah disentuh, bukan sekadar Open)</span>
-              <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Assignment Keluarga</strong> = realisasi resmi (Export Progres Pemutakhiran Keluarga, sum Ditemukan+Keluarga Baru+Meninggal+Tidak Eligible+Tidak Ditemukan per sub-SLS) / target resmi Keluarga (Rekap Prelist SE2026, per sub-SLS)</span>
-              <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Assignment Usaha</strong> = realisasi resmi (Export Progres Pendataan, kolom "Jumlah Usaha Berhasil Didata" per sub-SLS) / target resmi Usaha (Assignment KRT-ST2023 + BKU&amp;BL-Usaha SBR, Rekap Prelist SE2026)</span>
+              <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Pendataan Keluarga*</strong> = realisasi (Export Progres Pemutakhiran Keluarga, sheet KELUARGA, sum Ditemukan+Keluarga Baru+Meninggal+Tidak Eligible+Tidak Dapat Ditemui Sampai Akhir Pendataan+Tidak Ditemukan) / target (kolom "Prelist Awal", sheet &amp; file yang sama) — per sub-SLS</span>
+              <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Pendataan Usaha*</strong> = realisasi (Export Progres Pendataan, sheet USAHA PERUSAHAAN, sum Ditemukan+Tutup+Ganda+Tidak Ditemukan+Baru) / target (kolom "Jumlah Prelist Usaha", sheet &amp; file yang sama) — per sub-SLS</span>
               <span><strong style={{ color:'#fbbf24' }}>Delta Progress</strong> = (approved+submit+reject+draft) hari snapshot − hari sebelumnya. Berdasarkan tanggal TERAKHIR record disentuh (bukan jaminan event submit/approve terjadi persis di hari itu — lihat catatan). Kosong (—) saat filter kecamatan/desa aktif krn tidak bisa di-scope per desa. Hari snapshot bisa tampak rendah/negatif kalau data ditarik sebelum hari berakhir (belum penuh 1 hari).</span>
               <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
               <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
@@ -2158,8 +2158,8 @@ export function EvaluasiPage() {
                 {visibleCols.has('editedByAdmin')    && <H label="Edit oleh Admin" col="editedByAdmin" right/>}
                 {visibleCols.has('completedByAdmin') && <H label="Diselesaikan oleh Admin" col="completedByAdmin" right/>}
                 {visibleCols.has('totalWorked') && <H label="Total Pekerjaan Dikerjakan" col="totalWorked" right/>}
-                {visibleCols.has('prelistKeluarga') && <H label="Penyelesaian Assignment Keluarga" col="prelistKeluargaSelesai" right/>}
-                {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Assignment Usaha" col="prelistUsahaSelesai" right/>}
+                {visibleCols.has('prelistKeluarga') && <H label="Penyelesaian Pendataan Keluarga*" col="prelistKeluargaSelesai" right/>}
+                {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Pendataan Usaha*" col="prelistUsahaSelesai" right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
                 {visibleCols.has('deltaProgress')&& <H label="Delta Progress" col="deltaProgress" right/>}
@@ -2284,6 +2284,11 @@ export function EvaluasiPage() {
           {(summary?.totalAssignment||0).toLocaleString('id')} total assignment ·
           Skor dihitung relatif terhadap peers di snapshot ini
         </div>
+        {summary?.realisasiUpdatedAt && (
+          <div style={{ marginTop:4,fontSize:9,color:'var(--text4)',fontStyle:'italic' }}>
+            * Data Penyelesaian Pendataan Keluarga/Usaha diperbarui: {summary.realisasiUpdatedAt}
+          </div>
+        )}
       </>}
       </Card>
 
