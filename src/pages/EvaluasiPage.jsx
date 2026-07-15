@@ -48,6 +48,7 @@ const ALL_COLS_PENCACAH = [
   { key:'prelistUsaha',    label:'Penyelesaian Assignment Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
+  { key:'deltaProgress', label:'Delta Progress', always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
   { key:'usahaTotal', label:'Total Usaha',      always: false },
   { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', always: false },
@@ -68,6 +69,7 @@ const ALL_COLS_PENGAWAS = [
   { key:'prelistUsaha',    label:'Penyelesaian Assignment Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
+  { key:'deltaProgress', label:'Delta Progress', always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
   { key:'usahaTotal', label:'Total Usaha',      always: false },
   { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', always: false },
@@ -490,10 +492,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0} ({p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)</span>
+          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0} ({p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)</span>
+          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -506,6 +508,12 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('avgPerDay') && (
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10,color:'var(--orange3)',textAlign:'right' }}>
           {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
+        </td>
+        )}
+        {visibleCols.has('deltaProgress') && (
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10.5,textAlign:'right',
+          color: p.deltaProgress > 0 ? '#34d399' : p.deltaProgress < 0 ? '#f43f5e' : 'var(--text4)' }}>
+          {p.deltaProgress == null ? '—' : (p.deltaProgress > 0 ? '▲' : p.deltaProgress < 0 ? '▼' : '–') + ' ' + Math.abs(p.deltaProgress)}
         </td>
         )}
         {visibleCols.has('usahaCount') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaAssignmentCount>0?600:400 }}>{p.usahaAssignmentCount||0}</td>}
@@ -522,7 +530,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={23} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
+          <td colSpan={24} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
             {/* Performance breakdown */}
             {p.inaktif && (
               <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10,padding:'8px 12px',
@@ -655,10 +663,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistKeluargaTotal||0} ({p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)</span>
+          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.prelistUsahaTotal||0} ({p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)</span>
+          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -671,6 +679,12 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('avgPerDay') && (
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10,color:'var(--orange3)',textAlign:'right' }}>
           {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
+        </td>
+        )}
+        {visibleCols.has('deltaProgress') && (
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10.5,textAlign:'right',
+          color: p.deltaProgress > 0 ? '#34d399' : p.deltaProgress < 0 ? '#f43f5e' : 'var(--text4)' }}>
+          {p.deltaProgress == null ? '—' : (p.deltaProgress > 0 ? '▲' : p.deltaProgress < 0 ? '▼' : '–') + ' ' + Math.abs(p.deltaProgress)}
         </td>
         )}
         {visibleCols.has('usahaCount') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',fontWeight:p.usahaAssignmentCount>0?600:400 }}>{p.usahaAssignmentCount||0}</td>}
@@ -687,7 +701,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={23} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
+          <td colSpan={24} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
             <div style={{ paddingTop:12,display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
               <Mini label="Total Diawasi"   value={p.total}                                        icon={BarChart2}   animate/>
               <Mini label="Belum Dikerjakan" value={p.open}     color="var(--text4)"               icon={Inbox}       animate/>
@@ -875,8 +889,8 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:16, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:18, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:20, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:22, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:20, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Assignment Keluarga', w:22, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Assignment Usaha', w:20, key_: p => `${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -898,8 +912,8 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:14, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:16, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:18, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:20, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:18, key_: p => `${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Assignment Keluarga', w:20, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Assignment Usaha', w:18, key_: p => `${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1026,8 +1040,8 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'editedByAdmin',    label:'Edit oleh Admin',        get:p=>p.editedByAdmin||0 },
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
     { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
-    { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.prelistKeluargaTotal||0} (${p.prelistKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.prelistKeluargaTotal*100) : 0}%)"` },
-    { key:'prelistUsaha', label:'Penyelesaian Assignment Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.prelistUsahaTotal||0} (${p.prelistUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.prelistUsahaTotal*100) : 0}%)"` },
+    { key:'prelistKeluarga', label:'Penyelesaian Assignment Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)"` },
+    { key:'prelistUsaha', label:'Penyelesaian Assignment Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)"` },
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
     { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },
@@ -1715,6 +1729,10 @@ export function EvaluasiPage() {
       const usahaPrTotal   = dd.reduce((a,d) => a + (d.prelistUsahaTotal      || 0), 0);
       const usahaPrelistSelesai = dd.reduce((a,d) => a + (d.prelistUsahaSelesai    || 0), 0);
       const usahaAddSelesai     = dd.reduce((a,d) => a + (d.additionalUsahaSelesai || 0), 0);
+      // Target resmi (Rekap_Prelist_SE2026) — dipakai sbg PENYEBUT yang
+      // DITAMPILKAN, jadi WAJIB ikut di-scope sama seperti field lain di atas
+      const targetKelTotal   = dd.reduce((a,d) => a + (d.targetKeluargaTotal || 0), 0);
+      const targetUsahaTotal = dd.reduce((a,d) => a + (d.targetUsahaTotal    || 0), 0);
       const wd = summary?.workingDays || p.avgPerDay?.workingDays || 1;
       const sr2 = v => Math.round(v * 100) / 100;
       return { ...p, total:tot, approved:appr, submit:sub, reject:rej, draft:dr, open:op,
@@ -1723,10 +1741,14 @@ export function EvaluasiPage() {
                totalWorked: worked,
                prelistKeluargaTotal: kelTotal, prelistKeluargaSelesai: kelPrelistSelesai,
                prelistUsahaTotal: usahaPrTotal, prelistUsahaSelesai: usahaPrelistSelesai,
+               targetKeluargaTotal: targetKelTotal, targetUsahaTotal: targetUsahaTotal,
                // "assignmentKeluarga/UsahaSelesai" = metrik RESMI yg ditampilkan
-               // (prelist selesai + assignment tambahan selesai), penyebut tetap prelist total
+               // (prelist selesai + assignment tambahan selesai), penyebut dari targetKeluarga/UsahaTotal
                assignmentKeluargaSelesai: kelPrelistSelesai + kelAddSelesai,
                assignmentUsahaSelesai: usahaPrelistSelesai + usahaAddSelesai,
+               // deltaProgress TIDAK bisa di-scope per kecamatan/desa (dailySeries tidak
+               // ada breakdown per-desa) — null-kan drpd nampilin angka global yg menyesatkan
+               deltaProgress: null,
                pctApproved: tot > 0 ? Math.round(appr / tot * 100 * 10) / 10 : 0,
                // Recompute avgPerDay — total = submit+approved+rejected+draft / hari kerja
                avgPerDay: {
@@ -1757,6 +1779,8 @@ export function EvaluasiPage() {
     prelistKeluargaTotal:   filtered.reduce((a,p)=>a+(p.prelistKeluargaTotal||0),   0),
     prelistKeluargaSelesai: filtered.reduce((a,p)=>a+(p.prelistKeluargaSelesai||0), 0),
     prelistUsahaTotal:      filtered.reduce((a,p)=>a+(p.prelistUsahaTotal||0),      0),
+    targetKeluargaTotal: filtered.reduce((a,p)=>a+(p.targetKeluargaTotal||0), 0),
+    targetUsahaTotal:    filtered.reduce((a,p)=>a+(p.targetUsahaTotal||0),    0),
     prelistUsahaSelesai:    filtered.reduce((a,p)=>a+(p.prelistUsahaSelesai||0),    0),
     assignmentKeluargaSelesai: filtered.reduce((a,p)=>a+(p.assignmentKeluargaSelesai||0), 0),
     assignmentUsahaSelesai:    filtered.reduce((a,p)=>a+(p.assignmentUsahaSelesai||0),    0),
@@ -1809,6 +1833,7 @@ export function EvaluasiPage() {
     if (sortBy==='prelistUsahaSelesai') return d*((b.assignmentUsahaSelesai??0)-(a.assignmentUsahaSelesai??0));
     if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
     if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
+    if (sortBy==='deltaProgress') return d*((b.deltaProgress??0)-(a.deltaProgress??0));
     if (sortBy==='usahaCount') return d*((b.usahaAssignmentCount??0)-(a.usahaAssignmentCount??0));
     if (sortBy==='usahaTotal') return d*((b.totalUsahaDitemukan??0)-(a.totalUsahaDitemukan??0));
     if (sortBy==='usahaMax')   return d*((b.usahaMaxCount??0)-(a.usahaMaxCount??0));
@@ -1931,8 +1956,14 @@ export function EvaluasiPage() {
         const pctTotal   = tot ? +((appr + sub_ + rej + draft) / tot * 100).toFixed(2) : 0;
         const pctSelesai = tot ? +((appr + sub_ + rej) / tot * 100).toFixed(2) : 0;
 
+        // Rata-rata avg/hari dari SELURUH petugas yang lagi ditampilkan (tab aktif)
+        const avgHariList = filtered.map(p => p.avgPerDay?.total || 0);
+        const avgHariRata = avgHariList.length
+          ? +(avgHariList.reduce((a,v)=>a+v,0) / avgHariList.length).toFixed(2)
+          : 0;
+
         return (
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
             <SumCard label="Progress Total (+Draft)"
               value={pctTotal} suffix="%" decimals={2} color="#818cf8" icon={TrendingUp}
               sub="(submit+approved+reject+draft) / total"/>
@@ -1945,6 +1976,9 @@ export function EvaluasiPage() {
             <SumCard label="Total Usaha Didata"
               value={usaha} color="#a78bfa" icon={Building2}
               sub="total data7 dari assignment yang sama (data7≥1)"/>
+            <SumCard label="Rata-rata Avg/Hari"
+              value={avgHariRata} decimals={2} color="#fbbf24" icon={Clock}
+              sub={`rata-rata dari ${filtered.length} petugas (tab aktif)`}/>
           </div>
         );
       })()}
@@ -2096,8 +2130,9 @@ export function EvaluasiPage() {
               <span><strong style={{ color:'#f59e0b' }}>Edit oleh Admin</strong> = status EDITED BY Admin Kabupaten (ikut terhitung "Approved")</span>
               <span><strong style={{ color:'#10b981' }}>Diselesaikan oleh Admin</strong> = status COMPLETED BY Admin Kabupaten (ikut terhitung "Approved")</span>
               <span><strong style={{ color:'var(--orange3)' }}>Total Pekerjaan Dikerjakan</strong> = submit+approved+reject (assignment yang sudah disentuh, bukan sekadar Open)</span>
-              <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Assignment Keluarga</strong> = (prelist DTSEN selesai + assignment keluarga baru yang ditemukan &amp; selesai) / total prelist keluarga</span>
-              <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Assignment Usaha</strong> = (prelist UB/UM/UMK/UMKM selesai + assignment usaha baru yang ditemukan &amp; selesai) / total prelist usaha</span>
+              <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Assignment Keluarga</strong> = realisasi resmi (Export Progres Pemutakhiran Keluarga, sum Ditemukan+Keluarga Baru+Meninggal+Tidak Eligible+Tidak Ditemukan per sub-SLS) / target resmi Keluarga (Rekap Prelist SE2026, per sub-SLS)</span>
+              <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Assignment Usaha</strong> = realisasi resmi (Export Progres Pendataan, kolom "Jumlah Usaha Berhasil Didata" per sub-SLS) / target resmi Usaha (Assignment KRT-ST2023 + BKU&amp;BL-Usaha SBR, Rekap Prelist SE2026)</span>
+              <span><strong style={{ color:'#fbbf24' }}>Delta Progress</strong> = (approved+submit+reject+draft) hari snapshot − hari sebelumnya. Berdasarkan tanggal TERAKHIR record disentuh (bukan jaminan event submit/approve terjadi persis di hari itu — lihat catatan). Kosong (—) saat filter kecamatan/desa aktif krn tidak bisa di-scope per desa. Hari snapshot bisa tampak rendah/negatif kalau data ditarik sebelum hari berakhir (belum penuh 1 hari).</span>
               <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
               <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
               <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
@@ -2127,6 +2162,7 @@ export function EvaluasiPage() {
                 {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Assignment Usaha" col="prelistUsahaSelesai" right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
+                {visibleCols.has('deltaProgress')&& <H label="Delta Progress" col="deltaProgress" right/>}
                 {visibleCols.has('usahaCount')&& <H label="Assignment Usaha Ditemukan" col="usahaCount" right/>}
                 {visibleCols.has('usahaTotal')&& <H label="Total Usaha" col="usahaTotal" right/>}
                 {visibleCols.has('usahaMax')&& <H label="Usaha Terbanyak" col="usahaMax" right/>}
@@ -2136,7 +2172,7 @@ export function EvaluasiPage() {
             </thead>
             <tbody>
               {paginated.length===0
-                ? <tr><td colSpan={21} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                ? <tr><td colSpan={22} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
                 : paginated.map((p,i) =>
                     isPengawas
                       ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
