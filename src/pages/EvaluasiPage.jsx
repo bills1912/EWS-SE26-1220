@@ -532,16 +532,16 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('editedByAdmin')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right' }}>{p.editedByAdmin||0}</td>}
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
-        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
             onClick={e=>{ e.stopPropagation(); setShowKelBrk(v=>!v); }}
             title="Klik untuk lihat detail breakdown">
             {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
             <ChevronRight size={10} color="var(--text4)" style={{ transform: showKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
           </span>
         </td>}
-        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
             onClick={e=>{ e.stopPropagation(); setShowUsahaBrk(v=>!v); }}
             title="Klik untuk lihat detail breakdown">
             {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
@@ -735,16 +735,16 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('editedByAdmin')    && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right' }}>{p.editedByAdmin||0}</td>}
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
-        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+        {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
             onClick={e=>{ e.stopPropagation(); setShowKelBrk(v=>!v); }}
             title="Klik untuk lihat detail breakdown">
             {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
             <ChevronRight size={10} color="var(--text4)" style={{ transform: showKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
           </span>
         </td>}
-        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+        {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
             onClick={e=>{ e.stopPropagation(); setShowUsahaBrk(v=>!v); }}
             title="Klik untuk lihat detail breakdown">
             {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
@@ -875,7 +875,35 @@ function SumCard({ label, value, sub, color, icon: Icon, suffix = '', decimals =
 }
 
 // ── Generate PDF Evaluasi (jsPDF — download langsung) ──────────────────────
-async function generatePDF({ activeTab, filtered, summary, effectiveSummary, selectedCols }) {
+// ── Expand data petugas jadi 1-baris-per-desa (mode breakdown export) ──────
+// Dipakai bareng oleh generatePDF & generateExcel. Setiap entri di
+// p.perDesa (sudah dihitung backend, ter-scope per kecamatan/desa) jadi 1
+// "petugas virtual" — metrik-metrik yg relevan (total/approved/dst,
+// target+realisasi Keluarga/Usaha, breakdown-nya) diambil dari desa itu
+// saja, bukan angka global petugas.
+function expandForBreakdown(filtered, isPengawas) {
+  const rows = [];
+  filtered.forEach(p => {
+    const desaList = p.perDesa && p.perDesa.length ? p.perDesa : [{
+      kecamatan: p.kecamatan||'—', desa:'—', kodeKecamatan:'', kodeDesa:'', jumlahSubSls:0,
+    }];
+    desaList.forEach(d => {
+      rows.push({
+        ...p,
+        ...d, // overwrite total/approved/submit/dst + target/realisasi Keluarga/Usaha dgn versi ter-scope desa ini
+        kecamatan: d.kecamatan || p.kecamatan,
+        _namaPCL: isPengawas ? '—' : (p.nama||'—'),
+        _namaPML: isPengawas ? (p.nama||'—') : (p.pengawas?.nama||'—'),
+        _kodeKecamatan: d.kodeKecamatan || '',
+        _kodeDesa: d.kodeDesa || '',
+        _jumlahSubSls: d.jumlahSubSls ?? 0,
+      });
+    });
+  });
+  return rows;
+}
+
+async function generatePDF({ activeTab, filtered, summary, effectiveSummary, selectedCols, breakdownMode=false }) {
   const isPengawas = activeTab === 'pengawas';
   const roleLabel  = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap       = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
@@ -977,6 +1005,10 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
   });
   y += 22;
 
+  // ── Mode breakdown: 1 baris jadi 1-per-desa, tambahkan kolom Kode
+  // Kecamatan/Desa/Jumlah Sub-SLS ────────────────────────────────────────
+  if (breakdownMode) filtered = expandForBreakdown(filtered, isPengawas);
+
   // ── Tabel data — langsung di halaman yang sama ─────────────────────────
   const colsAll = isPengawas
     ? [
@@ -992,8 +1024,12 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:16, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:18, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:20, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:22, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:20, key_: p => `${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Target Kel.', w:14, key_: p => p.targetKeluargaTotal||0, align:'right', color: [56,189,248] },
+        { key:'prelistKeluarga', h:'Realisasi Kel.', w:14, key_: p => p.assignmentKeluargaSelesai||0, align:'right', color: [56,189,248] },
+        { key:'prelistKeluarga', h:'% Kel.', w:12, key_: p => (p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0)+'%', align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Target Usaha', w:14, key_: p => p.targetUsahaTotal||0, align:'right', color: [167,139,250] },
+        { key:'prelistUsaha', h:'Realisasi Usaha', w:14, key_: p => p.assignmentUsahaSelesai||0, align:'right', color: [167,139,250] },
+        { key:'prelistUsaha', h:'% Usaha', w:12, key_: p => (p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0)+'%', align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1015,8 +1051,12 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'editedByAdmin',    h:'Edit Admin', w:14, key_: p => p.editedByAdmin||0,    align:'right', color: ORANGE },
         { key:'completedByAdmin', h:'Selesai Admin', w:16, key_: p => p.completedByAdmin||0, align:'right', color: GREEN },
         { key:'totalWorked', h:'Total Dikerjakan', w:18, key_: p => p.totalWorked||0, align:'right', color: ORANGE },
-        { key:'prelistKeluarga', h:'Assignment Keluarga', w:20, key_: p => `${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)`, align:'right', color: [56,189,248] },
-        { key:'prelistUsaha', h:'Assignment Usaha', w:18, key_: p => `${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)`, align:'right', color: [167,139,250] },
+        { key:'prelistKeluarga', h:'Target Kel.', w:13, key_: p => p.targetKeluargaTotal||0, align:'right', color: [56,189,248] },
+        { key:'prelistKeluarga', h:'Realisasi Kel.', w:13, key_: p => p.assignmentKeluargaSelesai||0, align:'right', color: [56,189,248] },
+        { key:'prelistKeluarga', h:'% Kel.', w:11, key_: p => (p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0)+'%', align:'right', color: [56,189,248] },
+        { key:'prelistUsaha', h:'Target Usaha', w:13, key_: p => p.targetUsahaTotal||0, align:'right', color: [167,139,250] },
+        { key:'prelistUsaha', h:'Realisasi Usaha', w:13, key_: p => p.assignmentUsahaSelesai||0, align:'right', color: [167,139,250] },
+        { key:'prelistUsaha', h:'% Usaha', w:11, key_: p => (p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0)+'%', align:'right', color: [167,139,250] },
         { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1028,6 +1068,20 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
   const cols = colsAll
     .filter(c => c.key==='no' || c.key==='nama' || on(c.key))
     .map(c => ({ ...c, key: c.key_ })); // 'key' dipakai render loop sbg accessor function (kompatibel kode lama)
+
+  // Mode breakdown: sisipkan kolom Nama PML/PCL, Kode Kec, Kode Desa,
+  // Jumlah Sub-SLS tepat setelah kolom "Nama" (posisi index 1)
+  if (breakdownMode) {
+    const namaIdx = cols.findIndex(c => c.h === 'Nama');
+    const insertAt = namaIdx >= 0 ? namaIdx + 1 : 1;
+    cols.splice(insertAt, 0,
+      { h:'Nama PML', w:26, key: p => p._namaPML||'—' },
+      { h:'Nama PCL', w:26, key: p => p._namaPCL||'—' },
+      { h:'Kode Kec.', w:12, key: p => p._kodeKecamatan||'—', align:'center' },
+      { h:'Kode Desa', w:12, key: p => p._kodeDesa||'—', align:'center' },
+      { h:'Jml Sub-SLS', w:14, key: p => p._jumlahSubSls??0, align:'right' },
+    );
+  }
 
   // Skalakan lebar kolom biar tabel tetap penuh selebar halaman walau kolomnya sedikit
   const usedW = cols.reduce((a,c) => a+c.w, 0);
@@ -1054,7 +1108,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
   y += 2;
   doc.setDrawColor(...MGRAY); doc.line(M, y, W - M, y); y += 5;
   setTxt(isPengawas ? BLUE : ORANGE); setFont(9, 'bold');
-  doc.text(`Data ${roleLabel} (${filtered.length} orang)`, M, y); y += 5;
+  doc.text(breakdownMode
+    ? `Data ${roleLabel} — Breakdown per Kecamatan/Desa (${filtered.length} baris)`
+    : `Data ${roleLabel} (${filtered.length} orang)`, M, y); y += 5;
   drawTableHeader();
 
   filtered.forEach((p, idx) => {
@@ -1168,7 +1224,7 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
 
 
 // ── Generate Excel Evaluasi (CSV — tanpa library eksternal) ───────────────
-function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas, selectedCols }) {
+function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas, selectedCols, breakdownMode=false }) {
   const roleLabel   = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap        = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
   const es          = effectiveSummary || {};
@@ -1183,6 +1239,9 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
   };
   const row  = cols => cols.map(esc).join(',');
   const rows = arr  => arr.map(row).join('\n');
+
+  // ── Mode breakdown: 1 baris jadi 1-per-desa ─────────────────────────────
+  if (breakdownMode) filtered = expandForBreakdown(filtered, isPengawas);
 
   // ── Definisi kolom opsional (selain No/Nama/Email yang selalu ikut) ────
   const OPT_COLS = [
@@ -1200,13 +1259,20 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'editedByAdmin',    label:'Edit oleh Admin',        get:p=>p.editedByAdmin||0 },
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
     { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
-    { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)"` },
+    // "Penyelesaian Pendataan Keluarga/Usaha" — DIPISAH jadi kolom Target,
+    // Realisasi, dan % terpisah KHUSUS DI EXPORT (tabel UI tetap gabungan
+    // "X/Y (Z%)" seperti biasa) — supaya lebih mudah diolah/pivot di Excel.
+    { key:'prelistKeluarga', label:'Target Keluarga',    get:p=>p.targetKeluargaTotal||0 },
+    { key:'prelistKeluarga', label:'Realisasi Keluarga', get:p=>p.assignmentKeluargaSelesai||0 },
+    { key:'prelistKeluarga', label:'% Keluarga', get:p=>p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0 },
     // Breakdown detail Keluarga — kolom terpisah per komponen, otomatis ikut
     // ter-export bareng kolom ringkasan di atas (key SAMA -> checkbox sama)
     ...Object.entries(KELUARGA_BRK_LABELS).map(([k, lbl]) => (
       { key:'prelistKeluarga', label:`Keluarga - ${lbl}`, get:p=>p.assignmentKeluargaBreakdown?.[k] ?? 0 }
     )),
-    { key:'prelistUsaha', label:'Penyelesaian Pendataan Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)"` },
+    { key:'prelistUsaha', label:'Target Usaha',    get:p=>p.targetUsahaTotal||0 },
+    { key:'prelistUsaha', label:'Realisasi Usaha', get:p=>p.assignmentUsahaSelesai||0 },
+    { key:'prelistUsaha', label:'% Usaha', get:p=>p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0 },
     // Breakdown detail Usaha — sama filosofinya
     ...Object.entries(USAHA_BRK_LABELS).map(([k, lbl]) => (
       { key:'prelistUsaha', label:`Usaha - ${lbl}`, get:p=>p.assignmentUsahaBreakdown?.[k] ?? 0 }
@@ -1224,35 +1290,42 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
   ].filter(c => on(c.key));
 
   // ── Sheet 1: Data Petugas ─────────────────────────────────────────────
-  const headers1 = ['No','Nama','Email', ...OPT_COLS.map(c => c.label)];
+  const BRK_HEADERS = breakdownMode ? ['Nama PML','Nama PCL','Kode Kecamatan','Kode Desa','Jumlah Sub-SLS'] : [];
+  const headers1 = ['No','Nama','Email', ...BRK_HEADERS, ...OPT_COLS.map(c => c.label)];
   const data1 = filtered.map((p, i) => [
-    i+1, p.nama||'', p.email||'', ...OPT_COLS.map(c => c.get(p)),
+    i+1, p.nama||'', p.email||'',
+    ...(breakdownMode ? [p._namaPML||'—', p._namaPCL||'—', p._kodeKecamatan||'—', p._kodeDesa||'—', p._jumlahSubSls??0] : []),
+    ...OPT_COLS.map(c => c.get(p)),
   ]);
 
-  // ── Sheet 2: Ringkasan per Kecamatan ─────────────────────────────────
-  const kecMap = {};
-  filtered.forEach(p => {
-    const kec = p.kecamatan || '—';
-    if (!kecMap[kec]) kecMap[kec] = {n:0,total:0,approved:0,submit:0,reject:0,draft:0,open:0,scoreSum:0};
-    kecMap[kec].n++;
-    ['total','approved','submit','reject','draft','open'].forEach(f => kecMap[kec][f] += p[f]||0);
-    kecMap[kec].scoreSum += p.perfScore||0;
-  });
-  const headers2 = ['Kecamatan','Jumlah PCL','Total','Approved','Submit','Rejected','Draft','Open','Progress (%)','Avg Score'];
-  const data2 = Object.entries(kecMap).sort(([a],[b]) => a.localeCompare(b)).map(([kec,k]) => [
-    kec, k.n, k.total, k.approved, k.submit, k.reject, k.draft, k.open,
-    k.total ? ((k.approved+k.submit)/k.total*100).toFixed(1) : 0,
-    k.n ? (k.scoreSum/k.n).toFixed(1) : 0,
-  ]);
+  // ── Sheet 2: Ringkasan per Kecamatan — DILEWATI di mode breakdown, karena
+  // `filtered` sudah di-expand jadi 1-baris-per-desa (1 petugas bisa muncul
+  // berkali-kali), jadi "Jumlah PCL" & total di sini akan double-count kalau
+  // tetap dihitung. Sheet 1 sendiri sudah cukup granular utk mode breakdown.
+  let kecSection = '';
+  if (!breakdownMode) {
+    const kecMap = {};
+    filtered.forEach(p => {
+      const kec = p.kecamatan || '—';
+      if (!kecMap[kec]) kecMap[kec] = {n:0,total:0,approved:0,submit:0,reject:0,draft:0,open:0,scoreSum:0};
+      kecMap[kec].n++;
+      ['total','approved','submit','reject','draft','open'].forEach(f => kecMap[kec][f] += p[f]||0);
+      kecMap[kec].scoreSum += p.perfScore||0;
+    });
+    const headers2 = ['Kecamatan','Jumlah PCL','Total','Approved','Submit','Rejected','Draft','Open','Progress (%)','Avg Score'];
+    const data2 = Object.entries(kecMap).sort(([a],[b]) => a.localeCompare(b)).map(([kec,k]) => [
+      kec, k.n, k.total, k.approved, k.submit, k.reject, k.draft, k.open,
+      k.total ? ((k.approved+k.submit)/k.total*100).toFixed(1) : 0,
+      k.n ? (k.scoreSum/k.n).toFixed(1) : 0,
+    ]);
+    kecSection = '\n\n=== RINGKASAN PER KECAMATAN ===\n' + rows([headers2, ...data2]);
+  }
 
-  // Gabung 2 sheet dalam 1 CSV dengan separator baris kosong
+  // Gabung sheet dalam 1 CSV dengan separator baris kosong
   const csv = [
-    `=== DATA ${roleLabel.toUpperCase()} ===`,
+    `=== DATA ${roleLabel.toUpperCase()}${breakdownMode ? ' — BREAKDOWN PER KECAMATAN/DESA' : ''} ===`,
     rows([headers1, ...data1]),
-    '',
-    '=== RINGKASAN PER KECAMATAN ===',
-    rows([headers2, ...data2]),
-  ].join('\n');
+  ].join('\n') + kecSection;
 
   // Download dengan BOM UTF-8 agar nama Indonesia terbaca di Excel
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
@@ -1269,7 +1342,7 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
 // ── Modal pemilihan kolom sebelum export ───────────────────────────────────
 // Kolom yang bisa dipilih sama persis dengan ALL_COLS_PENCACAH/PENGAWAS
 // (dikurangi 'progress' — memang sengaja dikecualikan dari export).
-function ExportColumnModal({ format, isPengawas, selected, onChange, onCancel, onConfirm }) {
+function ExportColumnModal({ format, isPengawas, selected, onChange, onCancel, onConfirm, breakdownMode, onBreakdownChange }) {
   const options = (isPengawas ? ALL_COLS_PENGAWAS : ALL_COLS_PENCACAH)
     .filter(c => c.key !== 'progress');
 
@@ -1336,6 +1409,34 @@ function ExportColumnModal({ format, isPengawas, selected, onChange, onCancel, o
             alignSelf:'center' }}>
             {selected.size} dari {options.length} dipilih
           </span>
+        </div>
+
+        {/* Mode export: total per petugas vs breakdown per kecamatan/desa */}
+        <div style={{ padding:'10px 18px', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ fontSize:10.5, fontWeight:600, color:'var(--text3)', marginBottom:6 }}>
+            Format baris data
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            {[
+              { val:false, label:'Total per Petugas', desc:'1 baris = 1 petugas' },
+              { val:true,  label:'Breakdown per Kecamatan/Desa', desc:'1 baris = 1 desa yg dikerjakan petugas' },
+            ].map(opt => (
+              <button key={String(opt.val)} onClick={() => onBreakdownChange(opt.val)}
+                style={{ flex:1, textAlign:'left', padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                  border: breakdownMode===opt.val ? '1.5px solid var(--orange)' : '1px solid var(--border)',
+                  background: breakdownMode===opt.val ? 'rgba(232,84,28,0.08)' : 'var(--bg3)' }}>
+                <div style={{ fontSize:11, fontWeight:600,
+                  color: breakdownMode===opt.val ? 'var(--orange3)' : 'var(--text2)' }}>{opt.label}</div>
+                <div style={{ fontSize:9, color:'var(--text4)', marginTop:2 }}>{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+          {breakdownMode && (
+            <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:6, fontStyle:'italic' }}>
+              Kolom Kecamatan, Desa, dan Jumlah Sub-SLS otomatis ditambahkan; kolom lain yang dipilih
+              di bawah akan di-scope sesuai desa masing-masing baris.
+            </div>
+          )}
         </div>
 
         {/* List kolom */}
@@ -1759,6 +1860,7 @@ export function EvaluasiPage() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportModal, setExportModal] = useState(null);   // null | 'pdf' | 'excel'
   const [exportCols,  setExportCols]  = useState(new Set());
+  const [exportBreakdown, setExportBreakdown] = useState(false); // false=total per petugas, true=breakdown per kecamatan/desa
   const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols());
   const [showLegend, setShowLegend] = useState(false); // keterangan kolom — collapsed by default
 
@@ -2493,6 +2595,8 @@ export function EvaluasiPage() {
           isPengawas={activeTab === 'pengawas'}
           selected={exportCols}
           onChange={setExportCols}
+          breakdownMode={exportBreakdown}
+          onBreakdownChange={setExportBreakdown}
           onCancel={() => setExportModal(null)}
           onConfirm={() => {
             if (exportModal === 'pdf') {
@@ -2500,6 +2604,7 @@ export function EvaluasiPage() {
                 activeTab, filtered, summary,
                 effectiveSummary: filteredSummary ?? summary,
                 selectedCols: exportCols,
+                breakdownMode: exportBreakdown,
               }).catch(e => alert('Error: ' + e.message));
             } else {
               generateExcel({
@@ -2507,6 +2612,7 @@ export function EvaluasiPage() {
                 effectiveSummary: filteredSummary ?? summary,
                 isPengawas: activeTab === 'pengawas',
                 selectedCols: exportCols,
+                breakdownMode: exportBreakdown,
               });
             }
             setExportModal(null);
