@@ -2133,14 +2133,21 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
           additionalKeluargaSelesai: p?.additionalKeluargaSelesai ?? 0,
           additionalUsahaTotal:      p?.additionalUsahaTotal      ?? 0,
           additionalUsahaSelesai:    p?.additionalUsahaSelesai    ?? 0,
-          // "assignmentKeluarga/UsahaPct" = metrik RESMI (gabungan prelist +
-          // tambahan / total prelist saja) — dipakai sbg warna choropleth tab Prelist
+          // "assignmentKeluarga/UsahaPct" = metrik RESMI (realisasi resmi /
+          // target resmi, keduanya dari Export Progres) — dipakai sbg warna
+          // choropleth tab Prelist
           assignmentKeluargaSelesai: p?.assignmentKeluargaSelesai ?? 0,
           assignmentKeluargaTotal:   p?.assignmentKeluargaTotal   ?? 0,
           assignmentKeluargaPct:     p ? (p.assignmentKeluargaPct ?? null) : null,
           assignmentUsahaSelesai:    p?.assignmentUsahaSelesai ?? 0,
           assignmentUsahaTotal:      p?.assignmentUsahaTotal   ?? 0,
           assignmentUsahaPct:        p ? (p.assignmentUsahaPct ?? null) : null,
+          targetKeluargaTotal: p?.targetKeluargaTotal ?? 0,
+          targetUsahaTotal:    p?.targetUsahaTotal    ?? 0,
+          // Breakdown per komponen (Ditemukan/Keluarga Baru/dst utk keluarga;
+          // Ditemukan/Tutup/Ganda/dst utk usaha) — dipakai fitur detail toggle
+          assignmentKeluargaBreakdown: p?.assignmentKeluargaBreakdown ?? null,
+          assignmentUsahaBreakdown:    p?.assignmentUsahaBreakdown    ?? null,
           usahaAssignmentCount: p?.usahaAssignmentCount ?? 0,
           totalUsahaDitemukan:  p?.totalUsahaDitemukan  ?? 0,
           usahaMaxCount: p?.usahaMaxCount ?? 0,
