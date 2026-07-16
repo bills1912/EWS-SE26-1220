@@ -8,8 +8,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
-  BarChart2, MapPin, Search, ChevronDown, ChevronUp,
-  Shield, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertCircle,
+  BarChart2, MapPin, Search, ChevronDown, ChevronUp, ChevronRight,
+  Shield, ChevronLeft, FileText, Printer, Download, AlertCircle,
   Star, Inbox, Columns, X, Percent, Building2,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
@@ -435,9 +435,50 @@ function Mini({ label, value, color, icon: Icon, animate=false }) {
   );
 }
 
+// ── Breakdown detail Keluarga/Usaha — dipakai fitur toggle di kolom
+// "Penyelesaian Pendataan Keluarga/Usaha", sumber dari Export Progres ────────
+const KELUARGA_BRK_LABELS = {
+  ditemukan: 'Ditemukan', keluargaBaru: 'Keluarga Baru', meninggal: 'Meninggal',
+  tidakEligible: 'Tidak Eligible', tidakDapatDitemui: 'Tidak Dapat Ditemui',
+  tidakDitemukan: 'Tidak Ditemukan',
+};
+const USAHA_BRK_LABELS = {
+  ditemukan: 'Ditemukan', tutup: 'Tutup', ganda: 'Ganda',
+  tidakDitemukan: 'Tidak Ditemukan', baru: 'Baru',
+};
+
+function BreakdownDetail({ title, breakdown, labels, color }) {
+  if (!breakdown) {
+    return (
+      <div style={{ fontSize:9.5,color:'var(--text4)',fontStyle:'italic',padding:'6px 10px' }}>
+        Detail breakdown {title.toLowerCase()} tidak tersedia untuk petugas ini.
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding:'8px 10px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8 }}>
+      <div style={{ fontSize:9,fontWeight:700,color,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6 }}>
+        Detail {title}
+      </div>
+      <div style={{ display:'flex',gap:14,flexWrap:'wrap' }}>
+        {Object.entries(labels).map(([key, label]) => (
+          <div key={key} style={{ minWidth:70 }}>
+            <div style={{ fontSize:8.5,color:'var(--text4)' }}>{label}</div>
+            <div style={{ fontSize:13,fontWeight:700,fontFamily:'var(--mono)',color:'var(--text1)' }}>
+              {breakdown[key] ?? 0}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Row Pencacah ───────────────────────────────────────────────────────────
 function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS), highlight = null }) {
   const [open, setOpen] = useState(false);
+  const [showKelBrk, setShowKelBrk] = useState(false);
+  const [showUsahaBrk, setShowUsahaBrk] = useState(false);
   const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
                  : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
@@ -492,10 +533,20 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+            onClick={e=>{ e.stopPropagation(); setShowKelBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+            onClick={e=>{ e.stopPropagation(); setShowUsahaBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showUsahaBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -528,6 +579,26 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
       </tr>
+      {(showKelBrk || showUsahaBrk) && (
+        <tr style={{ borderBottom:'1px solid var(--border)' }}>
+          <td colSpan={24} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
+            <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
+              {showKelBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Pendataan Keluarga" breakdown={p.assignmentKeluargaBreakdown}
+                    labels={KELUARGA_BRK_LABELS} color="#38bdf8"/>
+                </div>
+              )}
+              {showUsahaBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={p.assignmentUsahaBreakdown}
+                    labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
           <td colSpan={24} style={{ padding:'0 10px 16px 40px',background:'rgba(232,84,28,0.02)' }}>
@@ -620,6 +691,8 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
 // ── Row Pengawas ───────────────────────────────────────────────────────────
 function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEFAULT_COLS), highlight = null }) {
   const [open, setOpen] = useState(false);
+  const [showKelBrk, setShowKelBrk] = useState(false);
+  const [showUsahaBrk, setShowUsahaBrk] = useState(false);
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
                  : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
@@ -663,10 +736,20 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
         {visibleCols.has('completedByAdmin') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right' }}>{p.completedByAdmin||0}</td>}
         {visibleCols.has('totalWorked') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--orange3)',textAlign:'right' }}>{p.totalWorked||0}</td>}
         {visibleCols.has('prelistKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
-          {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+            onClick={e=>{ e.stopPropagation(); setShowKelBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetKeluargaTotal||0} ({p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
         </td>}
         {visibleCols.has('prelistUsaha') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
-          {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer' }}
+            onClick={e=>{ e.stopPropagation(); setShowUsahaBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaTotal||0} ({p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showUsahaBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
         </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
@@ -699,6 +782,26 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
       </tr>
+      {(showKelBrk || showUsahaBrk) && (
+        <tr style={{ borderBottom:'1px solid var(--border)' }}>
+          <td colSpan={24} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
+            <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
+              {showKelBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Pendataan Keluarga" breakdown={p.assignmentKeluargaBreakdown}
+                    labels={KELUARGA_BRK_LABELS} color="#38bdf8"/>
+                </div>
+              )}
+              {showUsahaBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={p.assignmentUsahaBreakdown}
+                    labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
           <td colSpan={24} style={{ padding:'0 10px 16px 40px',background:'rgba(27,63,139,0.02)' }}>
@@ -1001,6 +1104,63 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
     M, y
   );
 
+  // ── Lampiran: Detail Breakdown Penyelesaian Pendataan Keluarga/Usaha ────
+  // Tabel utama sudah sangat lebar (banyak kolom fixed-width) — breakdown per
+  // komponen (6 keluarga + 5 usaha) ditaruh di halaman TERPISAH sbg lampiran
+  // supaya tabel utama tidak rusak layoutnya, tapi tetap "muncul di export"
+  // sesuai permintaan. Cuma muncul kalau kolom Keluarga/Usaha dipilih export.
+  const drawBreakdownAppendix = (title, breakdownKey, labels, headerColor) => {
+    const compKeys = Object.keys(labels);
+    doc.addPage(); pageNum++; drawHeader(pageNum);
+    y = 20;
+    setTxt(headerColor); setFont(12, 'bold');
+    doc.text(title, M, y); y += 5;
+    setTxt([156,163,175]); setFont(7);
+    doc.text(`Rincian komponen pembentuk realisasi, per ${roleLabel.toLowerCase()}.`, M, y); y += 6;
+
+    const bCols = [
+      { h:'#',    w:8,  key_: (_,i) => i+1, align:'center' },
+      { h:'Nama', w:44, key_: p => p.nama||'—' },
+      ...compKeys.map(k => ({ h: labels[k], w: (COL-52)/compKeys.length, key_: p => p[breakdownKey]?.[k] ?? 0, align:'right' })),
+    ];
+    const bScale = COL / bCols.reduce((a,c)=>a+c.w,0);
+    bCols.forEach(c => c.w *= bScale);
+
+    const drawBHeader = () => {
+      setFill(headerColor); doc.rect(M, y, COL, HEAD_H, 'F');
+      setTxt(WHITE); setFont(6.5, 'bold');
+      let x = M;
+      bCols.forEach(c => { doc.text(c.h, x + c.w/2, y + 5.5, { align:'center' }); x += c.w; });
+      y += HEAD_H;
+    };
+    drawBHeader();
+
+    filtered.forEach((p, idx) => {
+      if (y + ROW_H > H - 14) { doc.addPage(); pageNum++; drawHeader(pageNum); y = 18; drawBHeader(); }
+      setFill(idx % 2 === 0 ? WHITE : LGRAY); doc.rect(M, y, COL, ROW_H, 'F');
+      doc.setDrawColor(...MGRAY); doc.setLineWidth(0.1); doc.line(M, y+ROW_H, M+COL, y+ROW_H);
+      let x = M;
+      bCols.forEach(c => {
+        const val = String(c.key_(p, idx));
+        setTxt(DGRAY); setFont(6.5);
+        const align = c.align || 'left';
+        const tx = align==='right' ? x+c.w-1.5 : align==='center' ? x+c.w/2 : x+1.5;
+        doc.text(val, tx, y+4.8, { align });
+        x += c.w;
+      });
+      y += ROW_H;
+    });
+  };
+
+  if (on('prelistKeluarga')) {
+    drawBreakdownAppendix('Lampiran — Detail Penyelesaian Pendataan Keluarga',
+      'assignmentKeluargaBreakdown', KELUARGA_BRK_LABELS, BLUE);
+  }
+  if (on('prelistUsaha')) {
+    drawBreakdownAppendix('Lampiran — Detail Penyelesaian Pendataan Usaha',
+      'assignmentUsahaBreakdown', USAHA_BRK_LABELS, [126,58,242]);
+  }
+
   // ── Download ──────────────────────────────────────────────────────────────
   const fname = `evaluasi_${isPengawas?'pengawas':'pencacah'}_se2026_${snap}_${fmtExportTimestamp()}.pdf`;
   doc.save(fname);
@@ -1041,7 +1201,16 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     { key:'completedByAdmin', label:'Diselesaikan oleh Admin', get:p=>p.completedByAdmin||0 },
     { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', get:p=>p.totalWorked||0 },
     { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', get:p=>`="${p.assignmentKeluargaSelesai||0}/${p.targetKeluargaTotal||0} (${p.targetKeluargaTotal>0 ? Math.round((p.assignmentKeluargaSelesai||0)/p.targetKeluargaTotal*100) : 0}%)"` },
+    // Breakdown detail Keluarga — kolom terpisah per komponen, otomatis ikut
+    // ter-export bareng kolom ringkasan di atas (key SAMA -> checkbox sama)
+    ...Object.entries(KELUARGA_BRK_LABELS).map(([k, lbl]) => (
+      { key:'prelistKeluarga', label:`Keluarga - ${lbl}`, get:p=>p.assignmentKeluargaBreakdown?.[k] ?? 0 }
+    )),
     { key:'prelistUsaha', label:'Penyelesaian Pendataan Usaha', get:p=>`="${p.assignmentUsahaSelesai||0}/${p.targetUsahaTotal||0} (${p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0}%)"` },
+    // Breakdown detail Usaha — sama filosofinya
+    ...Object.entries(USAHA_BRK_LABELS).map(([k, lbl]) => (
+      { key:'prelistUsaha', label:`Usaha - ${lbl}`, get:p=>p.assignmentUsahaBreakdown?.[k] ?? 0 }
+    )),
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
     { key:'usahaMax',     label:'Usaha Terbanyak (1 Assignment)', get:p=>p.usahaMaxCount||0 },
