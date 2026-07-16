@@ -1898,6 +1898,29 @@ export function EvaluasiPage() {
       const usahaPrTotal   = dd.reduce((a,d) => a + (d.prelistUsahaTotal      || 0), 0);
       const usahaPrelistSelesai = dd.reduce((a,d) => a + (d.prelistUsahaSelesai    || 0), 0);
       const usahaAddSelesai     = dd.reduce((a,d) => a + (d.additionalUsahaSelesai || 0), 0);
+      // "Penyelesaian Pendataan Keluarga/Usaha" — PEMBILANG resmi sekarang
+      // dari file realisasi (Export Progres), BUKAN lagi prelist+tambahan.
+      // per_desa_list() di convert_assignment.py SUDAH menghitung field ini
+      // dgn benar per desa (dedup by subSlsCode) — jadi di sini TINGGAL
+      // DIJUMLAH LANGSUNG dari tiap desa, JANGAN dihitung ulang dari
+      // kelPrelistSelesai+kelAddSelesai (itu formula LAMA, sudah tidak
+      // dipakai lagi sbg pembilang sejak konsolidasi ke file realisasi —
+      // kalau tetap dipakai di sini, angka saat filter aktif akan BEDA dari
+      // angka saat tidak difilter, walau petugasnya sama & datanya sama).
+      const assignmentKelSelesaiScoped   = dd.reduce((a,d) => a + (d.assignmentKeluargaSelesai || 0), 0);
+      const assignmentUsahaSelesaiScoped = dd.reduce((a,d) => a + (d.assignmentUsahaSelesai    || 0), 0);
+      // Breakdown detail (toggle) — sama juga harus di-scope per komponen,
+      // bukan dibiarkan pakai breakdown GLOBAL petugas saat filter aktif.
+      const sumBrk = (getter) => Object.keys(KELUARGA_BRK_LABELS).reduce((acc, k) => {
+        acc[k] = dd.reduce((a,d) => a + (getter(d)?.[k] || 0), 0);
+        return acc;
+      }, {});
+      const sumBrkUsaha = (getter) => Object.keys(USAHA_BRK_LABELS).reduce((acc, k) => {
+        acc[k] = dd.reduce((a,d) => a + (getter(d)?.[k] || 0), 0);
+        return acc;
+      }, {});
+      const kelBreakdownScoped   = sumBrk(d => d.assignmentKeluargaBreakdown);
+      const usahaBreakdownScoped = sumBrkUsaha(d => d.assignmentUsahaBreakdown);
       // Target resmi (Rekap_Prelist_SE2026) — dipakai sbg PENYEBUT yang
       // DITAMPILKAN, jadi WAJIB ikut di-scope sama seperti field lain di atas
       const targetKelTotal   = dd.reduce((a,d) => a + (d.targetKeluargaTotal || 0), 0);
@@ -1911,10 +1934,12 @@ export function EvaluasiPage() {
                prelistKeluargaTotal: kelTotal, prelistKeluargaSelesai: kelPrelistSelesai,
                prelistUsahaTotal: usahaPrTotal, prelistUsahaSelesai: usahaPrelistSelesai,
                targetKeluargaTotal: targetKelTotal, targetUsahaTotal: targetUsahaTotal,
-               // "assignmentKeluarga/UsahaSelesai" = metrik RESMI yg ditampilkan
-               // (prelist selesai + assignment tambahan selesai), penyebut dari targetKeluarga/UsahaTotal
-               assignmentKeluargaSelesai: kelPrelistSelesai + kelAddSelesai,
-               assignmentUsahaSelesai: usahaPrelistSelesai + usahaAddSelesai,
+               // "assignmentKeluarga/UsahaSelesai" = metrik RESMI yg ditampilkan,
+               // dijumlah LANGSUNG dari nilai per-desa (sudah benar dari backend)
+               assignmentKeluargaSelesai: assignmentKelSelesaiScoped,
+               assignmentUsahaSelesai: assignmentUsahaSelesaiScoped,
+               assignmentKeluargaBreakdown: kelBreakdownScoped,
+               assignmentUsahaBreakdown: usahaBreakdownScoped,
                // deltaProgress TIDAK bisa di-scope per kecamatan/desa (dailySeries tidak
                // ada breakdown per-desa) — null-kan drpd nampilin angka global yg menyesatkan
                deltaProgress: null,
