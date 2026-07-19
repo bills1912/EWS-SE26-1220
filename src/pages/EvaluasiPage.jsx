@@ -2157,6 +2157,7 @@ export function EvaluasiPage() {
     if (sortBy==='prelistKeluargaSelesai') return d*((b.assignmentKeluargaSelesai??0)-(a.assignmentKeluargaSelesai??0));
     if (sortBy==='prelistUsahaSelesai') return d*((b.assignmentUsahaSelesai??0)-(a.assignmentUsahaSelesai??0));
     if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
+    if (sortBy==='progressPrelistAwalPct') return d*((b.progressPrelistAwalPct??0)-(a.progressPrelistAwalPct??0));
     if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
     if (sortBy==='deltaProgress') return d*((b.deltaProgress??0)-(a.deltaProgress??0));
     if (sortBy==='usahaCount') return d*((b.usahaAssignmentCount??0)-(a.usahaAssignmentCount??0));
