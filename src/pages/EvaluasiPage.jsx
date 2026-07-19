@@ -47,6 +47,7 @@ const ALL_COLS_PENCACAH = [
   { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
   { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
+  { key:'progressPrelistAwal', label:'Progress Prelist Awal', always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'deltaProgress', label:'Delta Progress', always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
@@ -68,6 +69,7 @@ const ALL_COLS_PENGAWAS = [
   { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
   { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
   { key:'progress',  label:'Progress',   always: false },
+  { key:'progressPrelistAwal', label:'Progress Prelist Awal', always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
   { key:'deltaProgress', label:'Delta Progress', always: false },
   { key:'usahaCount', label:'Assignment Usaha Ditemukan', always: false },
@@ -556,6 +558,14 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           </div>
         </td>
         )}
+        {visibleCols.has('progressPrelistAwal') && (
+        <td style={{ padding:'9px 8px',minWidth:100 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+            <div style={{ flex:1 }}><ProgressBar pct={p.progressPrelistAwalPct ?? 0} color="#14b8a6" height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:'#14b8a6',fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressPrelistAwalPct ?? 0)}%</span>
+          </div>
+        </td>
+        )}
         {visibleCols.has('avgPerDay') && (
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:10,color:'var(--orange3)',textAlign:'right' }}>
           {p.avgPerDay?.total != null ? p.avgPerDay.total : '—'}
@@ -756,6 +766,14 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
             <div style={{ flex:1 }}><ProgressBar pct={p.progressScore ?? p.pctApproved ?? 0} color={fc} height={4}/></div>
             <span style={{ fontSize:9,fontFamily:'var(--mono)',color:fc,fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressScore ?? p.pctApproved ?? 0)}%</span>
+          </div>
+        </td>
+        )}
+        {visibleCols.has('progressPrelistAwal') && (
+        <td style={{ padding:'9px 8px',minWidth:100 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+            <div style={{ flex:1 }}><ProgressBar pct={p.progressPrelistAwalPct ?? 0} color="#14b8a6" height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:'#14b8a6',fontWeight:600,width:32,textAlign:'right',flexShrink:0 }}>{(p.progressPrelistAwalPct ?? 0)}%</span>
           </div>
         </td>
         )}
@@ -1035,6 +1053,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
         { key:'usahaMaxDesa', h:'Desa Usaha Max', w:26, key_: p => p.usahaMaxDesa||'—' },
         // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
+        { key:'progressPrelistAwal', h:'Target Prelist', w:15, key_: p => p.targetPrelistAwal||0, align:'right', color: [20,184,166] },
+        { key:'progressPrelistAwal', h:'Realisasi Prelist', w:15, key_: p => p.progressPrelistAwalSelesai||0, align:'right', color: [20,184,166] },
+        { key:'progressPrelistAwal', h:'% Prelist Awal', w:12, key_: p => (p.progressPrelistAwalPct||0)+'%', align:'right', color: [20,184,166] },
         { key:'avgPerDay', h:'Avg/Hari', w:20, key_: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ]
     : [
@@ -1062,6 +1083,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
         { key:'usahaMaxDesa', h:'Desa Usaha Max', w:24, key_: p => p.usahaMaxDesa||'—' },
         // Kolom Progress dihapus dari export (tidak ditampilkan ke petugas)
+        { key:'progressPrelistAwal', h:'Target Prelist', w:13, key_: p => p.targetPrelistAwal||0, align:'right', color: [20,184,166] },
+        { key:'progressPrelistAwal', h:'Realisasi Prelist', w:13, key_: p => p.progressPrelistAwalSelesai||0, align:'right', color: [20,184,166] },
+        { key:'progressPrelistAwal', h:'% Prelist Awal', w:11, key_: p => (p.progressPrelistAwalPct||0)+'%', align:'right', color: [20,184,166] },
         { key:'avgPerDay', h:'Avg/Hari', w:18, key_: p => p.avgPerDay?.total??'—',     align:'right', color: ORANGE },
       ];
   // "no" dan "nama" selalu ikut; sisanya cuma yang dipilih user di modal
@@ -1285,6 +1309,11 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
         const avg = p.avgPerDay || {};
         return ((avg.approved||0)+(avg.submitted||0)+(avg.rejected||0)+(avg.draft||0)).toFixed(2);
       } },
+    // "Progress Prelist Awal" — target TETAP (statis), beda dari Progress lama
+    // (progressScore, relatif antar-peer, sengaja dikecualikan dari export)
+    { key:'progressPrelistAwal', label:'Target Prelist Awal', get:p=>p.targetPrelistAwal||0 },
+    { key:'progressPrelistAwal', label:'Realisasi Prelist Awal', get:p=>p.progressPrelistAwalSelesai||0 },
+    { key:'progressPrelistAwal', label:'% Prelist Awal', get:p=>p.progressPrelistAwalPct||0 },
     // KOLOM PROGRESS — dikecualikan dari export (tidak ditampilkan ke petugas)
     // KOLOM PERF SCORE + GRADE — uncomment jika diperlukan
   ].filter(c => on(c.key));
@@ -2428,6 +2457,7 @@ export function EvaluasiPage() {
               <span><strong style={{ color:'var(--orange3)' }}>Total Pekerjaan Dikerjakan</strong> = submit+approved+reject (assignment yang sudah disentuh, bukan sekadar Open)</span>
               <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Pendataan Keluarga*</strong> = realisasi (Export Progres Pemutakhiran Keluarga, sheet KELUARGA, sum Ditemukan+Keluarga Baru+Meninggal+Tidak Eligible+Tidak Dapat Ditemui Sampai Akhir Pendataan+Tidak Ditemukan) / target (kolom "Prelist Awal", sheet &amp; file yang sama) — per sub-SLS</span>
               <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Pendataan Usaha*</strong> = realisasi (Export Progres Pendataan, sheet USAHA PERUSAHAAN, sum Ditemukan+Tutup+Ganda+Tidak Ditemukan+Baru) / target (kolom "Jumlah Prelist Usaha", sheet &amp; file yang sama) — per sub-SLS</span>
+              <span><strong style={{ color:'#14b8a6' }}>Progress Prelist Awal**</strong> = realisasi / target (kolom "Target (Prelist Awal)", file Daftar Rekap SubSLS, gabungan Keluarga+Usaha, TETAP tidak berubah selama fieldwork). Realisasi Pencacah = submit+approved+reject+completed admin+rejected admin+revoked admin+edited admin. Realisasi Pengawas = sama tanpa submit.</span>
               <span><strong style={{ color:'#fbbf24' }}>Delta Progress</strong> = (approved+submit+reject+draft) hari snapshot − hari sebelumnya. Berdasarkan tanggal TERAKHIR record disentuh (bukan jaminan event submit/approve terjadi persis di hari itu — lihat catatan). Kosong (—) saat filter kecamatan/desa aktif krn tidak bisa di-scope per desa. Hari snapshot bisa tampak rendah/negatif kalau data ditarik sebelum hari berakhir (belum penuh 1 hari).</span>
               <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
               <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
@@ -2457,6 +2487,7 @@ export function EvaluasiPage() {
                 {visibleCols.has('prelistKeluarga') && <H label="Penyelesaian Pendataan Keluarga*" col="prelistKeluargaSelesai" right/>}
                 {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Pendataan Usaha*" col="prelistUsahaSelesai" right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
+                {visibleCols.has('progressPrelistAwal') && <H label="Progress Prelist Awal**" col="progressPrelistAwalPct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
                 {visibleCols.has('deltaProgress')&& <H label="Delta Progress" col="deltaProgress" right/>}
                 {visibleCols.has('usahaCount')&& <H label="Assignment Usaha Ditemukan" col="usahaCount" right/>}
@@ -2583,6 +2614,11 @@ export function EvaluasiPage() {
         {summary?.realisasiUpdatedAt && (
           <div style={{ marginTop:4,fontSize:9,color:'var(--text4)',fontStyle:'italic' }}>
             * Data Penyelesaian Pendataan Keluarga/Usaha diperbarui: {summary.realisasiUpdatedAt}
+          </div>
+        )}
+        {summary?.targetPrelistAwal != null && (
+          <div style={{ marginTop:2,fontSize:9,color:'var(--text4)',fontStyle:'italic' }}>
+            ** Target Prelist Awal bersifat TETAP (tidak berubah selama fieldwork berjalan), diambil sekali dari file Daftar Rekap SubSLS
           </div>
         )}
       </>}
