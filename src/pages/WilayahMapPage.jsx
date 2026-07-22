@@ -23,6 +23,7 @@ import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
 import PetugasFilter from '../components/PetugasFilter.jsx';
+import SubSlsFilter from '../components/SubSlsFilter.jsx';
 
 const TOKEN_KEY = 'ews_token';
 
@@ -336,6 +337,7 @@ export function WilayahMapPage() {
   const [selectedDesa, setSelectedDesa] = useState(''); // '' = semua desa, konvensi sama dgn DesaFilter
   const [selectedPencacah, setSelectedPencacah] = useState(''); // '' = semua pencacah
   const [selectedPengawas, setSelectedPengawas] = useState(''); // '' = semua pengawas
+  const [selectedSubSls, setSelectedSubSls] = useState([]); // [] = semua sub-SLS, ARRAY krn multi-select
   const [selectedFeature, setSelectedFeature] = useState(null);
   const geoLayerRef = useRef(null);
   const mapRef = useRef(null);
@@ -351,7 +353,7 @@ export function WilayahMapPage() {
 
   useEffect(() => { fetchGeo(); /* eslint-disable-next-line */ }, [selectedKec]);
   // Reset semua filter turunan tiap kali kecamatan (global) berganti — daftar2nya ikut berubah
-  useEffect(() => { setSelectedDesa(''); setSelectedPencacah(''); setSelectedPengawas(''); }, [selectedKec]);
+  useEffect(() => { setSelectedDesa(''); setSelectedPencacah(''); setSelectedPengawas(''); setSelectedSubSls([]); }, [selectedKec]);
 
   // Daftar desa/pencacah/pengawas unik dari data yang sudah ke-fetch (tidak
   // perlu request baru ke server tiap ganti filter — semua turunan client-side)
@@ -373,21 +375,44 @@ export function WilayahMapPage() {
       .sort((a, b) => a.localeCompare(b, 'id'));
   }, [geoData]);
 
+  // Daftar sub-SLS utk SubSlsFilter — 1 entri per feature (idsubsls = join
+  // key unik). `primary` = label nama yg ditampilkan (desa · SLS · Sub NN),
+  // `searchText` gabungan semua field yg boleh dicari (nama + kode), biar
+  // filter bisa nemu baik dari nama maupun dari kode idsubsls-nya.
+  const subSlsList = useMemo(() => {
+    if (!geoData) return [];
+    return geoData.features
+      .map(f => {
+        const p = f.properties;
+        const subSuffix = (p.idsubsls || '').slice(-2);
+        const primary = `${p.desa || '—'} · SLS ${p.sls || '—'} · Sub ${subSuffix}`;
+        return {
+          idsubsls: p.idsubsls,
+          primary,
+          searchText: `${primary} ${p.idsubsls} ${p.kecamatan || ''}`.toLowerCase(),
+        };
+      })
+      .sort((a, b) => a.primary.localeCompare(b.primary, 'id'));
+  }, [geoData]);
+
   // Data yang benar-benar dirender di peta + dipakai hitung kartu ringkasan —
-  // hasil filter desa/pencacah/pengawas (client-side, semua AND) di atas geoData
-  // yang sudah difilter kecamatan (server-side)
+  // hasil filter desa/pencacah/pengawas/sub-SLS (client-side, semua AND) di
+  // atas geoData yang sudah difilter kecamatan (server-side). selectedSubSls
+  // array kosong = tidak membatasi apa2 (sama spt filter lain, '' = semua).
   const displayData = useMemo(() => {
     if (!geoData) return null;
-    if (!selectedDesa && !selectedPencacah && !selectedPengawas) return geoData;
+    if (!selectedDesa && !selectedPencacah && !selectedPengawas && selectedSubSls.length === 0) return geoData;
+    const subSlsSet = selectedSubSls.length > 0 ? new Set(selectedSubSls) : null;
     return {
       ...geoData,
       features: geoData.features.filter(f =>
         (!selectedDesa     || f.properties.desa         === selectedDesa) &&
         (!selectedPencacah || f.properties.pencacahNama  === selectedPencacah) &&
-        (!selectedPengawas || f.properties.pengawasNama  === selectedPengawas)
+        (!selectedPengawas || f.properties.pengawasNama  === selectedPengawas) &&
+        (!subSlsSet         || subSlsSet.has(f.properties.idsubsls))
       ),
     };
-  }, [geoData, selectedDesa, selectedPencacah, selectedPengawas]);
+  }, [geoData, selectedDesa, selectedPencacah, selectedPengawas, selectedSubSls]);
 
   const maxTotal = useMemo(() => {
     if (!displayData) return 1;
@@ -541,7 +566,7 @@ export function WilayahMapPage() {
         </div>
       )}
 
-      {/* Filter Desa/Pencacah/Pengawas — komponen shared/serupa DesaFilter */}
+      {/* Filter Desa/Pencacah/Pengawas/Sub-SLS — komponen shared/serupa DesaFilter */}
       <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
         <span style={{ fontSize:10.5, color:'var(--text4)', fontWeight:600 }}>Filter:</span>
         <DesaFilter
@@ -565,6 +590,13 @@ export function WilayahMapPage() {
           disabled={loading}
           label="Pengawas"
           icon={ShieldCheck}
+        />
+        <div style={{ width:1, height:20, background:'var(--border2)' }}/>
+        <SubSlsFilter
+          value={selectedSubSls}
+          onChange={setSelectedSubSls}
+          list={subSlsList}
+          disabled={loading}
         />
         {selectedKec === 'all' && (desaList.length > 0 || pencacahList.length > 0) && (
           <span style={{ fontSize:9.5, color:'var(--text4)', fontStyle:'italic' }}>
@@ -664,7 +696,7 @@ export function WilayahMapPage() {
               attribution='&copy; Google'
             />
             <LeafletGeoJSON
-              key={`${selectedKec}-${selectedDesa}-${selectedPencacah}-${selectedPengawas}-${colorMode}-${viewMode}-${prelistType}` /* recreate layer TOTAL saat filter (kec/desa/pencacah/pengawas) ATAU mode warna/tab/jenis prelist berubah — react-leaflet TIDAK otomatis re-render geometri hanya krn prop `data` berubah, harus lewat key. Ini juga sekalian cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
+              key={`${selectedKec}-${selectedDesa}-${selectedPencacah}-${selectedPengawas}-${selectedSubSls.join(',')}-${colorMode}-${viewMode}-${prelistType}` /* recreate layer TOTAL saat filter (kec/desa/pencacah/pengawas/subSls) ATAU mode warna/tab/jenis prelist berubah — react-leaflet TIDAK otomatis re-render geometri hanya krn prop `data` berubah, harus lewat key. Ini juga sekalian cegah Leaflet resetStyle() balik ke fungsi warna lama yg ke-cache */}
               ref={geoLayerRef}
               data={displayData}
               style={styleFeature}
