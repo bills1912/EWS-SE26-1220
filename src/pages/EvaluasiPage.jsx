@@ -11,6 +11,7 @@ import {
   BarChart2, MapPin, Search, ChevronDown, ChevronUp, ChevronRight,
   Shield, ChevronLeft, FileText, Printer, Download, AlertCircle,
   Star, Inbox, Columns, X, Percent, Building2,
+  User, Home, LayoutGrid, AlertTriangle, ClipboardList,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -919,6 +920,154 @@ function expandForBreakdown(filtered, isPengawas) {
     });
   });
   return rows;
+}
+
+// ── Expand data petugas jadi 1-baris-per-sub-SLS (mode granularitas tabel) ──
+// Analog expandForBreakdown, tapi baca p.perSubSls (1 entri = 1 sub-SLS asli,
+// dari convert_assignment.py::per_subsls_list — BUKAN jumlahSubSls/desa lagi).
+function expandForSubSls(filtered, isPengawas) {
+  const rows = [];
+  filtered.forEach(p => {
+    const subList = p.perSubSls && p.perSubSls.length ? p.perSubSls : [];
+    subList.forEach(s => {
+      rows.push({
+        ...p,
+        ...s, // overwrite total/approved/submit/dst + target/realisasi dgn versi ter-scope sub-SLS ini
+        kecamatan: s.kecamatan || p.kecamatan,
+      });
+    });
+  });
+  return rows;
+}
+
+// ── Baris tabel utama saat granularity === 'subsls' ─────────────────────────
+// 1 baris = 1 petugas x 1 sub-SLS individual (bukan gabungan spt mode desa).
+function SubSlsRow({ d, rank, isPengawas }) {
+  const [open, setOpen] = useState(false);
+  const pct = d.targetPrelistAwal > 0 ? Math.round((d.progressPrelistAwalSelesai||0) / d.targetPrelistAwal * 100) : 0;
+  const c = pct>=80?'#10b981':pct>=40?'#f59e0b':'#f43f5e';
+  return (
+    <>
+      <tr onClick={()=>setOpen(v=>!v)}
+        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
+        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
+        <td style={{ padding:'9px 8px' }}>
+          <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{d.namaSls||'—'}</span>
+          <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>{d.idsubsls||'—'}</div>
+        </td>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{d.desa||'—'}</td>
+        <td style={{ padding:'9px 8px' }}>
+          <span style={{ fontSize:11,fontWeight:600,color:'var(--text2)' }}>{d.nama||'—'}</span>
+          <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>{d.email}</div>
+        </td>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{d.kecamatan||'—'}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{d.total||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:d.submit>0?600:400 }}>{d.submit||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right',fontWeight:600 }}>{d.approved||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{d.reject||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:d.draft>0?600:400 }}>{d.draft||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{d.open||0}</td>
+        <td style={{ padding:'9px 8px',minWidth:120 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+            <div style={{ flex:1 }}><ProgressBar pct={pct} color={c} height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:c,fontWeight:600,width:78,textAlign:'right',flexShrink:0 }}>
+              {d.progressPrelistAwalSelesai||0}/{d.targetPrelistAwal||0} ({pct}%)
+            </span>
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr style={{ borderBottom:'1px solid var(--border)' }}>
+          <td colSpan={12} style={{ padding:'10px 10px 14px 40px',background:'rgba(20,184,166,0.03)' }}>
+            <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
+              <div style={{ flex:'1 1 320px' }}>
+                <BreakdownDetail title="Penyelesaian Pendataan Keluarga" breakdown={d.assignmentKeluargaBreakdown}
+                  labels={KELUARGA_BRK_LABELS} color="#38bdf8"/>
+              </div>
+              <div style={{ flex:'1 1 320px' }}>
+                <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={d.assignmentUsahaBreakdown}
+                  labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+              </div>
+            </div>
+            {!isPengawas && d.pengawas?.nama && (
+              <div style={{ marginTop:10,fontSize:9,color:'var(--text4)' }}>
+                Pengawas: <span style={{ color:'var(--text2)',fontWeight:600 }}>{d.pengawas.nama}</span>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ── Baris tabel utama saat granularity === 'desa' ───────────────────────────
+// 1 baris = 1 petugas x 1 desa (sumber: expandForBreakdown, data ASLI dari
+// p.perDesa — sama persis dengan yang dipakai fitur export breakdown,
+// sekarang ditampilkan live di tabel utama juga).
+function DesaRow({ d, rank, isPengawas }) {
+  const [open, setOpen] = useState(false);
+  const pct = d.targetPrelistAwal > 0 ? Math.round((d.progressPrelistAwalSelesai||0) / d.targetPrelistAwal * 100) : 0;
+  const c = pct>=80?'#10b981':pct>=40?'#f59e0b':'#f43f5e';
+  return (
+    <>
+      <tr onClick={()=>setOpen(v=>!v)}
+        style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
+        onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
+        <td style={{ padding:'9px 8px' }}>
+          <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{d.desa||'—'}</span>
+          <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>
+            {d.kodeKecamatan||'—'}{d.kodeDesa?`.${d.kodeDesa}`:''}
+          </div>
+        </td>
+        <td style={{ padding:'9px 8px' }}>
+          <span style={{ fontSize:11,fontWeight:600,color:'var(--text2)' }}>{d.nama||'—'}</span>
+          <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>{d.email}</div>
+        </td>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',whiteSpace:'nowrap' }}>{d.kecamatan||'—'}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text3)',textAlign:'right' }}>{d.jumlahSubSls||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text2)',textAlign:'right' }}>{d.total||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f59e0b',textAlign:'right',fontWeight:d.submit>0?600:400 }}>{d.submit||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#10b981',textAlign:'right',fontWeight:600 }}>{d.approved||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{d.reject||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:d.draft>0?600:400 }}>{d.draft||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{d.open||0}</td>
+        <td style={{ padding:'9px 8px',minWidth:120 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+            <div style={{ flex:1 }}><ProgressBar pct={pct} color={c} height={4}/></div>
+            <span style={{ fontSize:9,fontFamily:'var(--mono)',color:c,fontWeight:600,width:78,textAlign:'right',flexShrink:0 }}>
+              {d.progressPrelistAwalSelesai||0}/{d.targetPrelistAwal||0} ({pct}%)
+            </span>
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr style={{ borderBottom:'1px solid var(--border)' }}>
+          <td colSpan={12} style={{ padding:'10px 10px 14px 40px',background:'rgba(20,184,166,0.03)' }}>
+            <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
+              <div style={{ flex:'1 1 320px' }}>
+                <BreakdownDetail title="Penyelesaian Pendataan Keluarga" breakdown={d.assignmentKeluargaBreakdown}
+                  labels={KELUARGA_BRK_LABELS} color="#38bdf8"/>
+              </div>
+              <div style={{ flex:'1 1 320px' }}>
+                <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={d.assignmentUsahaBreakdown}
+                  labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+              </div>
+            </div>
+            {!isPengawas && d.pengawas?.nama && (
+              <div style={{ marginTop:10,fontSize:9,color:'var(--text4)' }}>
+                Pengawas: <span style={{ color:'var(--text2)',fontWeight:600 }}>{d.pengawas.nama}</span>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 async function generatePDF({ activeTab, filtered, summary, effectiveSummary, selectedCols, breakdownMode=false }) {
@@ -1881,6 +2030,7 @@ export function EvaluasiPage() {
     return hash === 'pengawas' ? 'pengawas' : 'pencacah';
   };
   const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [granularity, setGranularity] = useState('petugas'); // 'petugas' | 'desa' | 'subsls' — mode tampilan TABEL utama
   const [sortBy,    setSortBy]    = useState('perfScore');
   const [sortDir,   setSortDir]   = useState('desc');
   const [page,      setPage]      = useState(1);
@@ -1902,7 +2052,15 @@ export function EvaluasiPage() {
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); }, [activeTab, selectedKec]);
+  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); setGranularity('petugas'); }, [activeTab, selectedKec]);
+
+  // Reset sort ke default yg masuk akal tiap ganti granularitas tabel + balik ke halaman 1
+  useEffect(() => {
+    setPage(1);
+    if (granularity === 'desa') { setSortBy('desa'); setSortDir('asc'); }
+    else if (granularity === 'subsls') { setSortBy('namaSls'); setSortDir('asc'); }
+    else if (granularity === 'petugas') { setSortBy('perfScore'); setSortDir('desc'); }
+  }, [granularity]);
 
   useEffect(() => {
     if (!data) return;
@@ -2178,6 +2336,65 @@ export function EvaluasiPage() {
     return 0;
   });
 
+  // ── Mode "Per Desa": 1 baris = 1 petugas x 1 desa ──────────────────────
+  // Reuse expandForBreakdown yg sebelumnya cuma dipakai export PDF/Excel —
+  // datanya ASLI dari p.perDesa (bukan estimasi), skrg ditampilkan live di
+  // tabel utama juga lewat toggle granularitas.
+  let desaRows = [];
+  if (granularity === 'desa' && activeTab !== 'inaktif') {
+    desaRows = expandForBreakdown(filtered, isPengawas);
+    desaRows.sort((a,b) => {
+      const d = sortDir==='desc'?-1:1;
+      if (sortBy==='desa')      return d*(a.desa||'').localeCompare(b.desa||'', 'id');
+      if (sortBy==='kecamatan') return d*(a.kecamatan||'').localeCompare(b.kecamatan||'', 'id');
+      if (sortBy==='nama')      return d*(a.nama||'').localeCompare(b.nama||'', 'id');
+      if (sortBy==='total')     return d*((b.total||0)-(a.total||0));
+      if (sortBy==='approved')  return d*((b.approved||0)-(a.approved||0));
+      if (sortBy==='submit')    return d*((b.submit||0)-(a.submit||0));
+      if (sortBy==='reject')    return d*((b.reject||0)-(a.reject||0));
+      if (sortBy==='draft')     return d*((b.draft||0)-(a.draft||0));
+      if (sortBy==='open')      return d*((b.open||0)-(a.open||0));
+      if (sortBy==='jumlahSubSls') return d*((b.jumlahSubSls||0)-(a.jumlahSubSls||0));
+      if (sortBy==='progressPrelistAwalPct') {
+        const pa = a.targetPrelistAwal>0 ? (a.progressPrelistAwalSelesai||0)/a.targetPrelistAwal : 0;
+        const pb = b.targetPrelistAwal>0 ? (b.progressPrelistAwalSelesai||0)/b.targetPrelistAwal : 0;
+        return d*(pb-pa);
+      }
+      return (a.desa||'').localeCompare(b.desa||'', 'id');
+    });
+  }
+
+  // ── Mode "Per Sub-SLS": 1 baris = 1 petugas x 1 sub-SLS individual ──────
+  // Butuh field p.perSubSls dari backend (convert_assignment.py::per_subsls_list).
+  // Kalau backend/API belum diupdate utk kirim field ini, subSlsRows akan
+  // kosong utk semua petugas — ditangani lewat empty-state di tabel, BUKAN
+  // di-approx/dibagi rata.
+  let subSlsRows = [];
+  if (granularity === 'subsls' && activeTab !== 'inaktif') {
+    subSlsRows = expandForSubSls(filtered, isPengawas);
+    subSlsRows.sort((a,b) => {
+      const d = sortDir==='desc'?-1:1;
+      if (sortBy==='namaSls')   return d*(a.namaSls||'').localeCompare(b.namaSls||'', 'id');
+      if (sortBy==='desa')      return d*(a.desa||'').localeCompare(b.desa||'', 'id');
+      if (sortBy==='kecamatan') return d*(a.kecamatan||'').localeCompare(b.kecamatan||'', 'id');
+      if (sortBy==='nama')      return d*(a.nama||'').localeCompare(b.nama||'', 'id');
+      if (sortBy==='total')     return d*((b.total||0)-(a.total||0));
+      if (sortBy==='approved')  return d*((b.approved||0)-(a.approved||0));
+      if (sortBy==='submit')    return d*((b.submit||0)-(a.submit||0));
+      if (sortBy==='reject')    return d*((b.reject||0)-(a.reject||0));
+      if (sortBy==='draft')     return d*((b.draft||0)-(a.draft||0));
+      if (sortBy==='open')      return d*((b.open||0)-(a.open||0));
+      if (sortBy==='progressPrelistAwalPct') {
+        const pa = a.targetPrelistAwal>0 ? (a.progressPrelistAwalSelesai||0)/a.targetPrelistAwal : 0;
+        const pb = b.targetPrelistAwal>0 ? (b.progressPrelistAwalSelesai||0)/b.targetPrelistAwal : 0;
+        return d*(pb-pa);
+      }
+      return (a.namaSls||'').localeCompare(b.namaSls||'', 'id');
+    });
+  }
+
+  const activeRows = granularity==='desa' ? desaRows : granularity==='subsls' ? subSlsRows : filtered;
+
   // ── Top 3 & Bottom 3 avgPerDay — dari seluruh filtered, otomatis update ─
   const _byAvg      = [...filtered]
     .filter(p => p.avgPerDay?.total != null)
@@ -2187,8 +2404,8 @@ export function EvaluasiPage() {
     _byAvg.length > 3 ? _byAvg.slice(-3).map(p => p.email) : []
   );
 
-  const totalPages = Math.ceil(filtered.length/PAGE_SIZE);
-  const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  const totalPages = Math.ceil(activeRows.length/PAGE_SIZE);
+  const paginated  = activeRows.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
   const toggleSort = col => {
     if (sortBy===col) setSortDir(d=>d==='desc'?'asc':'desc');
@@ -2314,26 +2531,54 @@ export function EvaluasiPage() {
         {/* ── Baris atas: Tab + Filter/Export ─────────────────────────────── */}
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',
                       marginBottom:14,flexWrap:'wrap',gap:8 }}>
-          {/* Tab buttons */}
-          <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',
-                        borderRadius:9,padding:3,gap:2 }}>
-            {[
-              { key:'pencacah', label:`📋 Pencacah (${countPcl})`, color:'var(--orange3)' },
-              { key:'pengawas', label:`🛡 Pengawas (${countPws})`,  color:'var(--blue3)'  },
-              { key:'inaktif',  label:'⚠ Tidak Aktif',              color:'#f43f5e'       },
-            ].map(t => (
-              <button key={t.key}
-                onClick={() => { setActiveTab(t.key); window.location.hash = t.key; }}
-                style={{ padding:'6px 16px',fontSize:12,
-                         fontWeight:activeTab===t.key?600:400,
-                         borderRadius:7,border:'none',cursor:'pointer',
-                         background:activeTab===t.key?'var(--bg5)':'transparent',
-                         color:activeTab===t.key?t.color
-                              :t.key==='inaktif'?'#f43f5e':'var(--text3)',
-                         transition:'all .15s' }}>
-                {t.label}
-              </button>
-            ))}
+          {/* Tab buttons + toggle granularitas tabel */}
+          <div style={{ display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
+            <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',
+                          borderRadius:9,padding:3,gap:2 }}>
+              {[
+                { key:'pencacah', label:`Pencacah (${countPcl})`, color:'var(--orange3)', icon:ClipboardList },
+                { key:'pengawas', label:`Pengawas (${countPws})`,  color:'var(--blue3)',  icon:Shield },
+                { key:'inaktif',  label:'Tidak Aktif',              color:'#f43f5e',       icon:AlertTriangle },
+              ].map(t => (
+                <button key={t.key}
+                  onClick={() => { setActiveTab(t.key); window.location.hash = t.key; }}
+                  style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 16px',fontSize:12,
+                           fontWeight:activeTab===t.key?600:400,
+                           borderRadius:7,border:'none',cursor:'pointer',
+                           background:activeTab===t.key?'var(--bg5)':'transparent',
+                           color:activeTab===t.key?t.color
+                                :t.key==='inaktif'?'#f43f5e':'var(--text3)',
+                           transition:'all .15s' }}>
+                  <t.icon size={13} strokeWidth={2.25}/>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Toggle granularitas tabel — ganti SELURUH tabel jadi per petugas / per desa / per sub-SLS */}
+            {activeTab !== 'inaktif' && (
+              <div style={{ display:'flex',background:'var(--bg3)',border:'1px solid var(--border)',
+                            borderRadius:9,padding:3,gap:2 }}
+                title="Ganti granularitas tabel">
+                {[
+                  { key:'petugas', label:'Per Petugas',  icon:User },
+                  { key:'desa',    label:'Per Desa',     icon:Home },
+                  { key:'subsls',  label:'Per Sub-SLS',  icon:LayoutGrid },
+                ].map(g => (
+                  <button key={g.key}
+                    onClick={() => setGranularity(g.key)}
+                    style={{ display:'flex',alignItems:'center',gap:6,padding:'6px 12px',fontSize:11,
+                             fontWeight:granularity===g.key?600:400,
+                             borderRadius:7,border:'none',cursor:'pointer',
+                             background:granularity===g.key?'var(--bg5)':'transparent',
+                             color:granularity===g.key?'#14b8a6':'var(--text3)',
+                             transition:'all .15s' }}>
+                    <g.icon size={12} strokeWidth={2.25}/>
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Filter + Export (hanya tab pencacah/pengawas) */}
@@ -2428,6 +2673,7 @@ export function EvaluasiPage() {
 
         {/* Tabel + Paginator */}
         {activeTab !== 'inaktif' && <>
+
         {/* Keterangan kolom — accordion, collapsed by default biar tidak makan tempat */}
         <div style={{ marginBottom:10 }}>
           <button onClick={() => setShowLegend(v => !v)}
@@ -2464,6 +2710,12 @@ export function EvaluasiPage() {
               <span><strong style={{ color:'#a78bfa' }}>Total Usaha</strong> = total data7 dari assignment yang sama (data7&gt;=1)</span>
               <span><strong style={{ color:'#a78bfa' }}>Usaha Terbanyak</strong> = nilai data7 tertinggi dalam 1 assignment</span>
               <span><strong style={{ color:'var(--text3)' }}>Desa Usaha Terbanyak</strong> = lokasi desa dari assignment tsb</span>
+              {granularity==='desa' && (
+                <span><strong style={{ color:'#14b8a6' }}>Mode Per Desa</strong> = 1 baris = 1 petugas × 1 desa yg jadi wilayah kerjanya. Semua angka (Total/Submit/dst) di-scope ke desa itu saja, bukan total petugas. Klik baris utk lihat detail breakdown Keluarga/Usaha khusus desa itu.</span>
+              )}
+              {granularity==='subsls' && (
+                <span><strong style={{ color:'#14b8a6' }}>Mode Per Sub-SLS</strong> = 1 baris = 1 petugas × 1 sub-SLS individual (bukan gabungan spt mode desa). Semua angka di-scope ke sub-SLS itu saja. Klik baris utk lihat detail breakdown Keluarga/Usaha khusus sub-SLS itu.</span>
+              )}
             </div>
           )}
         </div>
@@ -2472,6 +2724,33 @@ export function EvaluasiPage() {
           <table style={{ width:'100%',borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {granularity === 'desa' ? <>
+                  <H label="#"/>
+                  <H label="Desa" col="desa"/>
+                  <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
+                  <H label="Kecamatan" col="kecamatan"/>
+                  <H label="Sub-SLS" col="jumlahSubSls" right/>
+                  <H label="Total" col="total" right/>
+                  <H label="Submit" col="submit" right/>
+                  <H label="Approved" col="approved" right/>
+                  <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>
+                  <H label="Draft" col="draft" right/>
+                  <H label="Open" col="open" right/>
+                  <H label="Progress Prelist Awal" col="progressPrelistAwalPct"/>
+                </> : granularity === 'subsls' ? <>
+                  <H label="#"/>
+                  <H label="Sub-SLS" col="namaSls"/>
+                  <H label="Desa" col="desa"/>
+                  <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
+                  <H label="Kecamatan" col="kecamatan"/>
+                  <H label="Total" col="total" right/>
+                  <H label="Submit" col="submit" right/>
+                  <H label="Approved" col="approved" right/>
+                  <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>
+                  <H label="Draft" col="draft" right/>
+                  <H label="Open" col="open" right/>
+                  <H label="Progress Prelist Awal" col="progressPrelistAwalPct"/>
+                </> : <>
                 <H label="#"/>
                 <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
                 {visibleCols.has('kecamatan') && <H label="Kecamatan" col="kecamatan"/>}
@@ -2496,24 +2775,40 @@ export function EvaluasiPage() {
                 {visibleCols.has('usahaMax')&& <H label="Usaha Terbanyak" col="usahaMax" right/>}
                 {visibleCols.has('usahaMaxDesa')&& <H label="Desa Usaha Terbanyak" col="usahaMaxDesa"/>}
                 <th style={{ width:24 }}/>
+                </>}
               </tr>
             </thead>
             <tbody>
-              {paginated.length===0
-                ? <tr><td colSpan={22} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
-                : paginated.map((p,i) =>
-                    isPengawas
-                      ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
-                          highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
-                      : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
-                          highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
-                  )
-              }
+              {granularity === 'desa' ? (
+                paginated.length===0
+                  ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada data desa ditemukan</td></tr>
+                  : paginated.map((d,i) =>
+                      <DesaRow key={`${d.email||i}-${d.desa}-${i}`} d={d} rank={(page-1)*PAGE_SIZE+i+1} isPengawas={isPengawas}/>
+                    )
+              ) : granularity === 'subsls' ? (
+                paginated.length===0
+                  ? <tr><td colSpan={12} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>
+                      Belum ada data sub-SLS. Pastikan <code>convert_assignment.py</code> versi terbaru (dgn <code>perSubSls</code>) sudah di-upload ulang.
+                    </td></tr>
+                  : paginated.map((d,i) =>
+                      <SubSlsRow key={`${d.email||i}-${d.idsubsls}-${i}`} d={d} rank={(page-1)*PAGE_SIZE+i+1} isPengawas={isPengawas}/>
+                    )
+              ) : (
+                paginated.length===0
+                  ? <tr><td colSpan={22} style={{ textAlign:'center',padding:'32px',color:'var(--text4)',fontSize:13 }}>Tidak ada petugas ditemukan</td></tr>
+                  : paginated.map((p,i) =>
+                      isPengawas
+                        ? <PengawasRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
+                            highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
+                        : <PencacahRow key={p.email||i} p={p} rank={(page-1)*PAGE_SIZE+i+1} filterKec={selectedKec} filterDesa={filterDesa} visibleCols={visibleCols}
+                            highlight={_top3Emails.has(p.email) ? 'top' : _bot3Emails.has(p.email) ? 'bot' : null}/>
+                    )
+              )}
             </tbody>
           </table>
         </div>
 
-        <Paginator page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onChange={p=>setPage(p)}/>
+        <Paginator page={page} totalPages={totalPages} total={activeRows.length} pageSize={PAGE_SIZE} onChange={p=>setPage(p)}/>
 
         {/* ── Ringkasan per Desa (muncul jika filterDesa dipilih) ──────── */}
         {desaSummary && (
