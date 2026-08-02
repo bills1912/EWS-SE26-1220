@@ -16,6 +16,7 @@ import {
 import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
+import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import { PetugasTimeSeriesChart } from '../components/PetugasTimeSeriesChart.jsx';
 import { useIsMobile, useIsCompact } from '../hooks/useBreakpoint.js';
 
@@ -2102,48 +2103,35 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
           {' '}· status usaha: <strong style={{ color:'#a78bfa' }}>Ditemukan + Baru</strong> saja
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft: isMobile ? 0 : 'auto', flexWrap:'wrap' }}>
-          {viewMode === 'harian' && (
-            <>
-              {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
-                <button key={d} onClick={() => quickRange(d)}
-                  style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
-                           border:'1px solid var(--border)', background:'var(--bg3)',
-                           color:'var(--text3)', cursor:'pointer' }}>
-                  {l}
-                </button>
-              ))}
-              <button onClick={() => setRange({ start: bounds.min || '', end: bounds.max || '' })}
-                style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
-                         border:'1px solid var(--border)', background:'var(--bg3)',
-                         color:'var(--text3)', cursor:'pointer' }}>
-                Semua
-              </button>
-              <input type="date" value={range.start} min={bounds.min || undefined} max={range.end || bounds.max || undefined}
-                onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
-                style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                         border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
-              <span style={{ fontSize:10, color:'var(--text4)' }}>s.d.</span>
-              <input type="date" value={range.end} min={range.start || bounds.min || undefined} max={bounds.max || undefined}
-                onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
-                style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                         border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
-            </>
-          )}
-          {viewMode === 'petugas' && (
-            // "s.d." di tabel per petugas cuma pakai 1 tanggal batas atas (bukan
-            // rentang) — nunjukkin total per petugas PADA tanggal itu + delta
-            // vs tanggal sebelumnya yg beneran ada data. Default: tanggal terbaru.
-            <input type="date" value={range.end} min={bounds.min || undefined} max={bounds.max || undefined}
-              onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
-              style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                       border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
-          )}
+          {/* Sama persis di kedua mode (Ringkasan Harian & Per Petugas) —
+              rentang ini dipakai baik utk series agregat maupun utk scope
+              series per petugas saat baris di-expand */}
+          {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
+            <button key={d} onClick={() => quickRange(d)}
+              style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                       border:'1px solid var(--border)', background:'var(--bg3)',
+                       color:'var(--text3)', cursor:'pointer' }}>
+              {l}
+            </button>
+          ))}
+          <button onClick={() => setRange({ start: bounds.min || '', end: bounds.max || '' })}
+            style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                     border:'1px solid var(--border)', background:'var(--bg3)',
+                     color:'var(--text3)', cursor:'pointer' }}>
+            Semua
+          </button>
+          <CustomDatePicker value={range.start} min={bounds.min} max={range.end || bounds.max} isMobile={isMobile}
+            onChange={v => setRange(r => ({ ...r, start: v }))} placeholder="Dari tanggal"/>
+          <span style={{ fontSize:10, color:'var(--text4)' }}>s.d.</span>
+          <CustomDatePicker value={range.end} min={range.start || bounds.min} max={bounds.max} isMobile={isMobile}
+            onChange={v => setRange(r => ({ ...r, end: v }))} placeholder="Sampai tanggal"/>
         </div>
       </div>
 
       {viewMode === 'petugas' ? (
         <UsahaPetugasTable rows={petugasRows} loading={petugasLoading} error={petugasError}
-          dates={petugasDates} petugasLabel={petugasLabel}/>
+          dates={petugasDates} petugasLabel={petugasLabel} range={range}
+          selectedKec={selectedKec} filterDesa={filterDesa}/>
       ) : loading ? (
         <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>Memuat data...</div>
       ) : error ? (
@@ -2238,7 +2226,7 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
 // dipilih + Delta vs tanggal sebelumnya yg beneran ada data (bukan asumsi
 // H-1 kalender, krn pipeline blm tentu jalan tiap hari). Mirip persis pola
 // tabel "Per Petugas" biasa di Evaluasi (rank, nama, angka rata kanan).
-function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel }) {
+function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel, range, selectedKec, filterDesa }) {
   const [sortBy, setSortBy] = useState('total');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -2274,6 +2262,7 @@ function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel }) {
       <div style={{ fontSize:10, color:'var(--text4)', marginBottom:8 }}>
         Data tanggal <strong style={{ color:'var(--text3)' }}>{dates.latestDate || '—'}</strong>
         {dates.prevDate && <> · delta vs <strong style={{ color:'var(--text3)' }}>{dates.prevDate}</strong></>}
+        {' '}· klik baris utk lihat series {petugasLabel.toLowerCase()} tsb pd rentang tanggal yg dipilih
       </div>
       <div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -2286,32 +2275,128 @@ function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel }) {
               <H label="Usaha Keluarga" col="keluarga" right/>
               <H label="Total" col="total" right/>
               <H label="Delta" col="delta" right/>
+              <th style={{ padding:'8px 8px', width:20 }}/>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r, i) => {
-              const dColor = r.delta == null ? 'var(--text4)' : r.delta > 0 ? '#10b981' : r.delta < 0 ? '#f43f5e' : 'var(--text3)';
-              return (
-                <tr key={r.email} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', fontFamily:'var(--mono)' }}>{i+1}</td>
-                  <td style={{ padding:'9px 8px' }}>
-                    <div style={{ fontSize:11, fontWeight:600, color:'var(--text1)' }}>{r.nama}</div>
-                    <div style={{ fontSize:9, color:'var(--text4)', fontFamily:'var(--mono)' }}>{r.email}</div>
-                  </td>
-                  <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.kecamatan || '—'}</td>
-                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#60a5fa', textAlign:'right' }}>{r.perusahaan.toLocaleString('id')}</td>
-                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#a78bfa', textAlign:'right' }}>{r.keluarga.toLocaleString('id')}</td>
-                  <td style={{ padding:'9px 8px', fontSize:12, fontFamily:'var(--mono)', fontWeight:700, color:'var(--text1)', textAlign:'right' }}>{r.total.toLocaleString('id')}</td>
-                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', fontWeight:600, color:dColor, textAlign:'right' }}>
-                    {r.delta == null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('id')}`}
-                  </td>
-                </tr>
-              );
-            })}
+            {sorted.map((r, i) => (
+              <UsahaPetugasRow key={r.email} r={r} i={i} petugasLabel={petugasLabel}
+                range={range} selectedKec={selectedKec} filterDesa={filterDesa}/>
+            ))}
           </tbody>
         </table>
       </div>
     </>
+  );
+}
+
+// ── 1 baris tabel Per Petugas — klik utk expand & lihat series harian
+// petugas itu SENDIRI (bukan agregat semua petugas), di-scope rentang
+// tanggal yg sama dgn yg dipilih di header. Reuse endpoint yg sama dgn mode
+// "Ringkasan Harian" (/api/evaluasi/usaha-harian), cuma tambah filter
+// pencacah/pengawas=email — fetch cuma sekali per baris (di-cache di state
+// lokal, `series===null` artinya belum pernah expand).
+function UsahaPetugasRow({ r, i, petugasLabel, range, selectedKec, filterDesa }) {
+  const [open, setOpen] = useState(false);
+  const [series, setSeries] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const dColor = r.delta == null ? 'var(--text4)' : r.delta > 0 ? '#10b981' : r.delta < 0 ? '#f43f5e' : 'var(--text3)';
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && series === null && !loading) {
+      setLoading(true);
+      setError(null);
+      const qs = new URLSearchParams();
+      if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
+      if (filterDesa) qs.set('desa', filterDesa);
+      if (range.start) qs.set('start', range.start);
+      if (range.end) qs.set('end', range.end);
+      qs.set(petugasLabel === 'Pengawas' ? 'pengawas' : 'pencacah', r.email);
+      apiFetch(`/api/evaluasi/usaha-harian?${qs.toString()}`)
+        .then(d => { setSeries(d.series || []); setLoading(false); })
+        .catch(e => { setError(e.message); setLoading(false); });
+    }
+  };
+
+  return (
+    <>
+      <tr onClick={toggle}
+        style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background .1s' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', fontFamily:'var(--mono)' }}>{i+1}</td>
+        <td style={{ padding:'9px 8px' }}>
+          <div style={{ fontSize:11, fontWeight:600, color:'var(--text1)' }}>{r.nama}</div>
+          <div style={{ fontSize:9, color:'var(--text4)', fontFamily:'var(--mono)' }}>{r.email}</div>
+        </td>
+        <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.kecamatan || '—'}</td>
+        <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#60a5fa', textAlign:'right' }}>{r.perusahaan.toLocaleString('id')}</td>
+        <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#a78bfa', textAlign:'right' }}>{r.keluarga.toLocaleString('id')}</td>
+        <td style={{ padding:'9px 8px', fontSize:12, fontFamily:'var(--mono)', fontWeight:700, color:'var(--text1)', textAlign:'right' }}>{r.total.toLocaleString('id')}</td>
+        <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', fontWeight:600, color:dColor, textAlign:'right' }}>
+          {r.delta == null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('id')}`}
+        </td>
+        <td style={{ padding:'9px 8px', width:20 }}>
+          {open ? <ChevronUp size={12} color="var(--text4)"/> : <ChevronDown size={12} color="var(--text4)"/>}
+        </td>
+      </tr>
+      {open && (
+        <tr style={{ borderBottom:'1px solid var(--border)' }}>
+          <td colSpan={8} style={{ padding:'10px 10px 14px 40px', background:'rgba(167,139,250,0.04)' }}>
+            {loading ? (
+              <div style={{ fontSize:11, color:'var(--text4)', padding:'8px 0' }}>Memuat series {r.nama}...</div>
+            ) : error ? (
+              <div style={{ fontSize:11, color:'#f87171', padding:'8px 0' }}>Gagal memuat: {error}</div>
+            ) : !series || series.length === 0 ? (
+              <div style={{ fontSize:11, color:'var(--text4)', padding:'8px 0' }}>
+                Belum ada data series utk {r.nama} di rentang tanggal ini.
+              </div>
+            ) : (
+              <UsahaMiniSeries series={series}/>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ── Mini bar chart + ringkasan per-tanggal, dipakai di dalam expand row
+// UsahaPetugasRow (series 1 petugas saja, bukan agregat)
+function UsahaMiniSeries({ series }) {
+  const byDateAsc = [...series].sort((a, b) => a.date < b.date ? -1 : 1);
+  const deltaMap = {};
+  for (let i = 0; i < byDateAsc.length; i++) {
+    const prev = i > 0 ? byDateAsc[i - 1] : null;
+    deltaMap[byDateAsc[i].date] = prev ? byDateAsc[i].total - prev.total : null;
+  }
+  const maxTotal = Math.max(1, ...series.map(r => r.total));
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'flex-end', gap:2, height:44, marginBottom:8 }}>
+        {byDateAsc.map(r => (
+          <div key={r.date} title={`${r.date}: ${r.total.toLocaleString('id')}`}
+            style={{ flex:'1 1 0', minWidth:3, height:`${Math.max(6, (r.total / maxTotal) * 100)}%`,
+                     background:'linear-gradient(180deg,#a78bfa,#7c5cd6)', borderRadius:'2px 2px 0 0' }}/>
+        ))}
+      </div>
+      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+        {[...byDateAsc].reverse().map(r => {
+          const d = deltaMap[r.date];
+          const dColor = d == null ? 'var(--text4)' : d > 0 ? '#10b981' : d < 0 ? '#f43f5e' : 'var(--text3)';
+          return (
+            <div key={r.date} style={{ fontSize:9.5, background:'var(--bg3)', borderRadius:6, padding:'4px 8px', whiteSpace:'nowrap' }}>
+              <span style={{ color:'var(--text4)' }}>{r.date}</span>{' '}
+              <strong style={{ color:'var(--text2)', fontFamily:'var(--mono)' }}>{r.total.toLocaleString('id')}</strong>{' '}
+              <span style={{ color:dColor, fontWeight:600, fontFamily:'var(--mono)' }}>({d == null ? '—' : `${d > 0 ? '+' : ''}${d}`})</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -2362,7 +2447,7 @@ export function EvaluasiPage() {
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); setGranularity('petugas'); setUsahaPetugas(''); }, [activeTab, selectedKec]);
+  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); setGranularity('petugas'); }, [activeTab, selectedKec]);
 
   // Reset sort ke default yg masuk akal tiap ganti granularitas tabel + balik ke halaman 1
   useEffect(() => {
