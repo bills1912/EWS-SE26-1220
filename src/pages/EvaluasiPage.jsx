@@ -2056,7 +2056,7 @@ function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
 // dijalankan (lihat backend) — jadi di hari-hari awal fitur ini dipakai, series
 // masih pendek (wajar, akan terus bertambah panjang seiring waktu).
 function UsahaTrackingView({ series, loading, error, bounds, range, setRange, selectedKec, filterDesa, isMobile,
-                             petugasOptions = [], petugasLabel = 'Petugas', usahaPetugas, setUsahaPetugas }) {
+                             viewMode, setViewMode, petugasRows = [], petugasLoading, petugasError, petugasDates = {}, petugasLabel = 'Petugas' }) {
   // Urutkan terbaru dulu (paling relevan dilihat di atas), delta tetap
   // dihitung terhadap hari SEBELUMNYA secara kronologis (bukan urutan tampil)
   const sorted = [...series].sort((a, b) => a.date < b.date ? 1 : -1);
@@ -2070,7 +2070,6 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
   const latest = byDateAsc[byDateAsc.length - 1] || null;
   const latestDelta = latest ? deltaMap[latest.date] : null;
   const maxTotal = Math.max(1, ...series.map(r => r.total));
-  const petugasNama = usahaPetugas ? (petugasOptions.find(p => p.email === usahaPetugas)?.nama || usahaPetugas) : '';
 
   const quickRange = (days) => {
     if (!bounds.max) return;
@@ -2083,53 +2082,69 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
 
   return (
     <div>
-      {/* Header: konteks scope + selector petugas + date-range picker */}
+      {/* Header: sub-toggle Ringkasan Harian/Per Petugas + scope + date-range picker */}
       <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:14 }}>
-        <div style={{ fontSize:11, color:'var(--text3)' }}>
-          Scope: <strong style={{ color:'var(--text2)' }}>
-            {petugasNama || (filterDesa ? filterDesa : (selectedKec && selectedKec !== 'all') ? selectedKec : 'Seluruh Kabupaten')}
-          </strong>
-          {' '}· status usaha dihitung: <strong style={{ color:'#a78bfa' }}>Ditemukan + Baru</strong> saja
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft: isMobile ? 0 : 'auto', flexWrap:'wrap' }}>
-          {petugasOptions.length > 0 && (
-            <select value={usahaPetugas} onChange={e => setUsahaPetugas(e.target.value)}
-              style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                       border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text2)',
-                       cursor:'pointer', maxWidth: isMobile ? '100%' : 180 }}>
-              <option value="">Semua {petugasLabel}</option>
-              {petugasOptions.map(p => (
-                <option key={p.email} value={p.email}>{p.nama}</option>
-              ))}
-            </select>
-          )}
-          {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
-            <button key={d} onClick={() => quickRange(d)}
-              style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
-                       border:'1px solid var(--border)', background:'var(--bg3)',
-                       color:'var(--text3)', cursor:'pointer' }}>
+        <div style={{ display:'flex', background:'var(--bg3)', border:'1px solid var(--border)',
+                      borderRadius:8, padding:2, gap:2 }}>
+          {[['harian','Ringkasan Harian'],['petugas',`Per ${petugasLabel}`]].map(([k,l]) => (
+            <button key={k} onClick={() => setViewMode(k)}
+              style={{ padding:'5px 11px', fontSize:10.5, fontWeight:viewMode===k?600:400, borderRadius:6,
+                       border:'none', cursor:'pointer', background:viewMode===k?'var(--bg5)':'transparent',
+                       color:viewMode===k?'#a78bfa':'var(--text3)', transition:'all .15s' }}>
               {l}
             </button>
           ))}
-          <button onClick={() => setRange({ start: bounds.min || '', end: bounds.max || '' })}
-            style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
-                     border:'1px solid var(--border)', background:'var(--bg3)',
-                     color:'var(--text3)', cursor:'pointer' }}>
-            Semua
-          </button>
-          <input type="date" value={range.start} min={bounds.min || undefined} max={range.end || bounds.max || undefined}
-            onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
-            style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                     border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
-          <span style={{ fontSize:10, color:'var(--text4)' }}>s.d.</span>
-          <input type="date" value={range.end} min={range.start || bounds.min || undefined} max={bounds.max || undefined}
-            onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
-            style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
-                     border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+        </div>
+        <div style={{ fontSize:11, color:'var(--text3)' }}>
+          Scope: <strong style={{ color:'var(--text2)' }}>
+            {filterDesa ? filterDesa : (selectedKec && selectedKec !== 'all') ? selectedKec : 'Seluruh Kabupaten'}
+          </strong>
+          {' '}· status usaha: <strong style={{ color:'#a78bfa' }}>Ditemukan + Baru</strong> saja
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft: isMobile ? 0 : 'auto', flexWrap:'wrap' }}>
+          {viewMode === 'harian' && (
+            <>
+              {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
+                <button key={d} onClick={() => quickRange(d)}
+                  style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                           border:'1px solid var(--border)', background:'var(--bg3)',
+                           color:'var(--text3)', cursor:'pointer' }}>
+                  {l}
+                </button>
+              ))}
+              <button onClick={() => setRange({ start: bounds.min || '', end: bounds.max || '' })}
+                style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                         border:'1px solid var(--border)', background:'var(--bg3)',
+                         color:'var(--text3)', cursor:'pointer' }}>
+                Semua
+              </button>
+              <input type="date" value={range.start} min={bounds.min || undefined} max={range.end || bounds.max || undefined}
+                onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
+                style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                         border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+              <span style={{ fontSize:10, color:'var(--text4)' }}>s.d.</span>
+              <input type="date" value={range.end} min={range.start || bounds.min || undefined} max={bounds.max || undefined}
+                onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
+                style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                         border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+            </>
+          )}
+          {viewMode === 'petugas' && (
+            // "s.d." di tabel per petugas cuma pakai 1 tanggal batas atas (bukan
+            // rentang) — nunjukkin total per petugas PADA tanggal itu + delta
+            // vs tanggal sebelumnya yg beneran ada data. Default: tanggal terbaru.
+            <input type="date" value={range.end} min={bounds.min || undefined} max={bounds.max || undefined}
+              onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
+              style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                       border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+          )}
         </div>
       </div>
 
-      {loading ? (
+      {viewMode === 'petugas' ? (
+        <UsahaPetugasTable rows={petugasRows} loading={petugasLoading} error={petugasError}
+          dates={petugasDates} petugasLabel={petugasLabel}/>
+      ) : loading ? (
         <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>Memuat data...</div>
       ) : error ? (
         <div style={{ padding:'20px', textAlign:'center', color:'#f87171', fontSize:12 }}>Gagal memuat: {error}</div>
@@ -2218,6 +2233,88 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
   );
 }
 
+// ── Tabel Per Petugas utk mode Tracking Usaha — 1 baris = 1 pencacah/
+// pengawas, kolomnya Total usaha (Ditemukan+Baru) PADA tanggal terakhir yg
+// dipilih + Delta vs tanggal sebelumnya yg beneran ada data (bukan asumsi
+// H-1 kalender, krn pipeline blm tentu jalan tiap hari). Mirip persis pola
+// tabel "Per Petugas" biasa di Evaluasi (rank, nama, angka rata kanan).
+function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel }) {
+  const [sortBy, setSortBy] = useState('total');
+  const [sortDir, setSortDir] = useState('desc');
+
+  if (loading) return <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>Memuat data...</div>;
+  if (error) return <div style={{ padding:'20px', textAlign:'center', color:'#f87171', fontSize:12 }}>Gagal memuat: {error}</div>;
+  if (!rows.length) return (
+    <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>
+      Belum ada data tracking usaha per {petugasLabel.toLowerCase()} utk scope/tanggal ini.
+    </div>
+  );
+
+  const sorted = [...rows].sort((a, b) => {
+    const d = sortDir === 'desc' ? -1 : 1;
+    if (sortBy === 'nama') return d * (a.nama||'').localeCompare(b.nama||'', 'id');
+    const av = a[sortBy] ?? -Infinity, bv = b[sortBy] ?? -Infinity;
+    return d * (bv - av);
+  });
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir(v => v === 'desc' ? 'asc' : 'desc');
+    else { setSortBy(col); setSortDir('desc'); }
+  };
+  const H = ({ label, col, right }) => (
+    <th onClick={() => toggleSort(col)}
+      style={{ padding:'8px 8px', textAlign: right?'right':'left', fontSize:9, fontWeight:700,
+               color: sortBy===col ? '#a78bfa' : 'var(--text4)', textTransform:'uppercase',
+               letterSpacing:'0.07em', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
+      {label}
+    </th>
+  );
+
+  return (
+    <>
+      <div style={{ fontSize:10, color:'var(--text4)', marginBottom:8 }}>
+        Data tanggal <strong style={{ color:'var(--text3)' }}>{dates.latestDate || '—'}</strong>
+        {dates.prevDate && <> · delta vs <strong style={{ color:'var(--text3)' }}>{dates.prevDate}</strong></>}
+      </div>
+      <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom:'1px solid var(--border)' }}>
+              <th style={{ padding:'8px 8px', width:28 }}/>
+              <H label={petugasLabel} col="nama"/>
+              <H label="Kecamatan" col="kecamatan"/>
+              <H label="Usaha Perusahaan" col="perusahaan" right/>
+              <H label="Usaha Keluarga" col="keluarga" right/>
+              <H label="Total" col="total" right/>
+              <H label="Delta" col="delta" right/>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r, i) => {
+              const dColor = r.delta == null ? 'var(--text4)' : r.delta > 0 ? '#10b981' : r.delta < 0 ? '#f43f5e' : 'var(--text3)';
+              return (
+                <tr key={r.email} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', fontFamily:'var(--mono)' }}>{i+1}</td>
+                  <td style={{ padding:'9px 8px' }}>
+                    <div style={{ fontSize:11, fontWeight:600, color:'var(--text1)' }}>{r.nama}</div>
+                    <div style={{ fontSize:9, color:'var(--text4)', fontFamily:'var(--mono)' }}>{r.email}</div>
+                  </td>
+                  <td style={{ padding:'9px 8px', fontSize:10, color:'var(--text3)', whiteSpace:'nowrap' }}>{r.kecamatan || '—'}</td>
+                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#60a5fa', textAlign:'right' }}>{r.perusahaan.toLocaleString('id')}</td>
+                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#a78bfa', textAlign:'right' }}>{r.keluarga.toLocaleString('id')}</td>
+                  <td style={{ padding:'9px 8px', fontSize:12, fontFamily:'var(--mono)', fontWeight:700, color:'var(--text1)', textAlign:'right' }}>{r.total.toLocaleString('id')}</td>
+                  <td style={{ padding:'9px 8px', fontSize:11, fontFamily:'var(--mono)', fontWeight:600, color:dColor, textAlign:'right' }}>
+                    {r.delta == null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('id')}`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export function EvaluasiPage() {
   const isMobile   = useIsMobile();   // <= 640px (HP)
   const isCompact  = useIsCompact();  // <= 1024px (HP + tablet) — dipakai utk keputusan tabel/kartu
@@ -2250,7 +2347,11 @@ export function EvaluasiPage() {
   const [usahaError,   setUsahaError]   = useState(null);
   const [usahaBounds,  setUsahaBounds]  = useState({ min: null, max: null });
   const [usahaRange,   setUsahaRange]   = useState({ start: '', end: '' }); // '' = belum di-set user, pakai default (14 hari terakhir)
-  const [usahaPetugas, setUsahaPetugas] = useState(''); // '' = semua petugas, else email pencacah/pengawas terpilih
+  const [usahaViewMode, setUsahaViewMode] = useState('harian'); // 'harian' (series tanggal) | 'petugas' (tabel per petugas)
+  const [usahaPetugasRows,    setUsahaPetugasRows]    = useState([]);
+  const [usahaPetugasLoading, setUsahaPetugasLoading] = useState(false);
+  const [usahaPetugasError,   setUsahaPetugasError]   = useState(null);
+  const [usahaPetugasDates,   setUsahaPetugasDates]   = useState({ latestDate: null, prevDate: null });
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -2284,7 +2385,6 @@ export function EvaluasiPage() {
     if (filterDesa) qs.set('desa', filterDesa);
     if (usahaRange.start) qs.set('start', usahaRange.start);
     if (usahaRange.end)   qs.set('end', usahaRange.end);
-    if (usahaPetugas) qs.set(activeTab === 'pencacah' ? 'pencacah' : 'pengawas', usahaPetugas);
     apiFetch(`/api/evaluasi/usaha-harian?${qs.toString()}`)
       .then(d => {
         setUsahaSeries(d.series || []);
@@ -2300,7 +2400,28 @@ export function EvaluasiPage() {
         setUsahaLoading(false);
       })
       .catch(e => { setUsahaError(e.message); setUsahaLoading(false); });
-  }, [granularity, selectedKec, filterDesa, usahaRange.start, usahaRange.end, usahaPetugas, activeTab]);
+  }, [granularity, selectedKec, filterDesa, usahaRange.start, usahaRange.end]);
+
+  // Fetch tabel PER PETUGAS (mode usahaViewMode === 'petugas') — 1 baris =
+  // 1 pencacah/pengawas (ikut tab aktif), Total usaha pd tanggal terakhir
+  // dlm rentang + delta vs tanggal sebelumnya yg beneran ada datanya.
+  useEffect(() => {
+    if (granularity !== 'usaha' || usahaViewMode !== 'petugas') return;
+    setUsahaPetugasLoading(true);
+    setUsahaPetugasError(null);
+    const qs = new URLSearchParams();
+    if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
+    if (filterDesa) qs.set('desa', filterDesa);
+    if (usahaRange.end) qs.set('end', usahaRange.end);
+    qs.set('role', activeTab === 'pengawas' ? 'pengawas' : 'pencacah');
+    apiFetch(`/api/evaluasi/usaha-harian/petugas?${qs.toString()}`)
+      .then(d => {
+        setUsahaPetugasRows(d.rows || []);
+        setUsahaPetugasDates({ latestDate: d.latestDate || null, prevDate: d.prevDate || null });
+        setUsahaPetugasLoading(false);
+      })
+      .catch(e => { setUsahaPetugasError(e.message); setUsahaPetugasLoading(false); });
+  }, [granularity, usahaViewMode, selectedKec, filterDesa, usahaRange.end, activeTab]);
 
   useEffect(() => {
     if (!data) return;
@@ -2371,14 +2492,6 @@ export function EvaluasiPage() {
   }).length;
   const countPcl = countFiltered(pencacah);
   const countPws = countFiltered(pengawas);
-
-  // Daftar petugas utk dropdown selector di tab "Tracking Usaha" — ikut list
-  // pencacah/pengawas sesuai tab aktif (list PENUH, bukan hasil filter tabel
-  // utama, supaya bisa cari petugas apa saja terlepas dari filter lain aktif)
-  const usahaPetugasOptions = [...(activeTab === 'pencacah' ? pencacah : pengawas)]
-    .filter(p => p.email)
-    .sort((a, b) => (a.nama||'').localeCompare(b.nama||'', 'id'))
-    .map(p => ({ email: p.email, nama: p.nama || p.email }));
 
   // Filter
   let filtered = srcData.filter(p => {
@@ -2929,8 +3042,10 @@ export function EvaluasiPage() {
             series={usahaSeries} loading={usahaLoading} error={usahaError}
             bounds={usahaBounds} range={usahaRange} setRange={setUsahaRange}
             selectedKec={selectedKec} filterDesa={filterDesa} isMobile={isMobile}
-            petugasOptions={usahaPetugasOptions} petugasLabel={activeTab === 'pencacah' ? 'Pencacah' : 'Pengawas'}
-            usahaPetugas={usahaPetugas} setUsahaPetugas={setUsahaPetugas}
+            viewMode={usahaViewMode} setViewMode={setUsahaViewMode}
+            petugasRows={usahaPetugasRows} petugasLoading={usahaPetugasLoading}
+            petugasError={usahaPetugasError} petugasDates={usahaPetugasDates}
+            petugasLabel={activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah'}
           />
         ) : <>
 

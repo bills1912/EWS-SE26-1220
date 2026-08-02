@@ -893,6 +893,69 @@ app.get('/api/evaluasi/usaha-harian', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/evaluasi/usaha-harian/petugas ────────────────────────────────
+// Tabel PER PETUGAS utk tab "Tracking Usaha" (mirip tabel Per Petugas biasa
+// di Evaluasi — 1 baris = 1 pencacah/pengawas). Beda dgn /usaha-harian di
+// atas (itu series per TANGGAL, agregat semua petugas dlm scope). Di sini:
+// - Ambil total usaha (Ditemukan+Baru) tiap petugas pada tanggal TERAKHIR yg
+//   ada datanya (atau tanggal `end` yg diminta kalau ada & valid)
+// - Delta dihitung vs tanggal SEBELUMNYA yg BENERAN ada datanya (bukan H-1
+//   kalender — krn pipeline belum tentu jalan tiap hari)
+app.get('/api/evaluasi/usaha-harian/petugas', verifyToken, async (req, res) => {
+  try {
+    const { end, kec, desa, role = 'pencacah' } = req.query;
+    const emailField = role === 'pengawas' ? 'pengawasEmail' : 'pencacahEmail';
+    const namaField  = role === 'pengawas' ? 'pengawasNama'  : 'pencacahNama';
+
+    const baseMatch = { [emailField]: { $nin: [null, ''] } };
+    if (kec && kec !== 'all') baseMatch.kecamatan = kec;
+    if (desa) baseMatch.desa = desa;
+
+    // Tanggal "terkini" — pakai `end` dari date-range picker kalau ada &
+    // beneran ada datanya (<=), kalau tidak ambil tanggal terbaru yg tersedia
+    const dateFilter = end ? { ...baseMatch, date: { $lte: end } } : baseMatch;
+    const latestDoc = await db.collection('assignment_usaha_harian')
+      .find(dateFilter, { projection: { date: 1 } }).sort({ date: -1 }).limit(1).toArray();
+    const latestDate = latestDoc[0]?.date || null;
+    if (!latestDate) return res.json({ rows: [], latestDate: null, prevDate: null });
+
+    // Tanggal sebelumnya yg BENERAN ada datanya (bukan asumsi H-1 kalender)
+    const prevDoc = await db.collection('assignment_usaha_harian')
+      .find({ ...baseMatch, date: { $lt: latestDate } }, { projection: { date: 1 } })
+      .sort({ date: -1 }).limit(1).toArray();
+    const prevDate = prevDoc[0]?.date || null;
+
+    const aggFor = (date) => date ? db.collection('assignment_usaha_harian').aggregate([
+      { $match: { ...baseMatch, date } },
+      { $group: {
+          _id: `$${emailField}`,
+          nama:       { $first: `$${namaField}` },
+          kecamatan:  { $first: '$kecamatan' },
+          perusahaan: { $sum: '$perusahaan' },
+          keluarga:   { $sum: '$keluarga' },
+          total:      { $sum: '$total' },
+        } },
+    ]).toArray() : Promise.resolve([]);
+
+    const [latestRows, prevRows] = await Promise.all([aggFor(latestDate), aggFor(prevDate)]);
+    const prevMap = new Map(prevRows.map(r => [r._id, r.total]));
+
+    const rows = latestRows
+      .map(r => ({
+        email: r._id,
+        nama: r.nama || r._id,
+        kecamatan: r.kecamatan,
+        perusahaan: r.perusahaan,
+        keluarga: r.keluarga,
+        total: r.total,
+        delta: prevMap.has(r._id) ? r.total - prevMap.get(r._id) : null,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    res.json({ rows, latestDate, prevDate });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── GET /api/evaluasi/snapshots ───────────────────────────────────────────
 // Return history snapshot uploads untuk chart progress
 app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {
