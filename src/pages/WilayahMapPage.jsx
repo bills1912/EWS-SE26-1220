@@ -24,6 +24,7 @@ import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
 import PetugasFilter from '../components/PetugasFilter.jsx';
 import SubSlsFilter from '../components/SubSlsFilter.jsx';
+import { useIsMobile } from '../hooks/useBreakpoint.js';
 
 const TOKEN_KEY = 'ews_token';
 
@@ -123,14 +124,14 @@ function MapLegend({ mode, label }) {
     : [{c:'#ef4444',l:'0%'},{c:'#fbbf24',l:'50%'},{c:'#34d399',l:'100%'}];
   const title = label || (mode === 'progress' ? 'Progress Pencacahan' : 'Jumlah Assignment');
   return (
-    <div style={{ position:'absolute', bottom:16, left:16, zIndex:1000,
+    <div style={{ position:'absolute', bottom:12, left:12, zIndex:1000, maxWidth:'calc(100% - 24px)',
       background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:10,
-      padding:'10px 14px', boxShadow:'0 4px 16px rgba(0,0,0,0.4)', fontSize:10.5 }}>
+      padding:'8px 12px', boxShadow:'0 4px 16px rgba(0,0,0,0.4)', fontSize:10.5 }}>
       <div style={{ fontWeight:700, color:'var(--text2)', marginBottom:6, fontSize:9.5,
         textTransform:'uppercase', letterSpacing:'0.05em' }}>
         {title}
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
         {stops.map((s, i) => (
           <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
             <div style={{ width:12, height:12, borderRadius:3, background:s.c }}/>
@@ -159,8 +160,10 @@ function SubSlsDetailPanel({ data, onClose }) {
     </div>
   );
   return (
-    <div style={{ position:'absolute', top:16, right:16, zIndex:1000, width:300,
-      maxHeight:'calc(100% - 32px)', overflowY:'auto',
+    <div style={{ position:'absolute', top:12, right:12, zIndex:1000,
+      width:'min(300px, calc(100% - 24px))', /* cap 300px di layar lebar, otomatis
+      menyempit dgn margin 12px kiri-kanan di layar sempit — tidak pernah overflow */
+      maxHeight:'calc(100% - 24px)', overflowY:'auto',
       background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:14,
       boxShadow:'0 12px 32px rgba(0,0,0,0.5)', animation:'wilayahPanelIn .2s ease both' }}>
       <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--border)',
@@ -326,6 +329,7 @@ function AutoFitBounds({ data }) {
 
 // ══════════════════════════════════════════════════════════════════════════
 export function WilayahMapPage() {
+  const isMobile = useIsMobile();
   const { selectedKec } = useKecamatan(); // dikontrol dari dropdown global di Topbar
   const [geoData, setGeoData]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -663,7 +667,7 @@ export function WilayahMapPage() {
       </div>
 
       {/* Peta */}
-      <Card style={{ padding:0, position:'relative', width:'100%', height:600, overflow:'hidden' }}>
+      <Card style={{ padding:0, position:'relative', width:'100%', height: isMobile ? 380 : 600, overflow:'hidden' }}>
         {loading && (
           <div style={{ position:'absolute', inset:0, zIndex:1000, display:'flex',
             alignItems:'center', justifyContent:'center', background:'var(--bg1)', gap:8 }}>

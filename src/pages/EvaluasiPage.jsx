@@ -17,6 +17,7 @@ import { Card, SectionTitle, Badge, ProgressBar } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
 import DesaFilter from '../components/DesaFilter.jsx';
 import { PetugasTimeSeriesChart } from '../components/PetugasTimeSeriesChart.jsx';
+import { useIsMobile, useIsCompact } from '../hooks/useBreakpoint.js';
 
 const TOKEN_KEY = 'ews_token';
 
@@ -79,18 +80,24 @@ const ALL_COLS_PENGAWAS = [
   { key:'usahaMaxDesa', label:'Desa Usaha Terbanyak',           always: false },
 ];
 const DEFAULT_COLS = ['kecamatan','pengawas','total','submit','approved','rejected','draft','open','progress'];
+// Default kolom yg lebih ramping khusus HP (belum pernah ada preferensi
+// tersimpan) — tabel dgn 9 kolom default di atas kepanjangan buat layar HP
+// walau sudah sticky kolom nama + scroll horizontal. Kalau user SUDAH
+// pernah customize kolom (ada di localStorage), preferensi itu tetap dipakai
+// apa adanya di HP maupun desktop — ini cuma default awal.
+const MOBILE_DEFAULT_COLS = ['total','approved','progress'];
 const LS_KEY_COL   = 'ews_evaluasi_cols';
 
-function loadSavedCols() {
+function loadSavedCols(isMobile = false) {
   try {
     const raw = localStorage.getItem(LS_KEY_COL);
     if (raw) return new Set(JSON.parse(raw));
   } catch {}
-  return new Set(DEFAULT_COLS);
+  return new Set(isMobile ? MOBILE_DEFAULT_COLS : DEFAULT_COLS);
 }
 
 // ── ColumnToggle dropdown ──────────────────────────────────────────────────
-function ColumnToggle({ cols, visible, onChange }) {
+function ColumnToggle({ cols, visible, onChange, defaultCols = DEFAULT_COLS }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -120,7 +127,7 @@ function ColumnToggle({ cols, visible, onChange }) {
   };
 
   const reset = () => {
-    const next = new Set(DEFAULT_COLS);
+    const next = new Set(defaultCols);
     try { localStorage.setItem(LS_KEY_COL, JSON.stringify([...next])); } catch {}
     onChange(next);
   };
@@ -149,7 +156,7 @@ function ColumnToggle({ cols, visible, onChange }) {
       {open && (
         <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:1100,
           background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:10,
-          minWidth:200, boxShadow:'0 8px 28px rgba(0,0,0,0.28)',
+          minWidth:200, maxWidth:'calc(100vw - 24px)', boxShadow:'0 8px 28px rgba(0,0,0,0.28)',
           animation:'fadeSlideDown .12s ease', overflow:'hidden' }}>
           {/* Header */}
           <div style={{ padding:'10px 14px 8px', borderBottom:'1px solid var(--border)',
@@ -482,6 +489,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
   const [open, setOpen] = useState(false);
   const [showKelBrk, setShowKelBrk] = useState(false);
   const [showUsahaBrk, setShowUsahaBrk] = useState(false);
+  const isCompact = useIsCompact();
   const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
                  : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
@@ -491,6 +499,12 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                  : highlight==='bot' ? 'rgba(244,63,94,0.24)' : 'var(--bg3)';
   const _hlNameColor = highlight==='top' ? '#fb923c'
                      : highlight==='bot' ? '#fb7185' : 'var(--text1)';
+  // Background solid utk 2 kolom sticky (# + nama) — dipakai HANYA di layar
+  // kompak (HP/tablet) supaya kolom identitas tetap kelihatan saat scroll
+  // horizontal. Pakai warna highlight kalau row ini top/bottom performer,
+  // supaya penanda itu tetap ikut kelihatan meski kolomnya di-stick.
+  const _stickyBg = _hlBg !== 'transparent' ? _hlBg : 'var(--bg2)';
+  const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:_stickyBg } : {};
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
@@ -498,8 +512,10 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           background: _hlBg, borderLeft: _hlBorder }}
         onMouseEnter={e=>e.currentTarget.style.background=_hlHover}
         onMouseLeave={e=>e.currentTarget.style.background=_hlBg}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
-        <td style={{ padding:'9px 8px' }}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28,
+                     ..._stickySx, left:0 }}>{rank}</td>
+        <td style={{ padding:'9px 8px', ..._stickySx, left:28,
+                     ...(isCompact ? { boxShadow:'2px 0 5px rgba(0,0,0,0.18)' } : {}) }}>
           <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
             <span style={{ fontSize:11,fontWeight:600,color:_hlNameColor }}>{p.nama||'—'}</span>
             {p.inaktif && (
@@ -704,6 +720,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
   const [open, setOpen] = useState(false);
   const [showKelBrk, setShowKelBrk] = useState(false);
   const [showUsahaBrk, setShowUsahaBrk] = useState(false);
+  const isCompact = useIsCompact();
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
                  : highlight==='bot' ? 'rgba(244,63,94,0.16)' : 'transparent';
@@ -713,6 +730,8 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                  : highlight==='bot' ? 'rgba(244,63,94,0.24)' : 'var(--bg3)';
   const _hlNameColor = highlight==='top' ? '#fb923c'
                      : highlight==='bot' ? '#fb7185' : 'var(--text1)';
+  const _stickyBg = _hlBg !== 'transparent' ? _hlBg : 'var(--bg2)';
+  const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:_stickyBg } : {};
   return (
     <>
       <tr onClick={()=>setOpen(v=>!v)}
@@ -720,8 +739,10 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           background: _hlBg, borderLeft: _hlBorder }}
         onMouseEnter={e=>e.currentTarget.style.background=_hlHover}
         onMouseLeave={e=>e.currentTarget.style.background=_hlBg}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
-        <td style={{ padding:'9px 8px' }}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28,
+                     ..._stickySx, left:0 }}>{rank}</td>
+        <td style={{ padding:'9px 8px', ..._stickySx, left:28,
+                     ...(isCompact ? { boxShadow:'2px 0 5px rgba(0,0,0,0.18)' } : {}) }}>
           <div style={{ display:'flex',alignItems:'center',gap:5,flexWrap:'wrap' }}>
             <span style={{ fontSize:11,fontWeight:600,color:_hlNameColor }}>{p.nama||'—'}</span>
             {p.inaktif && (
@@ -944,6 +965,8 @@ function expandForSubSls(filtered, isPengawas) {
 // 1 baris = 1 petugas x 1 sub-SLS individual (bukan gabungan spt mode desa).
 function SubSlsRow({ d, rank, isPengawas }) {
   const [open, setOpen] = useState(false);
+  const isCompact = useIsCompact();
+  const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:'var(--bg2)' } : {};
   const pct = d.targetPrelistAwal > 0 ? Math.round((d.progressPrelistAwalSelesai||0) / d.targetPrelistAwal * 100) : 0;
   const c = pct>=80?'#10b981':pct>=40?'#f59e0b':'#f43f5e';
   return (
@@ -952,8 +975,10 @@ function SubSlsRow({ d, rank, isPengawas }) {
         style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
         onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
-        <td style={{ padding:'9px 8px' }}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28,
+                     ..._stickySx, left:0 }}>{rank}</td>
+        <td style={{ padding:'9px 8px', ..._stickySx, left:28,
+                     ...(isCompact ? { boxShadow:'2px 0 5px rgba(0,0,0,0.18)' } : {}) }}>
           <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{d.namaSls||'—'}</span>
           <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>{d.idsubsls||'—'}</div>
         </td>
@@ -1009,6 +1034,8 @@ function SubSlsRow({ d, rank, isPengawas }) {
 // sekarang ditampilkan live di tabel utama juga).
 function DesaRow({ d, rank, isPengawas }) {
   const [open, setOpen] = useState(false);
+  const isCompact = useIsCompact();
+  const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:'var(--bg2)' } : {};
   const pct = d.targetPrelistAwal > 0 ? Math.round((d.progressPrelistAwalSelesai||0) / d.targetPrelistAwal * 100) : 0;
   const c = pct>=80?'#10b981':pct>=40?'#f59e0b':'#f43f5e';
   return (
@@ -1017,8 +1044,10 @@ function DesaRow({ d, rank, isPengawas }) {
         style={{ borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .1s' }}
         onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28 }}>{rank}</td>
-        <td style={{ padding:'9px 8px' }}>
+        <td style={{ padding:'9px 8px',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)',width:28,
+                     ..._stickySx, left:0 }}>{rank}</td>
+        <td style={{ padding:'9px 8px', ..._stickySx, left:28,
+                     ...(isCompact ? { boxShadow:'2px 0 5px rgba(0,0,0,0.18)' } : {}) }}>
           <span style={{ fontSize:11,fontWeight:600,color:'var(--text1)' }}>{d.desa||'—'}</span>
           <div style={{ fontSize:8.5,color:'var(--text4)',fontFamily:'var(--mono)' }}>
             {d.kodeKecamatan||'—'}{d.kodeDesa?`.${d.kodeDesa}`:''}
@@ -1678,6 +1707,7 @@ function ExportColumnModal({ format, isPengawas, selected, onChange, onCancel, o
 
 // ── InaktifSection — pencacah belum submit N hari ─────────────────────────
 function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
+  const isMobile = useIsMobile();
   const [data,    setData]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [days,    setDays]    = useState(threshold);
@@ -1804,9 +1834,9 @@ function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Cari nama / email / kecamatan…"
-              style={{ padding:'5px 10px 5px 26px',fontSize:11,background:'var(--bg3)',
+              style={{ padding:'5px 10px 5px 26px',fontSize: isMobile ? 16 : 11,background:'var(--bg3)',
                 border:'1px solid var(--border)',borderRadius:7,color:'var(--text1)',
-                outline:'none',fontFamily:'var(--font)',width:220 }}/>
+                outline:'none',fontFamily:'var(--font)',width: isMobile ? '100%' : 220 }}/>
             {search && (
               <button onClick={()=>setSearch('')}
                 style={{ position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',
@@ -2019,7 +2049,165 @@ function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// ── Tab "Tracking Usaha" — series jumlah usaha (Ditemukan+Baru) per hari ────
+// Beda total dari 3 mode lain (Per Petugas/Desa/Sub-SLS): di sini baris tabel
+// = TANGGAL, bukan wilayah/petugas. Data dari collection assignment_usaha_harian
+// yg bertambah 1 titik data per hari tiap convert_assignment.py+upload_assignment.py
+// dijalankan (lihat backend) — jadi di hari-hari awal fitur ini dipakai, series
+// masih pendek (wajar, akan terus bertambah panjang seiring waktu).
+function UsahaTrackingView({ series, loading, error, bounds, range, setRange, selectedKec, filterDesa, isMobile }) {
+  // Urutkan terbaru dulu (paling relevan dilihat di atas), delta tetap
+  // dihitung terhadap hari SEBELUMNYA secara kronologis (bukan urutan tampil)
+  const sorted = [...series].sort((a, b) => a.date < b.date ? 1 : -1);
+  const byDateAsc = [...series].sort((a, b) => a.date < b.date ? -1 : 1);
+  const deltaMap = {};
+  for (let i = 0; i < byDateAsc.length; i++) {
+    const prev = i > 0 ? byDateAsc[i - 1] : null;
+    deltaMap[byDateAsc[i].date] = prev ? byDateAsc[i].total - prev.total : null;
+  }
+
+  const latest = byDateAsc[byDateAsc.length - 1] || null;
+  const latestDelta = latest ? deltaMap[latest.date] : null;
+  const maxTotal = Math.max(1, ...series.map(r => r.total));
+
+  const quickRange = (days) => {
+    if (!bounds.max) return;
+    const end = bounds.max;
+    const d = new Date(bounds.max);
+    d.setDate(d.getDate() - (days - 1));
+    const start = d.toISOString().slice(0, 10);
+    setRange({ start: bounds.min && start < bounds.min ? bounds.min : start, end });
+  };
+
+  return (
+    <div>
+      {/* Header: konteks scope + date-range picker */}
+      <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:14 }}>
+        <div style={{ fontSize:11, color:'var(--text3)' }}>
+          Scope: <strong style={{ color:'var(--text2)' }}>
+            {filterDesa ? filterDesa : (selectedKec && selectedKec !== 'all') ? selectedKec : 'Seluruh Kabupaten'}
+          </strong>
+          {' '}· status usaha dihitung: <strong style={{ color:'#a78bfa' }}>Ditemukan + Baru</strong> saja
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft: isMobile ? 0 : 'auto', flexWrap:'wrap' }}>
+          {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
+            <button key={d} onClick={() => quickRange(d)}
+              style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                       border:'1px solid var(--border)', background:'var(--bg3)',
+                       color:'var(--text3)', cursor:'pointer' }}>
+              {l}
+            </button>
+          ))}
+          <button onClick={() => setRange({ start: bounds.min || '', end: bounds.max || '' })}
+            style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
+                     border:'1px solid var(--border)', background:'var(--bg3)',
+                     color:'var(--text3)', cursor:'pointer' }}>
+            Semua
+          </button>
+          <input type="date" value={range.start} min={bounds.min || undefined} max={range.end || bounds.max || undefined}
+            onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
+            style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                     border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+          <span style={{ fontSize:10, color:'var(--text4)' }}>s.d.</span>
+          <input type="date" value={range.end} min={range.start || bounds.min || undefined} max={bounds.max || undefined}
+            onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
+            style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                     border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text1)' }}/>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>Memuat data...</div>
+      ) : error ? (
+        <div style={{ padding:'20px', textAlign:'center', color:'#f87171', fontSize:12 }}>Gagal memuat: {error}</div>
+      ) : series.length === 0 ? (
+        <div style={{ padding:'40px', textAlign:'center', color:'var(--text4)', fontSize:12 }}>
+          Belum ada data tracking usaha utk rentang/scope ini. Data baru mulai terkumpul sejak
+          <code> convert_assignment.py --realisasi-usaha</code> pertama kali dijalankan dgn fitur ini —
+          akan terus bertambah 1 titik per hari.
+        </div>
+      ) : <>
+
+        {/* Ringkasan hari terakhir dalam rentang */}
+        {latest && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10, marginBottom:16 }}>
+            <div style={{ background:'var(--bg3)', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Terakhir ({latest.date})</div>
+              <div style={{ fontSize:22, fontWeight:800, fontFamily:'var(--mono)', color:'var(--text1)' }}>{latest.total.toLocaleString('id')}</div>
+              <div style={{ fontSize:9, color:'var(--text4)' }}>total usaha ditemukan+baru</div>
+            </div>
+            <div style={{ background:'var(--bg3)', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Delta vs hari sebelumnya</div>
+              <div style={{ fontSize:22, fontWeight:800, fontFamily:'var(--mono)',
+                             color: latestDelta == null ? 'var(--text4)' : latestDelta > 0 ? '#10b981' : latestDelta < 0 ? '#f43f5e' : 'var(--text3)' }}>
+                {latestDelta == null ? '—' : `${latestDelta > 0 ? '+' : ''}${latestDelta.toLocaleString('id')}`}
+              </div>
+              <div style={{ fontSize:9, color:'var(--text4)' }}>{latestDelta == null ? 'belum ada data hari sebelumnya' : 'penambahan usaha ditemukan/baru'}</div>
+            </div>
+            <div style={{ background:'var(--bg3)', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Usaha Perusahaan</div>
+              <div style={{ fontSize:22, fontWeight:800, fontFamily:'var(--mono)', color:'#60a5fa' }}>{latest.perusahaan.toLocaleString('id')}</div>
+              <div style={{ fontSize:9, color:'var(--text4)' }}>dari sheet USAHA PERUSAHAAN</div>
+            </div>
+            <div style={{ background:'var(--bg3)', borderRadius:10, padding:'12px 14px' }}>
+              <div style={{ fontSize:9, color:'var(--text4)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Usaha Keluarga</div>
+              <div style={{ fontSize:22, fontWeight:800, fontFamily:'var(--mono)', color:'#a78bfa' }}>{latest.keluarga.toLocaleString('id')}</div>
+              <div style={{ fontSize:9, color:'var(--text4)' }}>dari sheet USAHA KELUARGA</div>
+            </div>
+          </div>
+        )}
+
+        {/* Mini bar chart — total per hari, tanpa dependency chart library */}
+        <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:80, marginBottom:16,
+                       padding:'8px 10px', background:'var(--bg3)', borderRadius:10, overflowX:'auto' }}>
+          {byDateAsc.map(r => (
+            <div key={r.date} title={`${r.date}: ${r.total.toLocaleString('id')}`}
+              style={{ flex: byDateAsc.length > 30 ? '0 0 6px' : '1 1 0', minWidth:4,
+                       height: `${Math.max(4, (r.total / maxTotal) * 100)}%`,
+                       background:'linear-gradient(180deg,#a78bfa,#7c5cd6)', borderRadius:'3px 3px 0 0' }}/>
+          ))}
+        </div>
+
+        {/* Tabel series harian */}
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Tanggal','Usaha Perusahaan','Usaha Keluarga','Total','Delta','Sub-SLS'].map((h,i) => (
+                  <th key={h} style={{ padding:'8px 8px', textAlign: i===0?'left':'right', fontSize:9,
+                                        fontWeight:700, color:'var(--text4)', textTransform:'uppercase',
+                                        letterSpacing:'0.07em', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(r => {
+                const d = deltaMap[r.date];
+                const dColor = d == null ? 'var(--text4)' : d > 0 ? '#10b981' : d < 0 ? '#f43f5e' : 'var(--text3)';
+                return (
+                  <tr key={r.date} style={{ borderBottom:'1px solid var(--border)' }}>
+                    <td style={{ padding:'8px 8px', fontSize:11, fontWeight:600, color:'var(--text1)', whiteSpace:'nowrap' }}>{r.date}</td>
+                    <td style={{ padding:'8px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#60a5fa', textAlign:'right' }}>{r.perusahaan.toLocaleString('id')}</td>
+                    <td style={{ padding:'8px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#a78bfa', textAlign:'right' }}>{r.keluarga.toLocaleString('id')}</td>
+                    <td style={{ padding:'8px 8px', fontSize:12, fontFamily:'var(--mono)', fontWeight:700, color:'var(--text1)', textAlign:'right' }}>{r.total.toLocaleString('id')}</td>
+                    <td style={{ padding:'8px 8px', fontSize:11, fontFamily:'var(--mono)', fontWeight:600, color:dColor, textAlign:'right' }}>
+                      {d == null ? '—' : `${d > 0 ? '+' : ''}${d.toLocaleString('id')}`}
+                    </td>
+                    <td style={{ padding:'8px 8px', fontSize:10, fontFamily:'var(--mono)', color:'var(--text4)', textAlign:'right' }}>{r.nSubsls.toLocaleString('id')}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>}
+    </div>
+  );
+}
+
 export function EvaluasiPage() {
+  const isMobile   = useIsMobile();   // <= 640px (HP)
+  const isCompact  = useIsCompact();  // <= 1024px (HP + tablet) — dipakai utk keputusan tabel/kartu
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
@@ -2040,8 +2228,15 @@ export function EvaluasiPage() {
   const [exportModal, setExportModal] = useState(null);   // null | 'pdf' | 'excel'
   const [exportCols,  setExportCols]  = useState(new Set());
   const [exportBreakdown, setExportBreakdown] = useState(false); // false=total per petugas, true=breakdown per kecamatan/desa
-  const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols());
+  const [visibleCols,   setVisibleCols]     = useState(() => loadSavedCols(isMobile));
   const [showLegend, setShowLegend] = useState(false); // keterangan kolom — collapsed by default
+
+  // ── Tracking Usaha (mode granularity === 'usaha') ─────────────────────────
+  const [usahaSeries,  setUsahaSeries]  = useState([]);
+  const [usahaLoading, setUsahaLoading] = useState(false);
+  const [usahaError,   setUsahaError]   = useState(null);
+  const [usahaBounds,  setUsahaBounds]  = useState({ min: null, max: null });
+  const [usahaRange,   setUsahaRange]   = useState({ start: '', end: '' }); // '' = belum di-set user, pakai default (14 hari terakhir)
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -2062,6 +2257,38 @@ export function EvaluasiPage() {
     else if (granularity === 'petugas') { setSortBy('perfScore'); setSortDir('desc'); }
   }, [granularity]);
 
+  // Fetch series Tracking Usaha — dipicu saat mode 'usaha' aktif, atau saat
+  // filter kecamatan/desa/rentang tanggal berubah SELAMA mode ini aktif.
+  // Kecamatan (global) & Desa (filter yg sudah ada di halaman ini) dipakai
+  // sbg scope — sengaja TIDAK ada filter pencacah/pengawas individual di
+  // sini (belum ada selector-nya di halaman ini utk itu; scope kabupaten/
+  // kecamatan/desa sudah cukup utk kebutuhan "tracking usaha harian").
+  useEffect(() => {
+    if (granularity !== 'usaha') return;
+    setUsahaLoading(true);
+    setUsahaError(null);
+    const qs = new URLSearchParams();
+    if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
+    if (filterDesa) qs.set('desa', filterDesa);
+    if (usahaRange.start) qs.set('start', usahaRange.start);
+    if (usahaRange.end)   qs.set('end', usahaRange.end);
+    apiFetch(`/api/evaluasi/usaha-harian?${qs.toString()}`)
+      .then(d => {
+        setUsahaSeries(d.series || []);
+        setUsahaBounds({ min: d.minDate || null, max: d.maxDate || null });
+        // Isi default rentang tanggal SEKALI SAJA (baru pertama kali data
+        // datang & user belum pernah pilih rentang sendiri) — biar
+        // date-picker tidak keliatan kosong pas pertama buka tab ini.
+        setUsahaRange(prev => {
+          if (prev.start || prev.end) return prev; // user (atau fetch sebelumnya) sudah set, jangan timpa
+          if (!d.minDate || !d.maxDate) return prev;
+          return { start: d.minDate, end: d.maxDate };
+        });
+        setUsahaLoading(false);
+      })
+      .catch(e => { setUsahaError(e.message); setUsahaLoading(false); });
+  }, [granularity, selectedKec, filterDesa, usahaRange.start, usahaRange.end]);
+
   useEffect(() => {
     if (!data) return;
     const kec = selectedKec !== 'all' ? selectedKec : '';
@@ -2079,7 +2306,7 @@ export function EvaluasiPage() {
 
   if (loading) return (
     <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12 }}>
         {Array(5).fill(0).map((_,i)=><Card key={i}><Skeleton h={80}/></Card>)}
       </div>
       <Card><Skeleton h={400}/></Card>
@@ -2416,11 +2643,13 @@ export function EvaluasiPage() {
       ? <span style={{ fontSize:8,color:'var(--orange3)',marginLeft:3 }}>{sortDir==='desc'?'▼':'▲'}</span>
       : <span style={{ fontSize:8,color:'var(--text4)',marginLeft:3,opacity:0.45 }}>⇅</span>
     : null;
-  const H = ({ label, col, right }) => (
+  const H = ({ label, col, right, sticky, stickyLeft = 0 }) => (
     <th onClick={col?()=>toggleSort(col):undefined}
       style={{ padding:'8px 8px',textAlign:right?'right':'left',fontSize:9,fontWeight:700,
                color:sortBy===col?'var(--orange3)':'var(--text4)',textTransform:'uppercase',
-               letterSpacing:'0.07em',cursor:col?'pointer':'default',userSelect:'none',whiteSpace:'nowrap' }}>
+               letterSpacing:'0.07em',cursor:col?'pointer':'default',userSelect:'none',whiteSpace:'nowrap',
+               ...(sticky ? { position:'sticky', left:stickyLeft, zIndex:3, background:'var(--bg2)',
+                               boxShadow:'2px 0 5px rgba(0,0,0,0.18)' } : {}) }}>
       {label} <SI col={col}/>
     </th>
   );
@@ -2452,7 +2681,7 @@ export function EvaluasiPage() {
       )}
 
       {/* Summary cards — ikut filter jika ada */}
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12 }}>
         <SumCard label={isFiltered?'Total Tugas (Filter)':'Total Assignment'}
           value={(filteredSummary?.total ?? summary.totalAssignment) || 0}
           color="var(--text1)" icon={BarChart2}
@@ -2506,7 +2735,7 @@ export function EvaluasiPage() {
           : 0;
 
         return (
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12 }}>
             <SumCard label="Progress Total (+Draft)"
               value={pctTotal} suffix="%" decimals={2} color="#818cf8" icon={TrendingUp}
               sub="(submit+approved+reject+draft) / total"/>
@@ -2564,6 +2793,7 @@ export function EvaluasiPage() {
                   { key:'petugas', label:'Per Petugas',  icon:User },
                   { key:'desa',    label:'Per Desa',     icon:Home },
                   { key:'subsls',  label:'Per Sub-SLS',  icon:LayoutGrid },
+                  { key:'usaha',   label:'Tracking Usaha', icon:TrendingUp },
                 ].map(g => (
                   <button key={g.key}
                     onClick={() => setGranularity(g.key)}
@@ -2596,16 +2826,17 @@ export function EvaluasiPage() {
                 <input value={search}
                   onChange={e=>{setSearch(e.target.value);setPage(1);}}
                   placeholder="Cari nama / email…"
-                  style={{ padding:'6px 10px 6px 26px',fontSize:11,
+                  style={{ padding:'6px 10px 6px 26px',fontSize: isMobile ? 16 : 11,
                     background:'var(--bg3)',border:'1px solid var(--border)',
                     borderRadius:8,color:'var(--text1)',outline:'none',
-                    fontFamily:'var(--font)',width:180 }}/>
+                    fontFamily:'var(--font)',width: isMobile ? '100%' : 180 }}/>
               </div>
               {/* Column toggle */}
               <ColumnToggle
                 cols={isPengawas ? ALL_COLS_PENGAWAS : ALL_COLS_PENCACAH}
                 visible={visibleCols}
-                onChange={setVisibleCols}/>
+                onChange={setVisibleCols}
+                defaultCols={isMobile ? MOBILE_DEFAULT_COLS : DEFAULT_COLS}/>
               {/* Export dropdown */}
               <div style={{ position:'relative' }}>
                 <button onClick={() => setShowExportMenu(v => !v)}
@@ -2626,7 +2857,7 @@ export function EvaluasiPage() {
                       style={{ position:'fixed',inset:0,zIndex:999 }}/>
                     <div style={{ position:'absolute',top:'calc(100% + 6px)',right:0,
                       zIndex:1000,background:'var(--bg2)',border:'1px solid var(--border2)',
-                      borderRadius:10,overflow:'hidden',minWidth:180,
+                      borderRadius:10,overflow:'hidden',minWidth:180,maxWidth:'calc(100vw - 24px)',
                       boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
                       animation:'fadeSlideDown .12s ease' }}>
                       <button onClick={()=>{ setShowExportMenu(false);
@@ -2672,7 +2903,13 @@ export function EvaluasiPage() {
         )}
 
         {/* Tabel + Paginator */}
-        {activeTab !== 'inaktif' && <>
+        {activeTab !== 'inaktif' && (granularity === 'usaha' ? (
+          <UsahaTrackingView
+            series={usahaSeries} loading={usahaLoading} error={usahaError}
+            bounds={usahaBounds} range={usahaRange} setRange={setUsahaRange}
+            selectedKec={selectedKec} filterDesa={filterDesa} isMobile={isMobile}
+          />
+        ) : <>
 
         {/* Keterangan kolom — accordion, collapsed by default biar tidak makan tempat */}
         <div style={{ marginBottom:10 }}>
@@ -2725,8 +2962,8 @@ export function EvaluasiPage() {
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {granularity === 'desa' ? <>
-                  <H label="#"/>
-                  <H label="Desa" col="desa"/>
+                  <H label="#" sticky={isCompact} stickyLeft={0}/>
+                  <H label="Desa" col="desa" sticky={isCompact} stickyLeft={28}/>
                   <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
                   <H label="Kecamatan" col="kecamatan"/>
                   <H label="Sub-SLS" col="jumlahSubSls" right/>
@@ -2738,8 +2975,8 @@ export function EvaluasiPage() {
                   <H label="Open" col="open" right/>
                   <H label="Progress Prelist Awal" col="progressPrelistAwalPct"/>
                 </> : granularity === 'subsls' ? <>
-                  <H label="#"/>
-                  <H label="Sub-SLS" col="namaSls"/>
+                  <H label="#" sticky={isCompact} stickyLeft={0}/>
+                  <H label="Sub-SLS" col="namaSls" sticky={isCompact} stickyLeft={28}/>
                   <H label="Desa" col="desa"/>
                   <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
                   <H label="Kecamatan" col="kecamatan"/>
@@ -2751,8 +2988,8 @@ export function EvaluasiPage() {
                   <H label="Open" col="open" right/>
                   <H label="Progress Prelist Awal" col="progressPrelistAwalPct"/>
                 </> : <>
-                <H label="#"/>
-                <H label={isPengawas?'Pengawas':'Pencacah'} col="nama"/>
+                <H label="#" sticky={isCompact} stickyLeft={0}/>
+                <H label={isPengawas?'Pengawas':'Pencacah'} col="nama" sticky={isCompact} stickyLeft={28}/>
                 {visibleCols.has('kecamatan') && <H label="Kecamatan" col="kecamatan"/>}
                 {!isPengawas && visibleCols.has('pengawas') && <H label="Pengawas" col="pengawas"/>}
                 {visibleCols.has('total')    && <H label="Total"    col="total"   right/>}
@@ -2917,7 +3154,7 @@ export function EvaluasiPage() {
             ** Target Prelist Awal bersifat TETAP (tidak berubah selama fieldwork berjalan), diambil sekali dari file Daftar Rekap SubSLS
           </div>
         )}
-      </>}
+      </>)}
       </Card>
 
       {/* Modal pilih kolom sebelum export */}

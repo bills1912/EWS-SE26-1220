@@ -85,7 +85,7 @@ export default function DesaFilter({ value, onChange, desaList, disabled }) {
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 9999,
           background: 'var(--bg2)', border: '1px solid var(--border2)',
           borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
-          minWidth: 230, overflow: 'hidden',
+          minWidth: 230, maxWidth: 'calc(100vw - 24px)', overflow: 'hidden',
           animation: 'fadeSlideDown .12s ease',
         }}>
 

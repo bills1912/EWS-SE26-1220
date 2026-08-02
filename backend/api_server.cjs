@@ -845,6 +845,54 @@ app.get('/api/evaluasi/timeseries', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/evaluasi/usaha-harian ────────────────────────────────────────
+// Tab baru "Tracking Usaha" di EvaluasiPage — series jumlah usaha per hari
+// (Ditemukan+Baru saja, gabungan sheet USAHA PERUSAHAAN + USAHA KELUARGA),
+// bisa di-scope per kecamatan/desa/pencacah/pengawas & dibatasi rentang
+// tanggal. Delta antar-hari DIHITUNG DI FRONTEND dari series ini (selisih
+// row berturutan), bukan disimpan sbg field terpisah di sini.
+app.get('/api/evaluasi/usaha-harian', verifyToken, async (req, res) => {
+  try {
+    const { start, end, kec, desa, pencacah, pengawas } = req.query;
+    const match = {};
+    if (start || end) {
+      match.date = {};
+      if (start) match.date.$gte = start;
+      if (end)   match.date.$lte = end;
+    }
+    if (kec && kec !== 'all') match.kecamatan = kec;
+    if (desa)     match.desa = desa;
+    if (pencacah) match.pencacahEmail = pencacah;
+    if (pengawas) match.pengawasEmail = pengawas;
+
+    const [series, bounds] = await Promise.all([
+      db.collection('assignment_usaha_harian').aggregate([
+        { $match: match },
+        { $group: {
+            _id: '$date',
+            perusahaan: { $sum: '$perusahaan' },
+            keluarga:   { $sum: '$keluarga' },
+            total:      { $sum: '$total' },
+            nSubsls:    { $sum: 1 },
+          } },
+        { $sort: { _id: 1 } },
+        { $project: { _id: 0, date: '$_id', perusahaan: 1, keluarga: 1, total: 1, nSubsls: 1 } },
+      ]).toArray().catch(() => []),
+      // Batas tanggal yg BENAR-BENAR ada di collection (semua scope, tanpa
+      // filter) — dipakai frontend utk default rentang date-picker
+      db.collection('assignment_usaha_harian').aggregate([
+        { $group: { _id: null, minDate: { $min: '$date' }, maxDate: { $max: '$date' } } },
+      ]).toArray().catch(() => []),
+    ]);
+
+    res.json({
+      series,
+      minDate: bounds[0]?.minDate || null,
+      maxDate: bounds[0]?.maxDate || null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── GET /api/evaluasi/snapshots ───────────────────────────────────────────
 // Return history snapshot uploads untuk chart progress
 app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {

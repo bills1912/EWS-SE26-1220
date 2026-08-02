@@ -13,6 +13,7 @@ import { WilayahMapPage } from './pages/WilayahMapPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { KecamatanProvider } from './context/KecamatanContext.jsx';
+import { useIsMobile } from './hooks/useBreakpoint.js';
 
 // Semua halaman yang tersedia
 const ALL_PAGES = {
@@ -25,7 +26,7 @@ const ALL_PAGES = {
   Wilayah:   <WilayahMapPage />,
 };
 
-function Footer({ role }) {
+function Footer({ role, isMobile }) {
   const roleLabel = {
     kepala:     'Kepala BPS Paluta',
     kasubbag:   'Kasubbag Umum',
@@ -34,8 +35,9 @@ function Footer({ role }) {
   };
   return (
     <div style={{
-      padding: '14px 24px', borderTop: '1px solid var(--border)',
+      padding: isMobile ? '12px 14px' : '14px 24px', borderTop: '1px solid var(--border)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 4 : 0, textAlign: isMobile ? 'center' : 'left',
     }}>
       <span style={{ fontSize: 10, color: 'var(--text3)' }}>
         EWS SE2026 · BPS Kabupaten Padang Lawas Utara · Data bersifat rahasia
@@ -66,6 +68,7 @@ function LoadingScreen() {
 
 export default function App() {
   const { isAuthenticated, loading, logout, user } = useAuth();
+  const isMobile = useIsMobile();
   // Persist tab aktif ke URL hash agar tidak reset saat reload
   const getInitialTab = () => {
     const hash = window.location.hash.replace('#', '').trim();
@@ -122,10 +125,10 @@ export default function App() {
           allowedTabs={allowedTabs}
         />
       </div>
-      <main style={{ flex: 1, padding: '20px 24px' }} key={tab} className="fade-up">
+      <main style={{ flex: 1, padding: isMobile ? '12px 10px' : '20px 24px', maxWidth: '100vw', overflowX: 'hidden' }} key={tab} className="fade-up">
         {ALL_PAGES[tab] || <Overview/>}
       </main>
-      <Footer role={user?.role}/>
+      <Footer role={user?.role} isMobile={isMobile}/>
     </div>
     </KecamatanProvider>
   );

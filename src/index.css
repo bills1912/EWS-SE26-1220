@@ -85,13 +85,22 @@
 /* ── Reset & base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { -webkit-text-size-adjust: 100%; } /* cegah iOS Safari auto-zoom teks saat rotate */
+
 body {
   font-family: var(--font);
   background: var(--bg0);
   color: var(--text1);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* jaring pengaman terakhir: cegah scroll horizontal body
+                         kalau ada elemen anak yang kebablasan lebar di layar sempit */
 }
+
+/* Elemen dgn overflowX:auto (tabel, dropdown horizontal) tetap bisa scroll
+   sendiri secara mulus di iOS/Android walau body-nya overflow-x:hidden */
+[style*="overflow-x"], [style*="overflowX"] { -webkit-overflow-scrolling: touch; }
+
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
