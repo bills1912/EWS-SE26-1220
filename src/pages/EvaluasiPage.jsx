@@ -2055,7 +2055,8 @@ function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
 // yg bertambah 1 titik data per hari tiap convert_assignment.py+upload_assignment.py
 // dijalankan (lihat backend) — jadi di hari-hari awal fitur ini dipakai, series
 // masih pendek (wajar, akan terus bertambah panjang seiring waktu).
-function UsahaTrackingView({ series, loading, error, bounds, range, setRange, selectedKec, filterDesa, isMobile }) {
+function UsahaTrackingView({ series, loading, error, bounds, range, setRange, selectedKec, filterDesa, isMobile,
+                             petugasOptions = [], petugasLabel = 'Petugas', usahaPetugas, setUsahaPetugas }) {
   // Urutkan terbaru dulu (paling relevan dilihat di atas), delta tetap
   // dihitung terhadap hari SEBELUMNYA secara kronologis (bukan urutan tampil)
   const sorted = [...series].sort((a, b) => a.date < b.date ? 1 : -1);
@@ -2069,6 +2070,7 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
   const latest = byDateAsc[byDateAsc.length - 1] || null;
   const latestDelta = latest ? deltaMap[latest.date] : null;
   const maxTotal = Math.max(1, ...series.map(r => r.total));
+  const petugasNama = usahaPetugas ? (petugasOptions.find(p => p.email === usahaPetugas)?.nama || usahaPetugas) : '';
 
   const quickRange = (days) => {
     if (!bounds.max) return;
@@ -2081,15 +2083,26 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
 
   return (
     <div>
-      {/* Header: konteks scope + date-range picker */}
+      {/* Header: konteks scope + selector petugas + date-range picker */}
       <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:14 }}>
         <div style={{ fontSize:11, color:'var(--text3)' }}>
           Scope: <strong style={{ color:'var(--text2)' }}>
-            {filterDesa ? filterDesa : (selectedKec && selectedKec !== 'all') ? selectedKec : 'Seluruh Kabupaten'}
+            {petugasNama || (filterDesa ? filterDesa : (selectedKec && selectedKec !== 'all') ? selectedKec : 'Seluruh Kabupaten')}
           </strong>
           {' '}· status usaha dihitung: <strong style={{ color:'#a78bfa' }}>Ditemukan + Baru</strong> saja
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft: isMobile ? 0 : 'auto', flexWrap:'wrap' }}>
+          {petugasOptions.length > 0 && (
+            <select value={usahaPetugas} onChange={e => setUsahaPetugas(e.target.value)}
+              style={{ padding:'4px 8px', fontSize: isMobile ? 16 : 11, borderRadius:6,
+                       border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text2)',
+                       cursor:'pointer', maxWidth: isMobile ? '100%' : 180 }}>
+              <option value="">Semua {petugasLabel}</option>
+              {petugasOptions.map(p => (
+                <option key={p.email} value={p.email}>{p.nama}</option>
+              ))}
+            </select>
+          )}
           {[[7,'7 hari'],[14,'14 hari'],[30,'30 hari']].map(([d,l]) => (
             <button key={d} onClick={() => quickRange(d)}
               style={{ padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:6,
@@ -2237,6 +2250,7 @@ export function EvaluasiPage() {
   const [usahaError,   setUsahaError]   = useState(null);
   const [usahaBounds,  setUsahaBounds]  = useState({ min: null, max: null });
   const [usahaRange,   setUsahaRange]   = useState({ start: '', end: '' }); // '' = belum di-set user, pakai default (14 hari terakhir)
+  const [usahaPetugas, setUsahaPetugas] = useState(''); // '' = semua petugas, else email pencacah/pengawas terpilih
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -2247,7 +2261,7 @@ export function EvaluasiPage() {
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); setGranularity('petugas'); }, [activeTab, selectedKec]);
+  useEffect(() => { setPage(1); setFilterDesa(''); setSortBy('perfScore'); setSortDir('desc'); setGranularity('petugas'); setUsahaPetugas(''); }, [activeTab, selectedKec]);
 
   // Reset sort ke default yg masuk akal tiap ganti granularitas tabel + balik ke halaman 1
   useEffect(() => {
@@ -2258,11 +2272,9 @@ export function EvaluasiPage() {
   }, [granularity]);
 
   // Fetch series Tracking Usaha — dipicu saat mode 'usaha' aktif, atau saat
-  // filter kecamatan/desa/rentang tanggal berubah SELAMA mode ini aktif.
-  // Kecamatan (global) & Desa (filter yg sudah ada di halaman ini) dipakai
-  // sbg scope — sengaja TIDAK ada filter pencacah/pengawas individual di
-  // sini (belum ada selector-nya di halaman ini utk itu; scope kabupaten/
-  // kecamatan/desa sudah cukup utk kebutuhan "tracking usaha harian").
+  // filter kecamatan/desa/petugas/rentang tanggal berubah SELAMA mode ini
+  // aktif. Scope: Kecamatan (global) + Desa (filter yg sudah ada) + Petugas
+  // (dropdown khusus tab Tracking Usaha, ikut tab Pencacah/Pengawas yg aktif).
   useEffect(() => {
     if (granularity !== 'usaha') return;
     setUsahaLoading(true);
@@ -2272,6 +2284,7 @@ export function EvaluasiPage() {
     if (filterDesa) qs.set('desa', filterDesa);
     if (usahaRange.start) qs.set('start', usahaRange.start);
     if (usahaRange.end)   qs.set('end', usahaRange.end);
+    if (usahaPetugas) qs.set(activeTab === 'pencacah' ? 'pencacah' : 'pengawas', usahaPetugas);
     apiFetch(`/api/evaluasi/usaha-harian?${qs.toString()}`)
       .then(d => {
         setUsahaSeries(d.series || []);
@@ -2287,7 +2300,7 @@ export function EvaluasiPage() {
         setUsahaLoading(false);
       })
       .catch(e => { setUsahaError(e.message); setUsahaLoading(false); });
-  }, [granularity, selectedKec, filterDesa, usahaRange.start, usahaRange.end]);
+  }, [granularity, selectedKec, filterDesa, usahaRange.start, usahaRange.end, usahaPetugas, activeTab]);
 
   useEffect(() => {
     if (!data) return;
@@ -2358,6 +2371,14 @@ export function EvaluasiPage() {
   }).length;
   const countPcl = countFiltered(pencacah);
   const countPws = countFiltered(pengawas);
+
+  // Daftar petugas utk dropdown selector di tab "Tracking Usaha" — ikut list
+  // pencacah/pengawas sesuai tab aktif (list PENUH, bukan hasil filter tabel
+  // utama, supaya bisa cari petugas apa saja terlepas dari filter lain aktif)
+  const usahaPetugasOptions = [...(activeTab === 'pencacah' ? pencacah : pengawas)]
+    .filter(p => p.email)
+    .sort((a, b) => (a.nama||'').localeCompare(b.nama||'', 'id'))
+    .map(p => ({ email: p.email, nama: p.nama || p.email }));
 
   // Filter
   let filtered = srcData.filter(p => {
@@ -2908,6 +2929,8 @@ export function EvaluasiPage() {
             series={usahaSeries} loading={usahaLoading} error={usahaError}
             bounds={usahaBounds} range={usahaRange} setRange={setUsahaRange}
             selectedKec={selectedKec} filterDesa={filterDesa} isMobile={isMobile}
+            petugasOptions={usahaPetugasOptions} petugasLabel={activeTab === 'pencacah' ? 'Pencacah' : 'Pengawas'}
+            usahaPetugas={usahaPetugas} setUsahaPetugas={setUsahaPetugas}
           />
         ) : <>
 
