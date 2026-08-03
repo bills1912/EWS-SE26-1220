@@ -1470,15 +1470,29 @@ function generateUsahaMatrixXLSX({ dates, rows, petugasLabel, scope }) {
     }
   }
 
-  const buildSheet = (field) => {
+  // Row varian yg py field 'total' tambahan (jumlah perusahaan+keluarga per
+  // tanggal) — dipakai KHUSUS sheet ketiga, tanpa ganggu field asli 2 sheet lain
+  const rowsWithTotal = rows.map(r => {
+    const total = {};
+    for (const d of dates) total[d] = (r.perusahaan?.[d] ?? 0) + (r.keluarga?.[d] ?? 0);
+    return { ...r, total };
+  });
+
+  const SHEET_TITLE = {
+    perusahaan: 'USAHA PERUSAHAAN',
+    keluarga:   'USAHA KELUARGA',
+    total:      'TOTAL (USAHA PERUSAHAAN + USAHA KELUARGA)',
+  };
+
+  const buildSheet = (field, rowSource = rows) => {
     const headerRow = [petugasLabel, 'Email', 'Kecamatan', ...dates.map(fmtHeaderDate), ...deltaCols.map(c => c.header)];
-    const dataRows  = rows.map(r => {
+    const dataRows  = rowSource.map(r => {
       const dateVals  = dates.map(d => r[field]?.[d] ?? 0);
       const deltaVals = deltaCols.map(c => (r[field]?.[c.to] ?? 0) - (r[field]?.[c.from] ?? 0));
       return [r.nama, r.email, r.kecamatan || '', ...dateVals, ...deltaVals];
     });
     const ws = XLSX.utils.aoa_to_sheet([
-      [`TRACKING USAHA — ${field === 'perusahaan' ? 'USAHA PERUSAHAAN' : 'USAHA KELUARGA'} (Ditemukan + Baru) — Scope: ${scope}`],
+      [`TRACKING USAHA — ${SHEET_TITLE[field]} (Ditemukan + Baru) — Scope: ${scope}`],
       [],
       headerRow,
       ...dataRows,
@@ -1495,6 +1509,7 @@ function generateUsahaMatrixXLSX({ dates, rows, petugasLabel, scope }) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, buildSheet('perusahaan'), 'Usaha Perusahaan');
   XLSX.utils.book_append_sheet(wb, buildSheet('keluarga'),   'Usaha Keluarga');
+  XLSX.utils.book_append_sheet(wb, buildSheet('total', rowsWithTotal), 'Total');
   XLSX.writeFile(wb, `tracking_usaha_per_${petugasLabel.toLowerCase()}_series_${fmtExportTimestamp()}.xlsx`);
 }
 
