@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import * as XLSX from 'xlsx';
 import {
   Users, TrendingUp, Clock, CheckCircle, XCircle,
   BarChart2, MapPin, Search, ChevronDown, ChevronUp, ChevronRight,
@@ -1431,6 +1432,43 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
 // Terpisah dari generateExcel di atas (itu didesain utk tabel Petugas/Desa/
 // Sub-SLS dgn kolom yg bisa dipilih2 — Tracking Usaha kolomnya cuma sedikit
 // & tetap, jadi tidak butuh modal picker kolom, langsung download.
+// ── Export .xlsx (2 sheet) khusus mode "Per Petugas" Tracking Usaha ────────
+// Beda dari generateUsahaCSV di atas: itu snapshot 1 tanggal + delta,
+// SEDANGKAN ini FULL SERIES — 1 baris = 1 petugas, kolomnya tanggal2 dlm
+// rentang yg dipilih (bukan cuma 1 tanggal terakhir). Dipisah 2 sheet krn
+// Usaha Perusahaan & Usaha Keluarga masing2 py angka sendiri per tanggal.
+function generateUsahaMatrixXLSX({ dates, rows, petugasLabel, scope }) {
+  const fmtHeaderDate = iso => {
+    const d = new Date(`${iso}T00:00:00`);
+    return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+  };
+
+  const buildSheet = (field) => {
+    const headerRow = [petugasLabel, 'Email', 'Kecamatan', ...dates.map(fmtHeaderDate)];
+    const dataRows  = rows.map(r => [
+      r.nama, r.email, r.kecamatan || '',
+      ...dates.map(d => r[field]?.[d] ?? 0),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([
+      [`TRACKING USAHA — ${field === 'perusahaan' ? 'USAHA PERUSAHAAN' : 'USAHA KELUARGA'} (Ditemukan + Baru) — Scope: ${scope}`],
+      [],
+      headerRow,
+      ...dataRows,
+    ]);
+    // Lebar kolom biar nama/email kebaca, kolom tanggal ringkas
+    ws['!cols'] = [
+      { wch: 26 }, { wch: 30 }, { wch: 20 },
+      ...dates.map(() => ({ wch: 12 })),
+    ];
+    return ws;
+  };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildSheet('perusahaan'), 'Usaha Perusahaan');
+  XLSX.utils.book_append_sheet(wb, buildSheet('keluarga'),   'Usaha Keluarga');
+  XLSX.writeFile(wb, `tracking_usaha_per_${petugasLabel.toLowerCase()}_series_${fmtExportTimestamp()}.xlsx`);
+}
+
 function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugasDates, scope, deltaLookback = 1 }) {
   const esc = v => {
     const s = String(v ?? '');
@@ -2626,15 +2664,18 @@ export function EvaluasiPage() {
       const qs = new URLSearchParams();
       if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
       if (filterDesa) qs.set('desa', filterDesa);
-      if (usahaExportRange.end) qs.set('end', usahaExportRange.end);
+      if (usahaExportRange.start) qs.set('start', usahaExportRange.start);
+      if (usahaExportRange.end)   qs.set('end', usahaExportRange.end);
       qs.set('role', activeTab === 'pengawas' ? 'pengawas' : 'pencacah');
-      qs.set('lookback', '2'); // delta vs 2 titik data sebelumnya, sesuai permintaan
-      apiFetch(`/api/evaluasi/usaha-harian/petugas?${qs.toString()}`)
+      apiFetch(`/api/evaluasi/usaha-harian/matrix?${qs.toString()}`)
         .then(d => {
-          generateUsahaCSV({
-            viewMode: 'petugas', petugasRows: d.rows || [], petugasLabel: petugasLabelExport,
-            petugasDates: { latestDate: d.latestDate, prevDate: d.prevDate }, scope: scopeLabel,
-            deltaLookback: 2,
+          if (!d.dates || d.dates.length === 0) {
+            setUsahaExportError('Tidak ada data pada rentang tanggal ini.');
+            setUsahaExportLoading(false);
+            return;
+          }
+          generateUsahaMatrixXLSX({
+            dates: d.dates, rows: d.rows || [], petugasLabel: petugasLabelExport, scope: scopeLabel,
           });
           setUsahaExportLoading(false);
           setUsahaExportModal(false);
@@ -3241,7 +3282,7 @@ export function EvaluasiPage() {
                           <FileText size={13} color="#a78bfa"/>
                           <div>
                             <div style={{ fontWeight:600 }}>
-                              Export {usahaViewMode === 'petugas' ? `Per ${activeTab==='pengawas'?'Pengawas':'Pencacah'}` : 'Ringkasan Harian'} (CSV)
+                              Export {usahaViewMode === 'petugas' ? `Per ${activeTab==='pengawas'?'Pengawas':'Pencacah'} (.xlsx)` : 'Ringkasan Harian (CSV)'}
                             </div>
                             <div style={{ fontSize:10,color:'var(--text4)' }}>Pilih tanggal dulu → download</div>
                           </div>
@@ -3617,7 +3658,7 @@ export function EvaluasiPage() {
               <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:14 }}>
                 <div>
                   <label style={{ fontSize:10, color:'var(--text3)', fontWeight:600, display:'block', marginBottom:5 }}>
-                    Dari tanggal {usahaViewMode === 'petugas' && <span style={{ color:'var(--text4)', fontWeight:400 }}>(diabaikan di mode Per Petugas)</span>}
+                    Dari tanggal
                   </label>
                   <CustomDatePicker value={usahaExportRange.start} min={usahaBounds.min}
                     max={usahaExportRange.end || usahaBounds.max} isMobile={isMobile}
@@ -3636,7 +3677,7 @@ export function EvaluasiPage() {
               <div style={{ fontSize:9.5, color:'var(--text4)', padding:'8px 10px',
                              background:'var(--bg3)', borderRadius:8, marginBottom:14, lineHeight:1.5 }}>
                 {usahaViewMode === 'petugas'
-                  ? <>Mode Per {activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah'}: total diambil pd tanggal "Sampai tanggal" di atas. Delta dihitung vs <strong style={{ color:'var(--text3)' }}>2 titik data sebelumnya</strong> yg beneran ada datanya.</>
+                  ? <>Mode Per {activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah'}: hasilnya file <strong style={{ color:'var(--text3)' }}>.xlsx 2 sheet</strong> (Usaha Perusahaan & Usaha Keluarga) — 1 baris = 1 {activeTab === 'pengawas' ? 'pengawas' : 'pencacah'}, kolomnya tiap tanggal dlm rentang di atas.</>
                   : <>Delta tiap baris dihitung vs <strong style={{ color:'var(--text3)' }}>2 titik data sebelumnya</strong> yg beneran ada datanya (bukan patokan kalender kaku).</>}
               </div>
 
@@ -3656,7 +3697,7 @@ export function EvaluasiPage() {
                            fontWeight:600, borderRadius:8, border:'none', cursor: usahaExportLoading ? 'default' : 'pointer',
                            background:'#a78bfa', color:'#fff', opacity: usahaExportLoading ? 0.7 : 1 }}>
                   <Download size={12} strokeWidth={2}/>
-                  {usahaExportLoading ? 'Memuat...' : 'Unduh CSV'}
+                  {usahaExportLoading ? 'Memuat...' : `Unduh ${usahaViewMode === 'petugas' ? '.xlsx' : 'CSV'}`}
                 </button>
               </div>
             </div>

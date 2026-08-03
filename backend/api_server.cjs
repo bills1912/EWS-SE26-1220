@@ -961,6 +961,59 @@ app.get('/api/evaluasi/usaha-harian/petugas', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/evaluasi/usaha-harian/matrix ─────────────────────────────────
+// Matrix PETUGAS × TANGGAL — khusus utk export .xlsx "series per petugas"
+// (beda dgn /petugas di atas yg cuma snapshot 1 tanggal + delta). Di sini
+// return SEMUA tanggal dlm rentang, tiap petugas py nilai perusahaan &
+// keluarga PER TANGGAL (bukan cuma total 1 tanggal) — frontend yg susun jadi
+// 2 sheet Excel (Usaha Perusahaan / Usaha Keluarga), kolom = tanggal.
+app.get('/api/evaluasi/usaha-harian/matrix', verifyToken, async (req, res) => {
+  try {
+    const { start, end, kec, desa, role = 'pencacah' } = req.query;
+    const emailField = role === 'pengawas' ? 'pengawasEmail' : 'pencacahEmail';
+    const namaField  = role === 'pengawas' ? 'pengawasNama'  : 'pencacahNama';
+
+    const match = { [emailField]: { $nin: [null, ''] } };
+    if (kec && kec !== 'all') match.kecamatan = kec;
+    if (desa) match.desa = desa;
+    if (start || end) {
+      match.date = {};
+      if (start) match.date.$gte = start;
+      if (end)   match.date.$lte = end;
+    }
+
+    const agg = await db.collection('assignment_usaha_harian').aggregate([
+      { $match: match },
+      { $group: {
+          _id: { email: `$${emailField}`, date: '$date' },
+          nama:       { $first: `$${namaField}` },
+          kecamatan:  { $first: '$kecamatan' },
+          perusahaan: { $sum: '$perusahaan' },
+          keluarga:   { $sum: '$keluarga' },
+        } },
+    ]).toArray();
+
+    const datesSet = new Set();
+    const byEmail  = new Map();
+    for (const r of agg) {
+      const { email, date } = r._id;
+      if (!email) continue;
+      datesSet.add(date);
+      if (!byEmail.has(email)) {
+        byEmail.set(email, { email, nama: r.nama || email, kecamatan: r.kecamatan, perusahaan: {}, keluarga: {} });
+      }
+      const row = byEmail.get(email);
+      row.perusahaan[date] = r.perusahaan;
+      row.keluarga[date]   = r.keluarga;
+    }
+
+    const dates = [...datesSet].sort(); // kronologis, dipakai sbg urutan kolom
+    const rows  = [...byEmail.values()].sort((a, b) => (a.nama || '').localeCompare(b.nama || '', 'id'));
+
+    res.json({ dates, rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── GET /api/evaluasi/snapshots ───────────────────────────────────────────
 // Return history snapshot uploads untuk chart progress
 app.get('/api/evaluasi/snapshots', verifyToken, async (req, res) => {
