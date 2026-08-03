@@ -1431,13 +1431,14 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
 // Terpisah dari generateExcel di atas (itu didesain utk tabel Petugas/Desa/
 // Sub-SLS dgn kolom yg bisa dipilih2 — Tracking Usaha kolomnya cuma sedikit
 // & tetap, jadi tidak butuh modal picker kolom, langsung download.
-function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugasDates, scope }) {
+function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugasDates, scope, deltaLookback = 1 }) {
   const esc = v => {
     const s = String(v ?? '');
     return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const row  = cols => cols.map(esc).join(',');
   const rows = arr  => arr.map(row).join('\n');
+  const deltaLabel = deltaLookback === 1 ? 'hari sebelumnya' : `${deltaLookback} titik data sebelumnya`;
 
   let csv, filenamePart;
   if (viewMode === 'petugas') {
@@ -1445,7 +1446,7 @@ function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugas
     const data = petugasRows.map(r => [r.nama, r.email, r.kecamatan || '', r.perusahaan, r.keluarga, r.total, r.delta ?? '']);
     csv = [
       `=== TRACKING USAHA — PER ${petugasLabel.toUpperCase()} ===`,
-      `Tanggal: ${petugasDates.latestDate || '-'}${petugasDates.prevDate ? ` (delta vs ${petugasDates.prevDate})` : ' (belum ada data hari sebelumnya utk delta)'}`,
+      `Tanggal: ${petugasDates.latestDate || '-'}${petugasDates.prevDate ? ` (delta vs ${petugasDates.prevDate}, ${deltaLabel})` : ' (belum ada data pembanding utk delta)'}`,
       `Scope: ${scope}`,
       `Status usaha dihitung: Ditemukan + Baru saja`,
       '',
@@ -1453,10 +1454,12 @@ function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugas
     ].join('\n');
     filenamePart = `per_${petugasLabel.toLowerCase()}`;
   } else {
+    // deltaLookback: mundur N TITIK DATA (bukan N hari kalender kaku) — tetap
+    // aman kalau ada tanggal yg bolong (pipeline sempat tidak jalan sehari)
     const byDateAsc = [...series].sort((a, b) => a.date < b.date ? -1 : 1);
     const deltaMap = {};
     for (let i = 0; i < byDateAsc.length; i++) {
-      const prev = i > 0 ? byDateAsc[i - 1] : null;
+      const prev = i >= deltaLookback ? byDateAsc[i - deltaLookback] : null;
       deltaMap[byDateAsc[i].date] = prev ? byDateAsc[i].total - prev.total : null;
     }
     const headers = ['Tanggal', 'Usaha Perusahaan', 'Usaha Keluarga', 'Total', 'Delta', 'Jumlah Sub-SLS'];
@@ -1465,6 +1468,7 @@ function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugas
       '=== TRACKING USAHA — RINGKASAN HARIAN ===',
       `Scope: ${scope}`,
       `Status usaha dihitung: Ditemukan + Baru saja`,
+      `Delta dihitung vs ${deltaLabel} yg beneran ada datanya`,
       '',
       rows([headers, ...data]),
     ].join('\n');
@@ -2521,6 +2525,14 @@ export function EvaluasiPage() {
   const [usahaPetugasLoading, setUsahaPetugasLoading] = useState(false);
   const [usahaPetugasError,   setUsahaPetugasError]   = useState(null);
   const [usahaPetugasDates,   setUsahaPetugasDates]   = useState({ latestDate: null, prevDate: null });
+  // Modal pilih tanggal export — SENGAJA terpisah dari usahaRange (yg dipakai
+  // tampilan layar), krn tanggal yg mau di-export bisa beda dari yg lagi
+  // ditampilkan di layar (mis. layar nunjukkin 7 hari terakhir, tapi mau
+  // export 30 hari lengkap)
+  const [usahaExportModal,   setUsahaExportModal]   = useState(false);
+  const [usahaExportRange,   setUsahaExportRange]   = useState({ start:'', end:'' });
+  const [usahaExportLoading, setUsahaExportLoading] = useState(false);
+  const [usahaExportError,   setUsahaExportError]   = useState(null);
 
   const { selectedKec } = useKecamatan();  // HARUS sebelum any early return
 
@@ -2591,6 +2603,60 @@ export function EvaluasiPage() {
       })
       .catch(e => { setUsahaPetugasError(e.message); setUsahaPetugasLoading(false); });
   }, [granularity, usahaViewMode, selectedKec, filterDesa, usahaRange.end, activeTab]);
+
+  // Buka modal export Tracking Usaha — pre-fill rentang dari yg lagi
+  // ditampilkan di layar (usahaRange), tapi user bisa ubah bebas di modal
+  // tanpa mempengaruhi tampilan layar
+  const openUsahaExportModal = () => {
+    setUsahaExportRange({ start: usahaRange.start, end: usahaRange.end });
+    setUsahaExportError(null);
+    setUsahaExportModal(true);
+  };
+
+  // Konfirmasi export — fetch ULANG data sesuai rentang tanggal yg dipilih
+  // DI MODAL (bisa beda dari yg lagi ditampilkan di layar), delta pakai
+  // lookback=2 (2 titik data sebelumnya, bukan 1 spt tampilan layar)
+  const confirmUsahaExport = () => {
+    setUsahaExportLoading(true);
+    setUsahaExportError(null);
+    const scopeLabel = filterDesa || (selectedKec && selectedKec !== 'all' ? selectedKec : 'Seluruh Kabupaten');
+    const petugasLabelExport = activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah';
+
+    if (usahaViewMode === 'petugas') {
+      const qs = new URLSearchParams();
+      if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
+      if (filterDesa) qs.set('desa', filterDesa);
+      if (usahaExportRange.end) qs.set('end', usahaExportRange.end);
+      qs.set('role', activeTab === 'pengawas' ? 'pengawas' : 'pencacah');
+      qs.set('lookback', '2'); // delta vs 2 titik data sebelumnya, sesuai permintaan
+      apiFetch(`/api/evaluasi/usaha-harian/petugas?${qs.toString()}`)
+        .then(d => {
+          generateUsahaCSV({
+            viewMode: 'petugas', petugasRows: d.rows || [], petugasLabel: petugasLabelExport,
+            petugasDates: { latestDate: d.latestDate, prevDate: d.prevDate }, scope: scopeLabel,
+            deltaLookback: 2,
+          });
+          setUsahaExportLoading(false);
+          setUsahaExportModal(false);
+        })
+        .catch(e => { setUsahaExportError(e.message); setUsahaExportLoading(false); });
+    } else {
+      const qs = new URLSearchParams();
+      if (selectedKec && selectedKec !== 'all') qs.set('kec', selectedKec);
+      if (filterDesa) qs.set('desa', filterDesa);
+      if (usahaExportRange.start) qs.set('start', usahaExportRange.start);
+      if (usahaExportRange.end)   qs.set('end', usahaExportRange.end);
+      apiFetch(`/api/evaluasi/usaha-harian?${qs.toString()}`)
+        .then(d => {
+          generateUsahaCSV({
+            viewMode: 'harian', series: d.series || [], scope: scopeLabel, deltaLookback: 2,
+          });
+          setUsahaExportLoading(false);
+          setUsahaExportModal(false);
+        })
+        .catch(e => { setUsahaExportError(e.message); setUsahaExportLoading(false); });
+    }
+  };
 
   useEffect(() => {
     if (!data) return;
@@ -3164,18 +3230,9 @@ export function EvaluasiPage() {
                       boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
                       animation:'fadeSlideDown .12s ease' }}>
                       {granularity === 'usaha' ? (
-                        // Tracking Usaha: kolomnya tetap & sedikit, jadi langsung
-                        // download CSV drpd buka modal picker kolom spt mode lain
-                        <button onClick={()=>{ setShowExportMenu(false);
-                          generateUsahaCSV({
-                            viewMode: usahaViewMode,
-                            series: usahaSeries,
-                            petugasRows: usahaPetugasRows,
-                            petugasLabel: activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah',
-                            petugasDates: usahaPetugasDates,
-                            scope: filterDesa || (selectedKec && selectedKec !== 'all' ? selectedKec : 'Seluruh Kabupaten'),
-                          });
-                        }}
+                        // Tracking Usaha: buka modal pilih tanggal export dulu
+                        // (bisa beda dari rentang yg lagi ditampilkan di layar)
+                        <button onClick={()=>{ setShowExportMenu(false); openUsahaExportModal(); }}
                           style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
                             padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
                             fontSize:12,color:'var(--text1)',textAlign:'left' }}
@@ -3186,9 +3243,7 @@ export function EvaluasiPage() {
                             <div style={{ fontWeight:600 }}>
                               Export {usahaViewMode === 'petugas' ? `Per ${activeTab==='pengawas'?'Pengawas':'Pencacah'}` : 'Ringkasan Harian'} (CSV)
                             </div>
-                            <div style={{ fontSize:10,color:'var(--text4)' }}>
-                              {usahaViewMode === 'petugas' ? 'Total usaha per petugas + delta' : 'Series harian + delta'}
-                            </div>
+                            <div style={{ fontSize:10,color:'var(--text4)' }}>Pilih tanggal dulu → download</div>
                           </div>
                         </button>
                       ) : <>
@@ -3524,6 +3579,90 @@ export function EvaluasiPage() {
             setExportModal(null);
           }}
         />
+      )}
+
+      {/* Modal pilih tanggal export khusus tab Tracking Usaha — rentangnya
+          BOLEH beda dari yg lagi ditampilkan di layar */}
+      {usahaExportModal && createPortal(
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex',
+          alignItems:'center', justifyContent:'center', padding:'24px',
+          background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}
+          onClick={() => !usahaExportLoading && setUsahaExportModal(false)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:'var(--bg2)', border:'1px solid var(--border2)',
+              borderRadius:16, width:360, maxWidth:'100%',
+              boxShadow:'0 24px 64px rgba(0,0,0,0.6)', animation:'modalIn .25s ease both' }}>
+
+            <div style={{ padding:'16px 18px', borderBottom:'1px solid var(--border)',
+              display:'flex', alignItems:'center', gap:10 }}>
+              <FileText size={16} color="#a78bfa"/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'var(--text1)' }}>
+                  Export Tracking Usaha
+                </div>
+                <div style={{ fontSize:10, color:'var(--text4)', marginTop:2 }}>
+                  Pilih rentang tanggal yg mau di-export (boleh beda dari yg lagi ditampilkan)
+                </div>
+              </div>
+              <button onClick={() => !usahaExportLoading && setUsahaExportModal(false)}
+                style={{ background:'none', border:'none', cursor:'pointer', padding:4,
+                         borderRadius:6, display:'flex' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                <X size={15} color="var(--text3)"/>
+              </button>
+            </div>
+
+            <div style={{ padding:'18px' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:14 }}>
+                <div>
+                  <label style={{ fontSize:10, color:'var(--text3)', fontWeight:600, display:'block', marginBottom:5 }}>
+                    Dari tanggal {usahaViewMode === 'petugas' && <span style={{ color:'var(--text4)', fontWeight:400 }}>(diabaikan di mode Per Petugas)</span>}
+                  </label>
+                  <CustomDatePicker value={usahaExportRange.start} min={usahaBounds.min}
+                    max={usahaExportRange.end || usahaBounds.max} isMobile={isMobile}
+                    onChange={v => setUsahaExportRange(r => ({ ...r, start: v }))} placeholder="Dari tanggal"/>
+                </div>
+                <div>
+                  <label style={{ fontSize:10, color:'var(--text3)', fontWeight:600, display:'block', marginBottom:5 }}>
+                    Sampai tanggal
+                  </label>
+                  <CustomDatePicker value={usahaExportRange.end} min={usahaExportRange.start || usahaBounds.min}
+                    max={usahaBounds.max} isMobile={isMobile}
+                    onChange={v => setUsahaExportRange(r => ({ ...r, end: v }))} placeholder="Sampai tanggal"/>
+                </div>
+              </div>
+
+              <div style={{ fontSize:9.5, color:'var(--text4)', padding:'8px 10px',
+                             background:'var(--bg3)', borderRadius:8, marginBottom:14, lineHeight:1.5 }}>
+                {usahaViewMode === 'petugas'
+                  ? <>Mode Per {activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah'}: total diambil pd tanggal "Sampai tanggal" di atas. Delta dihitung vs <strong style={{ color:'var(--text3)' }}>2 titik data sebelumnya</strong> yg beneran ada datanya.</>
+                  : <>Delta tiap baris dihitung vs <strong style={{ color:'var(--text3)' }}>2 titik data sebelumnya</strong> yg beneran ada datanya (bukan patokan kalender kaku).</>}
+              </div>
+
+              {usahaExportError && (
+                <div style={{ fontSize:10.5, color:'#f87171', marginBottom:12 }}>Gagal export: {usahaExportError}</div>
+              )}
+
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button onClick={() => setUsahaExportModal(false)} disabled={usahaExportLoading}
+                  style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:8,
+                           border:'1px solid var(--border)', background:'var(--bg3)',
+                           color:'var(--text3)', cursor: usahaExportLoading ? 'default' : 'pointer' }}>
+                  Batal
+                </button>
+                <button onClick={confirmUsahaExport} disabled={usahaExportLoading}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', fontSize:12,
+                           fontWeight:600, borderRadius:8, border:'none', cursor: usahaExportLoading ? 'default' : 'pointer',
+                           background:'#a78bfa', color:'#fff', opacity: usahaExportLoading ? 0.7 : 1 }}>
+                  <Download size={12} strokeWidth={2}/>
+                  {usahaExportLoading ? 'Memuat...' : 'Unduh CSV'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -903,27 +903,32 @@ app.get('/api/evaluasi/usaha-harian', verifyToken, async (req, res) => {
 //   kalender — krn pipeline belum tentu jalan tiap hari)
 app.get('/api/evaluasi/usaha-harian/petugas', verifyToken, async (req, res) => {
   try {
-    const { end, kec, desa, role = 'pencacah' } = req.query;
+    const { end, kec, desa, role = 'pencacah', lookback } = req.query;
     const emailField = role === 'pengawas' ? 'pengawasEmail' : 'pencacahEmail';
     const namaField  = role === 'pengawas' ? 'pengawasNama'  : 'pencacahNama';
+    // lookback = berapa TITIK DATA (bukan hari kalender) mundur utk pembanding
+    // delta. Default 1 (tampilan layar, vs hari sebelumnya yg beneran ada
+    // data). Export pakai lookback=2 (vs 2 titik data sebelumnya) sesuai
+    // permintaan — tetap dihitung dari tanggal yg BENERAN ada datanya, bukan
+    // asumsi kalender kaku (aman kalau pipeline sempat tidak jalan sehari).
+    const steps = Math.max(1, parseInt(lookback, 10) || 1);
 
     const baseMatch = { [emailField]: { $nin: [null, ''] } };
     if (kec && kec !== 'all') baseMatch.kecamatan = kec;
     if (desa) baseMatch.desa = desa;
 
+    // Ambil SEMUA tanggal unik yg beneran ada data (bukan .find().limit(N) yg
+    // rawan dobel krn 1 tanggal punya banyak dokumen, 1 per sub-SLS)
+    const allDates = await db.collection('assignment_usaha_harian').distinct('date', baseMatch);
+    allDates.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // terbaru dulu
+
     // Tanggal "terkini" — pakai `end` dari date-range picker kalau ada &
     // beneran ada datanya (<=), kalau tidak ambil tanggal terbaru yg tersedia
-    const dateFilter = end ? { ...baseMatch, date: { $lte: end } } : baseMatch;
-    const latestDoc = await db.collection('assignment_usaha_harian')
-      .find(dateFilter, { projection: { date: 1 } }).sort({ date: -1 }).limit(1).toArray();
-    const latestDate = latestDoc[0]?.date || null;
+    const latestDate = end ? (allDates.find(d => d <= end) || null) : (allDates[0] || null);
     if (!latestDate) return res.json({ rows: [], latestDate: null, prevDate: null });
 
-    // Tanggal sebelumnya yg BENERAN ada datanya (bukan asumsi H-1 kalender)
-    const prevDoc = await db.collection('assignment_usaha_harian')
-      .find({ ...baseMatch, date: { $lt: latestDate } }, { projection: { date: 1 } })
-      .sort({ date: -1 }).limit(1).toArray();
-    const prevDate = prevDoc[0]?.date || null;
+    const latestIdx = allDates.indexOf(latestDate);
+    const prevDate  = allDates[latestIdx + steps] || null; // mundur `steps` titik data dari latestDate
 
     const aggFor = (date) => date ? db.collection('assignment_usaha_harian').aggregate([
       { $match: { ...baseMatch, date } },
