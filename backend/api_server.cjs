@@ -995,6 +995,14 @@ app.get('/api/evaluasi/usaha-harian/matrix', verifyToken, async (req, res) => {
 
     const datesSet = new Set();
     const byEmail  = new Map();
+    // PENTING: urutkan ASC by date dulu, lalu SELALU overwrite nama/kecamatan
+    // tiap iterasi (bukan cuma sekali di kemunculan pertama) — supaya nama
+    // yg akhirnya dipajang itu dari tanggal PALING BARU. MongoDB $group
+    // TIDAK menjamin urutan hasil sesuai tanggal, jadi tanpa sort eksplisit
+    // ini, nama bisa "nyangkut" dari data histori lama (mis. sebelum bug
+    // resolusi nama di convert_assignment.py diperbaiki) meski tanggal2
+    // lebih baru sudah py nama yg benar.
+    agg.sort((a, b) => (a._id.date < b._id.date ? -1 : a._id.date > b._id.date ? 1 : 0));
     for (const r of agg) {
       const { email, date } = r._id;
       if (!email) continue;
@@ -1003,6 +1011,8 @@ app.get('/api/evaluasi/usaha-harian/matrix', verifyToken, async (req, res) => {
         byEmail.set(email, { email, nama: r.nama || email, kecamatan: r.kecamatan, perusahaan: {}, keluarga: {} });
       }
       const row = byEmail.get(email);
+      if (r.nama)      row.nama = r.nama;           // overwrite tiap iterasi -> yg menang dari date terakhir
+      if (r.kecamatan) row.kecamatan = r.kecamatan;
       row.perusahaan[date] = r.perusahaan;
       row.keluarga[date]   = r.keluarga;
     }
