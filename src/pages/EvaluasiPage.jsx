@@ -1427,6 +1427,60 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
 
 
 // ── Generate Excel Evaluasi (CSV — tanpa library eksternal) ───────────────
+// ── Export CSV khusus tab "Tracking Usaha" ──────────────────────────────────
+// Terpisah dari generateExcel di atas (itu didesain utk tabel Petugas/Desa/
+// Sub-SLS dgn kolom yg bisa dipilih2 — Tracking Usaha kolomnya cuma sedikit
+// & tetap, jadi tidak butuh modal picker kolom, langsung download.
+function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugasDates, scope }) {
+  const esc = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row  = cols => cols.map(esc).join(',');
+  const rows = arr  => arr.map(row).join('\n');
+
+  let csv, filenamePart;
+  if (viewMode === 'petugas') {
+    const headers = [petugasLabel, 'Email', 'Kecamatan', 'Usaha Perusahaan', 'Usaha Keluarga', 'Total', 'Delta'];
+    const data = petugasRows.map(r => [r.nama, r.email, r.kecamatan || '', r.perusahaan, r.keluarga, r.total, r.delta ?? '']);
+    csv = [
+      `=== TRACKING USAHA — PER ${petugasLabel.toUpperCase()} ===`,
+      `Tanggal: ${petugasDates.latestDate || '-'}${petugasDates.prevDate ? ` (delta vs ${petugasDates.prevDate})` : ' (belum ada data hari sebelumnya utk delta)'}`,
+      `Scope: ${scope}`,
+      `Status usaha dihitung: Ditemukan + Baru saja`,
+      '',
+      rows([headers, ...data]),
+    ].join('\n');
+    filenamePart = `per_${petugasLabel.toLowerCase()}`;
+  } else {
+    const byDateAsc = [...series].sort((a, b) => a.date < b.date ? -1 : 1);
+    const deltaMap = {};
+    for (let i = 0; i < byDateAsc.length; i++) {
+      const prev = i > 0 ? byDateAsc[i - 1] : null;
+      deltaMap[byDateAsc[i].date] = prev ? byDateAsc[i].total - prev.total : null;
+    }
+    const headers = ['Tanggal', 'Usaha Perusahaan', 'Usaha Keluarga', 'Total', 'Delta', 'Jumlah Sub-SLS'];
+    const data = byDateAsc.map(r => [r.date, r.perusahaan, r.keluarga, r.total, deltaMap[r.date] ?? '', r.nSubsls]);
+    csv = [
+      '=== TRACKING USAHA — RINGKASAN HARIAN ===',
+      `Scope: ${scope}`,
+      `Status usaha dihitung: Ditemukan + Baru saja`,
+      '',
+      rows([headers, ...data]),
+    ].join('\n');
+    filenamePart = 'ringkasan_harian';
+  }
+
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `tracking_usaha_${filenamePart}_${fmtExportTimestamp()}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPengawas, selectedCols, breakdownMode=false }) {
   const roleLabel   = isPengawas ? 'Pengawas' : 'Pencacah';
   const snap        = summary?.snapshotAt?.slice(0,10) || new Date().toISOString().slice(0,10);
@@ -2058,15 +2112,42 @@ function InaktifSection({ threshold = 2, kecamatan = 'all' }) {
 // masih pendek (wajar, akan terus bertambah panjang seiring waktu).
 function UsahaTrackingView({ series, loading, error, bounds, range, setRange, selectedKec, filterDesa, isMobile,
                              viewMode, setViewMode, petugasRows = [], petugasLoading, petugasError, petugasDates = {}, petugasLabel = 'Petugas' }) {
-  // Urutkan terbaru dulu (paling relevan dilihat di atas), delta tetap
-  // dihitung terhadap hari SEBELUMNYA secara kronologis (bukan urutan tampil)
-  const sorted = [...series].sort((a, b) => a.date < b.date ? 1 : -1);
+  const [sortBy, setSortBy] = useState('date');
+  const [sortDir, setSortDir] = useState('desc');
+  const toggleSort = col => {
+    if (sortBy === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortBy(col); setSortDir(col === 'date' ? 'desc' : 'desc'); }
+  };
+  const SI = ({ col }) => sortBy === col
+    ? <span style={{ fontSize:8, color:'#a78bfa', marginLeft:3 }}>{sortDir === 'desc' ? '▼' : '▲'}</span>
+    : <span style={{ fontSize:8, color:'var(--text4)', marginLeft:3, opacity:0.45 }}>⇅</span>;
+  const H = ({ label, col, right }) => (
+    <th onClick={() => toggleSort(col)}
+      style={{ padding:'8px 8px', textAlign: right?'right':'left', fontSize:9, fontWeight:700,
+               color: sortBy===col ? '#a78bfa' : 'var(--text4)', textTransform:'uppercase',
+               letterSpacing:'0.07em', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
+      {label} <SI col={col}/>
+    </th>
+  );
+
+  // byDateAsc = SELALU kronologis (dipakai hitung delta & bar chart, tidak
+  // ikut sortBy tabel — delta harus tetap terhadap hari sebelumnya beneran,
+  // bukan tergantung urutan tampil yg user pilih)
   const byDateAsc = [...series].sort((a, b) => a.date < b.date ? -1 : 1);
   const deltaMap = {};
   for (let i = 0; i < byDateAsc.length; i++) {
     const prev = i > 0 ? byDateAsc[i - 1] : null;
     deltaMap[byDateAsc[i].date] = prev ? byDateAsc[i].total - prev.total : null;
   }
+  // sorted = urutan TAMPIL di tabel, ikut sortBy/sortDir yg user pilih
+  const seriesWithDelta = series.map(r => ({ ...r, delta: deltaMap[r.date] }));
+  const sorted = [...seriesWithDelta].sort((a, b) => {
+    if (sortBy === 'date') {
+      return sortDir === 'desc' ? (a.date < b.date ? 1 : -1) : (a.date < b.date ? -1 : 1);
+    }
+    const av = a[sortBy] ?? -Infinity, bv = b[sortBy] ?? -Infinity;
+    return sortDir === 'desc' ? (bv - av) : (av - bv);
+  });
 
   const latest = byDateAsc[byDateAsc.length - 1] || null;
   const latestDelta = latest ? deltaMap[latest.date] : null;
@@ -2189,17 +2270,17 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Tanggal','Usaha Perusahaan','Usaha Keluarga','Total','Delta','Sub-SLS'].map((h,i) => (
-                  <th key={h} style={{ padding:'8px 8px', textAlign: i===0?'left':'right', fontSize:9,
-                                        fontWeight:700, color:'var(--text4)', textTransform:'uppercase',
-                                        letterSpacing:'0.07em', whiteSpace:'nowrap' }}>{h}</th>
-                ))}
+                <H label="Tanggal" col="date"/>
+                <H label="Usaha Perusahaan" col="perusahaan" right/>
+                <H label="Usaha Keluarga" col="keluarga" right/>
+                <H label="Total" col="total" right/>
+                <H label="Delta" col="delta" right/>
+                <H label="Sub-SLS" col="nSubsls" right/>
               </tr>
             </thead>
             <tbody>
               {sorted.map(r => {
-                const d = deltaMap[r.date];
-                const dColor = d == null ? 'var(--text4)' : d > 0 ? '#10b981' : d < 0 ? '#f43f5e' : 'var(--text3)';
+                const dColor = r.delta == null ? 'var(--text4)' : r.delta > 0 ? '#10b981' : r.delta < 0 ? '#f43f5e' : 'var(--text3)';
                 return (
                   <tr key={r.date} style={{ borderBottom:'1px solid var(--border)' }}>
                     <td style={{ padding:'8px 8px', fontSize:11, fontWeight:600, color:'var(--text1)', whiteSpace:'nowrap' }}>{r.date}</td>
@@ -2207,7 +2288,7 @@ function UsahaTrackingView({ series, loading, error, bounds, range, setRange, se
                     <td style={{ padding:'8px 8px', fontSize:11, fontFamily:'var(--mono)', color:'#a78bfa', textAlign:'right' }}>{r.keluarga.toLocaleString('id')}</td>
                     <td style={{ padding:'8px 8px', fontSize:12, fontFamily:'var(--mono)', fontWeight:700, color:'var(--text1)', textAlign:'right' }}>{r.total.toLocaleString('id')}</td>
                     <td style={{ padding:'8px 8px', fontSize:11, fontFamily:'var(--mono)', fontWeight:600, color:dColor, textAlign:'right' }}>
-                      {d == null ? '—' : `${d > 0 ? '+' : ''}${d.toLocaleString('id')}`}
+                      {r.delta == null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('id')}`}
                     </td>
                     <td style={{ padding:'8px 8px', fontSize:10, fontFamily:'var(--mono)', color:'var(--text4)', textAlign:'right' }}>{r.nSubsls.toLocaleString('id')}</td>
                   </tr>
@@ -2248,12 +2329,15 @@ function UsahaPetugasTable({ rows, loading, error, dates, petugasLabel, range, s
     if (sortBy === col) setSortDir(v => v === 'desc' ? 'asc' : 'desc');
     else { setSortBy(col); setSortDir('desc'); }
   };
+  const SI = ({ col }) => sortBy === col
+    ? <span style={{ fontSize:8, color:'#a78bfa', marginLeft:3 }}>{sortDir === 'desc' ? '▼' : '▲'}</span>
+    : <span style={{ fontSize:8, color:'var(--text4)', marginLeft:3, opacity:0.45 }}>⇅</span>;
   const H = ({ label, col, right }) => (
     <th onClick={() => toggleSort(col)}
       style={{ padding:'8px 8px', textAlign: right?'right':'left', fontSize:9, fontWeight:700,
                color: sortBy===col ? '#a78bfa' : 'var(--text4)', textTransform:'uppercase',
                letterSpacing:'0.07em', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
-      {label}
+      {label} <SI col={col}/>
     </th>
   );
 
@@ -3079,6 +3163,35 @@ export function EvaluasiPage() {
                       borderRadius:10,overflow:'hidden',minWidth:180,maxWidth:'calc(100vw - 24px)',
                       boxShadow:'0 8px 24px rgba(0,0,0,0.25)',
                       animation:'fadeSlideDown .12s ease' }}>
+                      {granularity === 'usaha' ? (
+                        // Tracking Usaha: kolomnya tetap & sedikit, jadi langsung
+                        // download CSV drpd buka modal picker kolom spt mode lain
+                        <button onClick={()=>{ setShowExportMenu(false);
+                          generateUsahaCSV({
+                            viewMode: usahaViewMode,
+                            series: usahaSeries,
+                            petugasRows: usahaPetugasRows,
+                            petugasLabel: activeTab === 'pengawas' ? 'Pengawas' : 'Pencacah',
+                            petugasDates: usahaPetugasDates,
+                            scope: filterDesa || (selectedKec && selectedKec !== 'all' ? selectedKec : 'Seluruh Kabupaten'),
+                          });
+                        }}
+                          style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                            padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
+                            fontSize:12,color:'var(--text1)',textAlign:'left' }}
+                          onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                          <FileText size={13} color="#a78bfa"/>
+                          <div>
+                            <div style={{ fontWeight:600 }}>
+                              Export {usahaViewMode === 'petugas' ? `Per ${activeTab==='pengawas'?'Pengawas':'Pencacah'}` : 'Ringkasan Harian'} (CSV)
+                            </div>
+                            <div style={{ fontSize:10,color:'var(--text4)' }}>
+                              {usahaViewMode === 'petugas' ? 'Total usaha per petugas + delta' : 'Series harian + delta'}
+                            </div>
+                          </div>
+                        </button>
+                      ) : <>
                       <button onClick={()=>{ setShowExportMenu(false);
                         setExportCols(new Set(visibleCols)); setExportModal('pdf'); }}
                         style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
@@ -3106,6 +3219,7 @@ export function EvaluasiPage() {
                           <div style={{ fontSize:10,color:'var(--text4)' }}>Tabel data + ringkasan kecamatan</div>
                         </div>
                       </button>
+                      </>}
                     </div>
                   </>
                 )}
