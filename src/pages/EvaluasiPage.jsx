@@ -1442,23 +1442,52 @@ function generateUsahaMatrixXLSX({ dates, rows, petugasLabel, scope }) {
     const d = new Date(`${iso}T00:00:00`);
     return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
   };
+  const fmtShortDate = iso => {
+    const d = new Date(`${iso}T00:00:00`);
+    return d.toLocaleDateString('id-ID', { day:'numeric', month:'short' });
+  };
+
+  // Kolom delta di paling kanan — CUMA muncul kalau minimal 2 tanggal beda
+  // ke-pilih (dates.length >= 2):
+  //  - N=2 tanggal  -> 1 kolom delta (satu2nya interval, otomatis = total juga)
+  //  - N>2 tanggal  -> (N-1) kolom delta antar-tanggal BERURUTAN, ditambah
+  //    1 kolom "Delta Total" (tanggal pertama -> tanggal terakhir)
+  //  - N<2 tanggal  -> TIDAK ADA kolom delta sama sekali
+  const n = dates.length;
+  const deltaCols = [];
+  if (n >= 2) {
+    for (let i = 0; i < n - 1; i++) {
+      deltaCols.push({
+        header: `Δ ${fmtShortDate(dates[i])}→${fmtShortDate(dates[i + 1])}`,
+        from: dates[i], to: dates[i + 1],
+      });
+    }
+    if (n > 2) {
+      deltaCols.push({
+        header: `Δ Total (${fmtShortDate(dates[0])}→${fmtShortDate(dates[n - 1])})`,
+        from: dates[0], to: dates[n - 1],
+      });
+    }
+  }
 
   const buildSheet = (field) => {
-    const headerRow = [petugasLabel, 'Email', 'Kecamatan', ...dates.map(fmtHeaderDate)];
-    const dataRows  = rows.map(r => [
-      r.nama, r.email, r.kecamatan || '',
-      ...dates.map(d => r[field]?.[d] ?? 0),
-    ]);
+    const headerRow = [petugasLabel, 'Email', 'Kecamatan', ...dates.map(fmtHeaderDate), ...deltaCols.map(c => c.header)];
+    const dataRows  = rows.map(r => {
+      const dateVals  = dates.map(d => r[field]?.[d] ?? 0);
+      const deltaVals = deltaCols.map(c => (r[field]?.[c.to] ?? 0) - (r[field]?.[c.from] ?? 0));
+      return [r.nama, r.email, r.kecamatan || '', ...dateVals, ...deltaVals];
+    });
     const ws = XLSX.utils.aoa_to_sheet([
       [`TRACKING USAHA — ${field === 'perusahaan' ? 'USAHA PERUSAHAAN' : 'USAHA KELUARGA'} (Ditemukan + Baru) — Scope: ${scope}`],
       [],
       headerRow,
       ...dataRows,
     ]);
-    // Lebar kolom biar nama/email kebaca, kolom tanggal ringkas
+    // Lebar kolom biar nama/email kebaca, kolom tanggal & delta ringkas
     ws['!cols'] = [
       { wch: 26 }, { wch: 30 }, { wch: 20 },
       ...dates.map(() => ({ wch: 12 })),
+      ...deltaCols.map(() => ({ wch: 14 })),
     ];
     return ws;
   };
