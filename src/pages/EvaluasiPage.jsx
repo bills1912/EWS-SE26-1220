@@ -996,6 +996,12 @@ function SubSlsRow({ d, rank, isPengawas }) {
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f43f5e',textAlign:'right' }}>{d.reject||0}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--blue3)',textAlign:'right',fontWeight:d.draft>0?600:400 }}>{d.draft||0}</td>
         <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'var(--text4)',textAlign:'right' }}>{d.open||0}</td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#38bdf8',textAlign:'right' }}>
+          {d.assignmentKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {d.targetKeluargaTotal||0} ({d.targetKeluargaTotal>0 ? Math.round((d.assignmentKeluargaSelesai||0)/d.targetKeluargaTotal*100) : 0}%)</span>
+        </td>
+        <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#a78bfa',textAlign:'right' }}>
+          {d.assignmentUsahaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {d.targetUsahaTotal||0} ({d.targetUsahaTotal>0 ? Math.round((d.assignmentUsahaSelesai||0)/d.targetUsahaTotal*100) : 0}%)</span>
+        </td>
         <td style={{ padding:'9px 8px',minWidth:120 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
             <div style={{ flex:1 }}><ProgressBar pct={pct} color={c} height={4}/></div>
@@ -1007,7 +1013,7 @@ function SubSlsRow({ d, rank, isPengawas }) {
       </tr>
       {open && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={12} style={{ padding:'10px 10px 14px 40px',background:'rgba(20,184,166,0.03)' }}>
+          <td colSpan={14} style={{ padding:'10px 10px 14px 40px',background:'rgba(20,184,166,0.03)' }}>
             <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
               <div style={{ flex:'1 1 320px' }}>
                 <BreakdownDetail title="Penyelesaian Pendataan Keluarga" breakdown={d.assignmentKeluargaBreakdown}
@@ -1511,6 +1517,63 @@ function generateUsahaMatrixXLSX({ dates, rows, petugasLabel, scope }) {
   XLSX.utils.book_append_sheet(wb, buildSheet('keluarga'),   'Usaha Keluarga');
   XLSX.utils.book_append_sheet(wb, buildSheet('total', rowsWithTotal), 'Total');
   XLSX.writeFile(wb, `tracking_usaha_per_${petugasLabel.toLowerCase()}_series_${fmtExportTimestamp()}.xlsx`);
+}
+
+// ── Export CSV level SUB-SLS — lebih granular drpd export Per Petugas biasa
+// (yg cuma total per orang), disini 1 baris = 1 petugas x 1 sub-SLS
+// individual, plus breakdown Ditemukan/Tutup/Ganda/dst per sub-SLS — dipakai
+// utk evaluasi yg butuh akurasi sampai level wilayah terkecil.
+function generateSubSlsCSV({ rows, petugasLabel, scope }) {
+  const esc = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row  = cols => cols.map(esc).join(',');
+  const rows_ = arr => arr.map(row).join('\n');
+
+  const headers = [
+    'Sub-SLS', 'Kode Sub-SLS', 'Desa', 'Kecamatan', petugasLabel, 'Email',
+    'Total', 'Submit', 'Approved', 'Rejected', 'Draft', 'Open',
+    'Keluarga Selesai', 'Keluarga Target', 'Keluarga %',
+    'Keluarga: Ditemukan', 'Keluarga: Keluarga Baru', 'Keluarga: Meninggal',
+    'Keluarga: Tidak Eligible', 'Keluarga: Tidak Dapat Ditemui', 'Keluarga: Tidak Ditemukan',
+    'Usaha Selesai', 'Usaha Target', 'Usaha %',
+    'Usaha: Ditemukan', 'Usaha: Tutup', 'Usaha: Ganda', 'Usaha: Tidak Ditemukan', 'Usaha: Baru',
+    'Progress Prelist Awal Selesai', 'Progress Prelist Awal Target', 'Progress Prelist Awal %',
+  ];
+
+  const data = rows.map(d => {
+    const kb = d.assignmentKeluargaBreakdown || {};
+    const ub = d.assignmentUsahaBreakdown || {};
+    const kelPct = d.targetKeluargaTotal > 0 ? Math.round((d.assignmentKeluargaSelesai||0)/d.targetKeluargaTotal*100) : 0;
+    const ushPct = d.targetUsahaTotal > 0 ? Math.round((d.assignmentUsahaSelesai||0)/d.targetUsahaTotal*100) : 0;
+    const ppPct  = d.targetPrelistAwal > 0 ? Math.round((d.progressPrelistAwalSelesai||0)/d.targetPrelistAwal*100) : 0;
+    return [
+      d.namaSls || '', d.idsubsls || '', d.desa || '', d.kecamatan || '', d.nama || '', d.email || '',
+      d.total||0, d.submit||0, d.approved||0, d.reject||0, d.draft||0, d.open||0,
+      d.assignmentKeluargaSelesai||0, d.targetKeluargaTotal||0, kelPct,
+      kb.ditemukan||0, kb.keluargaBaru||0, kb.meninggal||0, kb.tidakEligible||0, kb.tidakDapatDitemui||0, kb.tidakDitemukan||0,
+      d.assignmentUsahaSelesai||0, d.targetUsahaTotal||0, ushPct,
+      ub.ditemukan||0, ub.tutup||0, ub.ganda||0, ub.tidakDitemukan||0, ub.baru||0,
+      d.progressPrelistAwalSelesai||0, d.targetPrelistAwal||0, ppPct,
+    ];
+  });
+
+  const csv = [
+    `=== EVALUASI PER SUB-SLS — Scope: ${scope} ===`,
+    `Jumlah baris: ${rows.length}`,
+    '',
+    rows_([headers, ...data]),
+  ].join('\n');
+
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `evaluasi_per_subsls_${fmtExportTimestamp()}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function generateUsahaCSV({ viewMode, series, petugasRows, petugasLabel, petugasDates, scope, deltaLookback = 1 }) {
@@ -3331,6 +3394,28 @@ export function EvaluasiPage() {
                             <div style={{ fontSize:10,color:'var(--text4)' }}>Pilih tanggal dulu → download</div>
                           </div>
                         </button>
+                      ) : granularity === 'subsls' ? (
+                        // Per Sub-SLS: langsung download, kolomnya tetap
+                        // (termasuk breakdown Keluarga/Usaha per sub-SLS) —
+                        // ikut apa yg lagi ditampilkan di tabel (filter/sort aktif)
+                        <button onClick={()=>{ setShowExportMenu(false);
+                          generateSubSlsCSV({
+                            rows: subSlsRows,
+                            petugasLabel: isPengawas ? 'Pengawas' : 'Pencacah',
+                            scope: filterDesa || (selectedKec && selectedKec !== 'all' ? selectedKec : 'Seluruh Kabupaten'),
+                          });
+                        }}
+                          style={{ width:'100%',display:'flex',alignItems:'center',gap:10,
+                            padding:'10px 14px',background:'none',border:'none',cursor:'pointer',
+                            fontSize:12,color:'var(--text1)',textAlign:'left' }}
+                          onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                          <FileText size={13} color="#14b8a6"/>
+                          <div>
+                            <div style={{ fontWeight:600 }}>Export Per Sub-SLS (CSV)</div>
+                            <div style={{ fontSize:10,color:'var(--text4)' }}>{subSlsRows.length} baris, termasuk breakdown Keluarga/Usaha</div>
+                          </div>
+                        </button>
                       ) : <>
                       <button onClick={()=>{ setShowExportMenu(false);
                         setExportCols(new Set(visibleCols)); setExportModal('pdf'); }}
@@ -3463,6 +3548,8 @@ export function EvaluasiPage() {
                   <H label={isPengawas ? 'Pending' : 'Rejected'} col="reject" right/>
                   <H label="Draft" col="draft" right/>
                   <H label="Open" col="open" right/>
+                  <H label="Penyelesaian Pendataan Keluarga*" col="assignmentKeluargaSelesai" right/>
+                  <H label="Penyelesaian Pendataan Usaha*" col="assignmentUsahaSelesai" right/>
                   <H label="Progress Prelist Awal" col="progressPrelistAwalPct"/>
                 </> : <>
                 <H label="#" sticky={isCompact} stickyLeft={0}/>
