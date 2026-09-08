@@ -11,7 +11,7 @@
 // Tambahkan baris ini SEKALI SAJA di entry point app (main.jsx):
 //     import 'leaflet/dist/leaflet.css';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { MapContainer, TileLayer, GeoJSON as LeafletGeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -431,15 +431,30 @@ function _geotagTooltipHtml(p) {
 // Leaflet) — supaya titik SELALU tampil DI ATAS geometri wilayah, brp pun
 // urutan mount komponennya (kalau cuma andalkan urutan add-to-map, tidak
 // terjamin konsisten).
-function GeotagPointsLayer({ points, visibleSubSls, onPointClick }) {
+const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibleSubSls, onPointClick }, ref) {
   const map = useMap();
   const layerRef = useRef(null);
+  // idsubsls -> [{lat,lng} -> marker] key "lat,lng" -> instance L.CircleMarker
+  // — dipakai supaya parent bisa trigger buka tooltip titik TERTENTU secara
+  // imperatif (mis. dari tombol "fly to" di panel), bukan cuma via hover.
+  const markersByLatLngRef = useRef(new Map());
   // onPointClick baru sbg reference tiap render parent (bukan di-useCallback)
   // — simpan di ref spy TIDAK perlu masuk dependency array useEffect di
   // bawah (kalau masuk, layer titik bakal dibongkar-pasang ulang tiap
   // render parent, mubazir & bisa kedip2 utk puluhan ribu titik)
   const onPointClickRef = useRef(onPointClick);
   onPointClickRef.current = onPointClick;
+
+  // Expose ke parent (via ref) — buka tooltip titik di lat/lng tertentu.
+  // Dipanggil parent SETELAH map.flyTo() ke titik itu (tooltip nempel ke
+  // koordinat geografis, jadi aman dipanggil sebelum animasi flyTo kelar,
+  // otomatis ikut posisinya begitu peta selesai bergerak).
+  useImperativeHandle(ref, () => ({
+    openTooltipAt(lat, lng) {
+      const marker = markersByLatLngRef.current.get(`${lat},${lng}`);
+      if (marker) marker.openTooltip();
+    },
+  }), []);
 
   useEffect(() => {
     if (!map.getPane('geotagPane')) {
@@ -448,6 +463,7 @@ function GeotagPointsLayer({ points, visibleSubSls, onPointClick }) {
     }
     const renderer = L.canvas({ pane: 'geotagPane', padding: 0.5 });
     const group = L.layerGroup();
+    const markersByLatLng = new Map();
     const visible = visibleSubSls ? points.filter(p => visibleSubSls.has(p.idsubsls)) : points;
 
     for (const p of visible) {
@@ -457,19 +473,29 @@ function GeotagPointsLayer({ points, visibleSubSls, onPointClick }) {
         color: '#0008', fillColor: _geotagColor(p.status), fillOpacity: 0.85,
       });
       marker.bindTooltip(_geotagTooltipHtml(p), {
+        // permanent:false (default) = TIDAK tampil otomatis, cuma muncul
+        // saat di-hover (desktop) ATAU dipicu manual via .openTooltip()
+        // (dipakai dari tombol "fly to" di panel — solusi utk HP, yg tidak
+        // punya hover). sticky:true = tooltip ikut kursor selama masih
+        // hover, tidak dipakai di sini krn kita mau posisinya diam di
+        // titiknya, bukan ngikutin mouse.
         direction: 'top', offset: [0, -4], className: 'geotag-tooltip', opacity: 1,
       });
       // Klik titik JUGA buka panel info petugas sub-SLS-nya (sama spt klik
-      // geometri) — jaminan ekstra, lihat catatan panjang di atas fungsi ini
+      // geometri) DAN buka tooltip titiknya sendiri (spy tap di HP langsung
+      // kelihatan detail titiknya, tidak perlu hover)
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e); // jangan sampai klik titik nembus jadi "klik peta kosong" di poligon di bawahnya, kirim SEKALI aja lewat callback
+        marker.openTooltip();
         onPointClickRef.current?.(p.idsubsls);
       });
       group.addLayer(marker);
+      markersByLatLng.set(`${p.lat},${p.lng}`, marker);
     }
 
     group.addTo(map);
     layerRef.current = group;
+    markersByLatLngRef.current = markersByLatLng;
 
     // ── FIX PENTING: elemen <canvas> pane titik ini SECARA FISIK menutupi
     // SELURUH area peta (bukan cuma di titik2-nya) — jadi klik yg TIDAK kena
@@ -495,13 +521,13 @@ function GeotagPointsLayer({ points, visibleSubSls, onPointClick }) {
     if (canvasEl) canvasEl.addEventListener('click', forwardClickToPolygon);
 
     return () => {
-      group.remove(); layerRef.current = null;
+      group.remove(); layerRef.current = null; markersByLatLngRef.current = new Map();
       if (canvasEl) canvasEl.removeEventListener('click', forwardClickToPolygon);
     };
   }, [points, visibleSubSls, map]);
 
   return null;
-}
+});
 
 function AutoFitBounds({ data }) {
   const map = useMap();
@@ -537,6 +563,7 @@ export function WilayahMapPage() {
   const [selectedFeature, setSelectedFeature] = useState(null);
   const geoLayerRef = useRef(null);
   const mapRef = useRef(null);
+  const geotagLayerRef = useRef(null); // ref ke GeotagPointsLayer, dipakai handleFlyTo utk buka tooltip titik tujuan
 
   // ── Titik geotagging bangunan (opt-in, defaultnya OFF) ──────────────────
   // Opt-in krn datanya bisa gede (~70rb titik se-kabupaten) — jangan
@@ -673,6 +700,10 @@ export function WilayahMapPage() {
   const handleFlyTo = (lat, lng) => {
     if (typeof lat !== 'number' || typeof lng !== 'number') return;
     mapRef.current?.flyTo([lat, lng], 18, { duration: 0.8 });
+    // Tooltip nempel ke koordinat geografis (bukan posisi layar), jadi aman
+    // dipanggil sebelum animasi flyTo kelar — otomatis ikut posisi yg benar
+    // begitu peta selesai bergerak. Ini jalan "pengganti hover" utk HP.
+    geotagLayerRef.current?.openTooltipAt(lat, lng);
   };
 
   const avgProgress = useMemo(() => {
@@ -982,7 +1013,7 @@ export function WilayahMapPage() {
             />
             <AutoFitBounds data={displayData}/>
             {showGeotag && geotagPoints.length > 0 && (
-              <GeotagPointsLayer points={geotagPoints} visibleSubSls={visibleSubSls} onPointClick={handleGeotagPointClick}/>
+              <GeotagPointsLayer ref={geotagLayerRef} points={geotagPoints} visibleSubSls={visibleSubSls} onPointClick={handleGeotagPointClick}/>
             )}
           </MapContainer>
         )}
