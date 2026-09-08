@@ -17,7 +17,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   MapPin, Users, TrendingUp, X, Loader2, RefreshCw,
-  Layers, Building2, ShieldCheck, Home, ClipboardList,
+  Layers, Building2, ShieldCheck, Home, ClipboardList, Crosshair,
 } from 'lucide-react';
 import { Card, SectionTitle, Badge, PulseDot } from '../components/ui.jsx';
 import { useKecamatan } from '../context/KecamatanContext.jsx';
@@ -148,7 +148,7 @@ function MapLegend({ mode, label }) {
 }
 
 // ── Panel detail sub-SLS yang diklik ───────────────────────────────────────
-function SubSlsDetailPanel({ data, onClose }) {
+function SubSlsDetailPanel({ data, onClose, buildings, buildingsEnabled, onFlyTo }) {
   if (!data) return null;
   const p = data.properties;
   const Row = ({ label, value, color }) => (
@@ -297,6 +297,59 @@ function SubSlsDetailPanel({ data, onClose }) {
             )}
           </div>
         </div>
+
+        <div style={{ height:1, background:'var(--border)', margin:'12px 0' }}/>
+
+        {/* Daftar bangunan (titik geotag) di sub-SLS ini — dipakai spy tetap
+            bisa lihat detail titik bangunan di HP (hover tooltip tidak jalan
+            di touch device), plus tombol "fly to" utk loncat langsung ke
+            titiknya di peta. */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+          <Home size={12} color="var(--text3)"/>
+          <span style={{ fontSize:10, color:'var(--text4)', textTransform:'uppercase',
+            letterSpacing:'0.05em', fontWeight:600 }}>
+            Bangunan di Sub-SLS Ini {buildings && buildings.length > 0 ? `(${buildings.length})` : ''}
+          </span>
+        </div>
+        {!buildingsEnabled ? (
+          <div style={{ padding:'10px', background:'rgba(148,163,184,0.1)', borderRadius:8,
+            fontSize:10.5, color:'var(--text4)', textAlign:'center' }}>
+            Aktifkan toggle "Titik Bangunan" di atas peta utk lihat daftar bangunan di sini
+          </div>
+        ) : !buildings || buildings.length === 0 ? (
+          <div style={{ padding:'10px', background:'rgba(148,163,184,0.1)', borderRadius:8,
+            fontSize:10.5, color:'var(--text4)', textAlign:'center' }}>
+            Tidak ada titik bangunan tercatat di sub-SLS ini
+          </div>
+        ) : (
+          <div style={{ maxHeight:220, overflowY:'auto', display:'flex', flexDirection:'column', gap:4 }}>
+            {buildings.map((b, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:6,
+                padding:'6px 8px', borderRadius:8, background:'var(--bg3)' }}>
+                <span style={{ width:7, height:7, borderRadius:99, flexShrink:0,
+                  background:_geotagColor(b.status) }}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:10.5, fontWeight:600, color:'var(--text1)',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {b.namaKK || b.namaUsaha || `Bangunan #${b.noBang ?? '—'}`}
+                  </div>
+                  <div style={{ fontSize:9, color:'var(--text4)', overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {b.jenisBangunan || '—'}
+                  </div>
+                </div>
+                <button onClick={() => onFlyTo && onFlyTo(b.lat, b.lng)}
+                  title="Loncat ke titik ini di peta"
+                  style={{ background:'none', border:'1px solid var(--border2)', cursor:'pointer',
+                    padding:5, borderRadius:6, flexShrink:0, display:'flex' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='var(--bg2)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                  <Crosshair size={11} color="var(--orange3)"/>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -605,6 +658,21 @@ export function WilayahMapPage() {
   const handleGeotagPointClick = (idsubsls) => {
     const feature = subSlsFeatureByIdMap.get(idsubsls);
     if (feature) setSelectedFeature(feature);
+  };
+
+  // Daftar titik bangunan di sub-SLS yg lagi dipilih (panel kanan) — dari
+  // geotagPoints yg sudah ke-fetch, disaring by idsubsls. Ditampilkan di
+  // SubSlsDetailPanel spy tetap bisa lihat detail titik bangunan di HP
+  // (tooltip hover tidak jalan di touch device).
+  const buildingsForSelected = useMemo(() => {
+    if (!selectedFeature || !geotagPoints.length) return [];
+    const sid = selectedFeature.properties.idsubsls;
+    return geotagPoints.filter(b => b.idsubsls === sid);
+  }, [selectedFeature, geotagPoints]);
+
+  const handleFlyTo = (lat, lng) => {
+    if (typeof lat !== 'number' || typeof lng !== 'number') return;
+    mapRef.current?.flyTo([lat, lng], 18, { duration: 0.8 });
   };
 
   const avgProgress = useMemo(() => {
@@ -925,7 +993,8 @@ export function WilayahMapPage() {
           />
         )}
         {selectedFeature && (
-          <SubSlsDetailPanel data={selectedFeature} onClose={() => setSelectedFeature(null)}/>
+          <SubSlsDetailPanel data={selectedFeature} onClose={() => setSelectedFeature(null)}
+            buildings={buildingsForSelected} buildingsEnabled={showGeotag} onFlyTo={handleFlyTo}/>
         )}
       </Card>
 
