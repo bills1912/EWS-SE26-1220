@@ -503,9 +503,13 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                      : highlight==='bot' ? '#fb7185' : 'var(--text1)';
   // Background solid utk 2 kolom sticky (# + nama) — dipakai HANYA di layar
   // kompak (HP/tablet) supaya kolom identitas tetap kelihatan saat scroll
-  // horizontal. Pakai warna highlight kalau row ini top/bottom performer,
-  // supaya penanda itu tetap ikut kelihatan meski kolomnya di-stick.
-  const _stickyBg = _hlBg !== 'transparent' ? _hlBg : 'var(--bg2)';
+  // horizontal. SELALU OPAQUE (var(--bg2)) — SEBELUMNYA sempat pakai warna
+  // highlight (_hlBg) langsung, tapi itu rgba TRANSLUCENT (alpha 0.16-0.18),
+  // jadi kolom lain yg ke-scroll DI BALIK kolom sticky ini "tembus"/keliatan
+  // overlap dgn teks nama (bug nyata, terlihat di HP). Penanda highlight row
+  // top/bottom performer TETAP kelihatan kok — dari border kiri oranye/merah
+  // (_hlBorder) & warna teks nama (_hlNameColor), jadi tidak hilang infonya.
+  const _stickyBg = 'var(--bg2)';
   const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:_stickyBg } : {};
   return (
     <>
@@ -732,7 +736,9 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                  : highlight==='bot' ? 'rgba(244,63,94,0.24)' : 'var(--bg3)';
   const _hlNameColor = highlight==='top' ? '#fb923c'
                      : highlight==='bot' ? '#fb7185' : 'var(--text1)';
-  const _stickyBg = _hlBg !== 'transparent' ? _hlBg : 'var(--bg2)';
+  // SELALU opaque (var(--bg2)) — lihat catatan sama persis di PencacahRow
+  // soal kenapa TIDAK pakai warna highlight (_hlBg) langsung di sini
+  const _stickyBg = 'var(--bg2)';
   const _stickySx = isCompact ? { position:'sticky', zIndex:2, background:_stickyBg } : {};
   return (
     <>
