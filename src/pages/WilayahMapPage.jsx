@@ -322,39 +322,84 @@ function _geotagColor(status) {
   return '#60a5fa';
 }
 
+// Escape teks sebelum ditempel ke innerHTML tooltip Leaflet (nama KK/usaha
+// dari lapangan bisa berisi karakter aneh — jaga2 drpd nyuntik HTML)
+function _escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// Baris info tooltip — cuma dirender kalau value-nya ADA ISI (bukan blank/
+// null/undefined), sesuai permintaan: field kondisional (ada keluarga/usaha/
+// nama KK/nama usaha) JANGAN tampil kalau memang kosong di data aslinya.
+function _tooltipRow(label, value, opts = {}) {
+  if (value === null || value === undefined || value === '' || String(value).trim() === '') return '';
+  const valColor = opts.color || 'var(--text1)';
+  return `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;">
+    <span style="color:var(--text4);flex-shrink:0;">${label}</span>
+    <span style="color:${valColor};font-weight:600;text-align:right;${opts.mono ? "font-family:var(--mono);font-size:10px;" : ''}">${_escHtml(value)}</span>
+  </div>`;
+}
+
+function _geotagTooltipHtml(p) {
+  const title = p.namaKK || p.namaUsaha || `Bangunan #${p.noBang ?? '—'}`;
+  const statusColor = _geotagColor(p.status);
+  return `
+    <div style="font-family:var(--font);min-width:200px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text1);margin-bottom:4px;
+                   padding-bottom:6px;border-bottom:1px solid var(--border2);">
+        ${_escHtml(title)}
+      </div>
+      ${_tooltipRow('Kecamatan', p.kecamatan)}
+      ${_tooltipRow('Desa', p.desa)}
+      ${_tooltipRow('SLS', p.sls)}
+      ${_tooltipRow('Sub-SLS', p.idsubsls, { mono: true })}
+      <div style="height:1px;background:var(--border2);margin:5px 0;"></div>
+      ${_tooltipRow('Status', p.status, { color: statusColor })}
+      ${_tooltipRow('Keberadaan Keluarga', p.adaKeluarga)}
+      ${_tooltipRow('Keberadaan Usaha', p.adaUsaha)}
+      ${_tooltipRow('Nama KK', p.namaKK)}
+      ${_tooltipRow('Nama Usaha', p.namaUsaha)}
+      ${_tooltipRow('Penggunaan Bangunan', p.jenisBangunan)}
+    </div>`;
+}
+
 // ── Layer titik geotagging bangunan — dikelola LANGSUNG lewat Leaflet API
 // (bukan komponen <CircleMarker> react-leaflet per titik) krn jumlahnya bisa
-// puluhan ribu (satu kecamatan besar >10rb titik) — kalau tiap titik jadi 1
-// komponen React, reconciliation-nya bakal berat/nge-lag. Render pakai
+// puluhan ribu (bisa sampai ~70rb titik se-kabupaten) — kalau tiap titik jadi
+// 1 komponen React, reconciliation-nya bakal berat/nge-lag. Render pakai
 // L.canvas() (bukan SVG default Leaflet) — jauh lebih ringan utk titik
 // sebanyak ini. Filter idsubsls (visibleSubSls) diterapkan di SINI (bukan
-// di fetch API) — titik-titik sudah di-fetch per-kecamatan sekali, filter
-// desa/pencacah/pengawas/sub-SLS tinggal saring dari situ, konsisten dgn
-// cara `displayData` (poligon) difilter.
+// di fetch API) — titik-titik sudah di-fetch sekali, filter desa/pencacah/
+// pengawas/sub-SLS tinggal saring dari situ, konsisten dgn cara `displayData`
+// (poligon) difilter.
+//
+// PENTING: pakai PANE KHUSUS ('geotagPane') dgn z-index LEBIH TINGGI drpd
+// overlayPane (tempat poligon GeoJSON dirender, z-index 400 default
+// Leaflet) — supaya titik SELALU tampil DI ATAS geometri wilayah, brp pun
+// urutan mount komponennya (kalau cuma andalkan urutan add-to-map, tidak
+// terjamin konsisten).
 function GeotagPointsLayer({ points, visibleSubSls }) {
   const map = useMap();
   const layerRef = useRef(null);
 
   useEffect(() => {
-    const renderer = L.canvas({ padding: 0.5 });
+    if (!map.getPane('geotagPane')) {
+      const pane = map.createPane('geotagPane');
+      pane.style.zIndex = 450; // overlayPane=400 (poligon), shadowPane=500 — taruh di antaranya, di ATAS poligon
+    }
+    const renderer = L.canvas({ pane: 'geotagPane', padding: 0.5 });
     const group = L.layerGroup();
     const visible = visibleSubSls ? points.filter(p => visibleSubSls.has(p.idsubsls)) : points;
 
     for (const p of visible) {
       if (typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
       const marker = L.circleMarker([p.lat, p.lng], {
-        renderer, radius: 3.5, weight: 1,
+        renderer, pane: 'geotagPane', radius: 3.5, weight: 1,
         color: '#0008', fillColor: _geotagColor(p.status), fillOpacity: 0.85,
       });
-      marker.bindTooltip(
-        `<div style="font-size:11px;line-height:1.5">
-           <strong>${p.namaKK || p.namaUsaha || 'Bangunan #' + p.noBang}</strong><br/>
-           ${p.desa || ''} · SLS ${p.sls || ''}<br/>
-           <span style="color:#94a3b8">${p.jenisBangunan || '—'}</span><br/>
-           <span style="color:#94a3b8">${p.status || '—'}</span>
-         </div>`,
-        { direction: 'top', offset: [0, -4] }
-      );
+      marker.bindTooltip(_geotagTooltipHtml(p), {
+        direction: 'top', offset: [0, -4], className: 'geotag-tooltip', opacity: 1,
+      });
       group.addLayer(marker);
     }
 
@@ -402,19 +447,22 @@ export function WilayahMapPage() {
   const mapRef = useRef(null);
 
   // ── Titik geotagging bangunan (opt-in, defaultnya OFF) ──────────────────
-  // Opt-in krn datanya bisa gede (kecamatan besar >10rb titik) — jangan
-  // auto-fetch tiap kali halaman dibuka/kecamatan diganti, biar map tetap
-  // gesit buat yg cuma mau lihat progress wilayah (poligon) doang.
+  // Opt-in krn datanya bisa gede (~70rb titik se-kabupaten) — jangan
+  // auto-fetch tiap kali halaman dibuka, biar map tetap gesit buat yg cuma
+  // mau lihat progress wilayah (poligon) doang. Begitu diaktifkan, TIDAK
+  // wajib pilih kecamatan dulu — kalau "Semua Kecamatan", ambil semua titik
+  // sekaligus (sesuai permintaan: tampilkan semua dulu sblm difilter).
   const [showGeotag, setShowGeotag] = useState(false);
   const [geotagPoints, setGeotagPoints] = useState([]);
   const [geotagLoading, setGeotagLoading] = useState(false);
   const [geotagError, setGeotagError] = useState(null);
 
   useEffect(() => {
-    if (!showGeotag || selectedKec === 'all') { setGeotagPoints([]); return; }
+    if (!showGeotag) { setGeotagPoints([]); return; }
     setGeotagLoading(true);
     setGeotagError(null);
-    apiFetch(`/api/wilayah/geotag?kec=${encodeURIComponent(selectedKec)}`)
+    const qs = selectedKec !== 'all' ? `?kec=${encodeURIComponent(selectedKec)}` : '';
+    apiFetch(`/api/wilayah/geotag${qs}`)
       .then(result => { setGeotagPoints(result.points || []); setGeotagLoading(false); })
       .catch(e => { setGeotagError(e.message || 'Gagal memuat titik geotag.'); setGeotagLoading(false); });
   }, [showGeotag, selectedKec]);
@@ -747,13 +795,11 @@ export function WilayahMapPage() {
         <div style={{ width:1, height:20, background:'var(--border2)', margin:'0 4px' }}/>
 
         <button onClick={() => setShowGeotag(v => !v)}
-          disabled={selectedKec === 'all'}
-          title={selectedKec === 'all' ? 'Pilih kecamatan dulu utk lihat titik bangunan' : undefined}
+          title={selectedKec === 'all' ? 'Menampilkan SEMUA titik se-kabupaten (~70rb) — bisa agak berat' : undefined}
           style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
             border: showGeotag ? '1px solid var(--orange)' : '1px solid var(--border2)',
             background: showGeotag ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
-            color: selectedKec === 'all' ? 'var(--text4)' : (showGeotag ? 'var(--orange3)' : 'var(--text3)'),
-            cursor: selectedKec === 'all' ? 'not-allowed' : 'pointer', opacity: selectedKec === 'all' ? 0.5 : 1 }}>
+            color: showGeotag ? 'var(--orange3)' : 'var(--text3)', cursor:'pointer' }}>
           <MapPin size={12}/>
           Titik Bangunan
           {geotagLoading && <Loader2 size={11} style={{ animation:'spin 0.8s linear infinite' }}/>}
@@ -764,7 +810,7 @@ export function WilayahMapPage() {
       </div>
       <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:-10 }}>
         {BASEMAP_TILES[basemapMode].sub}
-        {selectedKec === 'all' && ' · Pilih kecamatan dulu utk mengaktifkan titik bangunan'}
+        {showGeotag && selectedKec === 'all' && ' · Menampilkan semua titik se-kabupaten — pilih kecamatan utk mempersempit'}
       </div>
       {geotagError && (
         <div style={{ fontSize:10.5, color:'#f87171', marginTop:-6 }}>
@@ -835,6 +881,20 @@ export function WilayahMapPage() {
         .leaflet-tooltip { background: var(--bg2) !important; color: var(--text1) !important;
           border: 1px solid var(--border2) !important; font-size: 11px !important; }
         .leaflet-container { font-family: inherit; }
+        /* Tooltip titik bangunan — kartu custom sesuai tema web, bukan gaya native Leaflet */
+        .geotag-tooltip.leaflet-tooltip {
+          background: var(--bg2) !important;
+          border: 1px solid var(--border2) !important;
+          border-radius: 10px !important;
+          padding: 10px 12px !important;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+          font-size: 11px !important;
+          opacity: 1 !important;
+        }
+        .geotag-tooltip.leaflet-tooltip-top:before { border-top-color: var(--border2) !important; }
+        .geotag-tooltip.leaflet-tooltip-bottom:before { border-bottom-color: var(--border2) !important; }
+        .geotag-tooltip.leaflet-tooltip-left:before { border-left-color: var(--border2) !important; }
+        .geotag-tooltip.leaflet-tooltip-right:before { border-right-color: var(--border2) !important; }
       `}</style>
     </div>
   );

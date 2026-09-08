@@ -2357,17 +2357,13 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
 const geotagCache = new Map(); // key: `${kec}||${desa}` -> { data, computedAt }
 
 // GET /api/wilayah/geotag?kec=X&desa=Y — titik geotagging bangunan (overlay
-// peta WilayahMapPage). `kec` WAJIB diisi (bukan "semua kecamatan") — data
-// ini besar (~70rb titik se-kabupaten), query tanpa scope kecamatan bisa
-// berat & respons-nya jadi besar banget. `desa` opsional, mempersempit lagi
-// (kecamatan besar bisa >10rb titik).
+// peta WilayahMapPage). `kec`/`desa` OPSIONAL — kalau tidak diisi sama
+// sekali, kembalikan SEMUA titik se-kabupaten (dipakai saat "Semua
+// Kecamatan" dipilih, sesuai permintaan: tampilkan semua dulu sblm difilter).
 app.get('/api/wilayah/geotag', verifyToken, requireFullAccess, async function(req, res) {
   try {
     const fKec  = (req.query.kec  || '').trim();
     const fDesa = (req.query.desa || '').trim();
-    if (!fKec) {
-      return res.status(400).json({ error: 'Parameter kec wajib diisi utk endpoint ini (data terlalu besar tanpa scope kecamatan).' });
-    }
     const cacheKey = `${fKec.toLowerCase()}||${fDesa.toLowerCase()}`;
     const cached = geotagCache.get(cacheKey);
     const now = Date.now();
@@ -2375,7 +2371,8 @@ app.get('/api/wilayah/geotag', verifyToken, requireFullAccess, async function(re
       return res.json(cached.data);
     }
 
-    const match = { nmkec: { $regex: new RegExp('^' + fKec + '$', 'i') } };
+    const match = {};
+    if (fKec)  match.nmkec  = { $regex: new RegExp('^' + fKec + '$', 'i') };
     if (fDesa) match.nmdesa = { $regex: new RegExp('^' + fDesa + '$', 'i') };
 
     const docs = await db.collection('geotag_bangunan').find(match, {
