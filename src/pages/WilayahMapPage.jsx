@@ -438,6 +438,17 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
   // — dipakai supaya parent bisa trigger buka tooltip titik TERTENTU secara
   // imperatif (mis. dari tombol "fly to" di panel), bukan cuma via hover.
   const markersByLatLngRef = useRef(new Map());
+  // Marker yg tooltip-nya SEDANG terbuka (klik langsung ATAU fly-to dari
+  // panel) — dilacak spy SELALU ditutup dulu sblm buka tooltip baru, jadi
+  // tidak numpuk banyak tooltip kebuka bersamaan pas pindah2 titik.
+  const openMarkerRef = useRef(null);
+  const openOnly = (marker) => {
+    if (openMarkerRef.current && openMarkerRef.current !== marker) {
+      openMarkerRef.current.closeTooltip();
+    }
+    marker.openTooltip();
+    openMarkerRef.current = marker;
+  };
   // onPointClick baru sbg reference tiap render parent (bukan di-useCallback)
   // — simpan di ref spy TIDAK perlu masuk dependency array useEffect di
   // bawah (kalau masuk, layer titik bakal dibongkar-pasang ulang tiap
@@ -452,7 +463,7 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
   useImperativeHandle(ref, () => ({
     openTooltipAt(lat, lng) {
       const marker = markersByLatLngRef.current.get(`${lat},${lng}`);
-      if (marker) marker.openTooltip();
+      if (marker) openOnly(marker);
     },
   }), []);
 
@@ -465,6 +476,7 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
     const group = L.layerGroup();
     const markersByLatLng = new Map();
     const visible = visibleSubSls ? points.filter(p => visibleSubSls.has(p.idsubsls)) : points;
+    openMarkerRef.current = null; // layer dibangun ulang (filter berubah dst) — marker lama sudah tidak valid lagi
 
     for (const p of visible) {
       if (typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
@@ -483,10 +495,11 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
       });
       // Klik titik JUGA buka panel info petugas sub-SLS-nya (sama spt klik
       // geometri) DAN buka tooltip titiknya sendiri (spy tap di HP langsung
-      // kelihatan detail titiknya, tidak perlu hover)
+      // kelihatan detail titiknya, tidak perlu hover) — via openOnly() spy
+      // tooltip titik lain yg mungkin lagi kebuka ikut ketutup otomatis.
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e); // jangan sampai klik titik nembus jadi "klik peta kosong" di poligon di bawahnya, kirim SEKALI aja lewat callback
-        marker.openTooltip();
+        openOnly(marker);
         onPointClickRef.current?.(p.idsubsls);
       });
       group.addLayer(marker);
@@ -521,7 +534,7 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
     if (canvasEl) canvasEl.addEventListener('click', forwardClickToPolygon);
 
     return () => {
-      group.remove(); layerRef.current = null; markersByLatLngRef.current = new Map();
+      group.remove(); layerRef.current = null; markersByLatLngRef.current = new Map(); openMarkerRef.current = null;
       if (canvasEl) canvasEl.removeEventListener('click', forwardClickToPolygon);
     };
   }, [points, visibleSubSls, map]);
@@ -1045,10 +1058,27 @@ export function WilayahMapPage() {
           font-size: 11px !important;
           opacity: 1 !important;
         }
-        .geotag-tooltip.leaflet-tooltip-top:before { border-top-color: var(--border2) !important; }
-        .geotag-tooltip.leaflet-tooltip-bottom:before { border-bottom-color: var(--border2) !important; }
-        .geotag-tooltip.leaflet-tooltip-left:before { border-left-color: var(--border2) !important; }
-        .geotag-tooltip.leaflet-tooltip-right:before { border-right-color: var(--border2) !important; }
+        /* Panah penunjuk tooltip — SENGAJA warnanya sama dgn background body
+           (var(--bg2)), bukan warna border tipis — biar keliatan nyambung
+           jadi 1 bentuk "gelembung bicara" yg jelas, bukan garis tipis yg
+           gampang ilang kontrasnya di atas peta terang/satelit. Ukurannya
+           jg diperbesar dari default Leaflet (6px -> 9px) biar lebih tegas. */
+        .geotag-tooltip.leaflet-tooltip-top:before {
+          border-top-color: var(--bg2) !important; border-width: 9px 9px 0 !important;
+          bottom: -9px !important; margin-left: -9px !important;
+        }
+        .geotag-tooltip.leaflet-tooltip-bottom:before {
+          border-bottom-color: var(--bg2) !important; border-width: 0 9px 9px !important;
+          top: -9px !important; margin-left: -9px !important;
+        }
+        .geotag-tooltip.leaflet-tooltip-left:before {
+          border-left-color: var(--bg2) !important; border-width: 9px 0 9px 9px !important;
+          right: -9px !important; margin-top: -9px !important;
+        }
+        .geotag-tooltip.leaflet-tooltip-right:before {
+          border-right-color: var(--bg2) !important; border-width: 9px 9px 9px 0 !important;
+          left: -9px !important; margin-top: -9px !important;
+        }
       `}</style>
     </div>
   );
