@@ -311,6 +311,61 @@ function SubSlsDetailPanel({ data, onClose }) {
 // null/stale persis di momen itu, sedangkan useMap() dijamin SELALU
 // mengembalikan instance peta yang valid, karena cuma bisa dipanggil
 // dari dalam pohon komponen yang memang sudah ter-mount oleh MapContainer.
+// Warna titik berdasarkan status assignment-nya — konsisten dgn skema warna
+// status di halaman lain (hijau=approved/selesai, kuning=submit, merah=reject, abu=draft)
+function _geotagColor(status) {
+  const s = (status || '').toUpperCase();
+  if (s.includes('APPROVED') || s.includes('COMPLETED')) return '#10b981';
+  if (s.includes('SUBMITTED')) return '#f59e0b';
+  if (s.includes('REJECTED') || s.includes('REVOKED')) return '#f43f5e';
+  if (s.includes('DRAFT')) return '#94a3b8';
+  return '#60a5fa';
+}
+
+// ── Layer titik geotagging bangunan — dikelola LANGSUNG lewat Leaflet API
+// (bukan komponen <CircleMarker> react-leaflet per titik) krn jumlahnya bisa
+// puluhan ribu (satu kecamatan besar >10rb titik) — kalau tiap titik jadi 1
+// komponen React, reconciliation-nya bakal berat/nge-lag. Render pakai
+// L.canvas() (bukan SVG default Leaflet) — jauh lebih ringan utk titik
+// sebanyak ini. Filter idsubsls (visibleSubSls) diterapkan di SINI (bukan
+// di fetch API) — titik-titik sudah di-fetch per-kecamatan sekali, filter
+// desa/pencacah/pengawas/sub-SLS tinggal saring dari situ, konsisten dgn
+// cara `displayData` (poligon) difilter.
+function GeotagPointsLayer({ points, visibleSubSls }) {
+  const map = useMap();
+  const layerRef = useRef(null);
+
+  useEffect(() => {
+    const renderer = L.canvas({ padding: 0.5 });
+    const group = L.layerGroup();
+    const visible = visibleSubSls ? points.filter(p => visibleSubSls.has(p.idsubsls)) : points;
+
+    for (const p of visible) {
+      if (typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
+      const marker = L.circleMarker([p.lat, p.lng], {
+        renderer, radius: 3.5, weight: 1,
+        color: '#0008', fillColor: _geotagColor(p.status), fillOpacity: 0.85,
+      });
+      marker.bindTooltip(
+        `<div style="font-size:11px;line-height:1.5">
+           <strong>${p.namaKK || p.namaUsaha || 'Bangunan #' + p.noBang}</strong><br/>
+           ${p.desa || ''} · SLS ${p.sls || ''}<br/>
+           <span style="color:#94a3b8">${p.jenisBangunan || '—'}</span><br/>
+           <span style="color:#94a3b8">${p.status || '—'}</span>
+         </div>`,
+        { direction: 'top', offset: [0, -4] }
+      );
+      group.addLayer(marker);
+    }
+
+    group.addTo(map);
+    layerRef.current = group;
+    return () => { group.remove(); layerRef.current = null; };
+  }, [points, visibleSubSls, map]);
+
+  return null;
+}
+
 function AutoFitBounds({ data }) {
   const map = useMap();
   useEffect(() => {
@@ -345,6 +400,24 @@ export function WilayahMapPage() {
   const [selectedFeature, setSelectedFeature] = useState(null);
   const geoLayerRef = useRef(null);
   const mapRef = useRef(null);
+
+  // ── Titik geotagging bangunan (opt-in, defaultnya OFF) ──────────────────
+  // Opt-in krn datanya bisa gede (kecamatan besar >10rb titik) — jangan
+  // auto-fetch tiap kali halaman dibuka/kecamatan diganti, biar map tetap
+  // gesit buat yg cuma mau lihat progress wilayah (poligon) doang.
+  const [showGeotag, setShowGeotag] = useState(false);
+  const [geotagPoints, setGeotagPoints] = useState([]);
+  const [geotagLoading, setGeotagLoading] = useState(false);
+  const [geotagError, setGeotagError] = useState(null);
+
+  useEffect(() => {
+    if (!showGeotag || selectedKec === 'all') { setGeotagPoints([]); return; }
+    setGeotagLoading(true);
+    setGeotagError(null);
+    apiFetch(`/api/wilayah/geotag?kec=${encodeURIComponent(selectedKec)}`)
+      .then(result => { setGeotagPoints(result.points || []); setGeotagLoading(false); })
+      .catch(e => { setGeotagError(e.message || 'Gagal memuat titik geotag.'); setGeotagLoading(false); });
+  }, [showGeotag, selectedKec]);
 
   const fetchGeo = () => {
     setLoading(true);
@@ -421,6 +494,15 @@ export function WilayahMapPage() {
   const maxTotal = useMemo(() => {
     if (!displayData) return 1;
     return Math.max(1, ...displayData.features.map(f => f.properties.total || 0));
+  }, [displayData]);
+
+  // Set idsubsls yg LOLOS filter saat ini (desa/pencacah/pengawas/sub-SLS) —
+  // dipakai nyaring titik geotag biar OTOMATIS ikut ke-filter sama persis
+  // dgn poligon wilayah yg lagi ditampilkan, tanpa perlu logic filter
+  // terpisah (titik tinggal dicocokkan idsubsls-nya ke set ini).
+  const visibleSubSls = useMemo(() => {
+    if (!displayData) return null;
+    return new Set(displayData.features.map(f => f.properties.idsubsls));
   }, [displayData]);
 
   const avgProgress = useMemo(() => {
@@ -661,10 +743,34 @@ export function WilayahMapPage() {
             {cfg.label}
           </button>
         ))}
+
+        <div style={{ width:1, height:20, background:'var(--border2)', margin:'0 4px' }}/>
+
+        <button onClick={() => setShowGeotag(v => !v)}
+          disabled={selectedKec === 'all'}
+          title={selectedKec === 'all' ? 'Pilih kecamatan dulu utk lihat titik bangunan' : undefined}
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', fontSize:11, fontWeight:600, borderRadius:8,
+            border: showGeotag ? '1px solid var(--orange)' : '1px solid var(--border2)',
+            background: showGeotag ? 'rgba(232,84,28,0.12)' : 'var(--bg2)',
+            color: selectedKec === 'all' ? 'var(--text4)' : (showGeotag ? 'var(--orange3)' : 'var(--text3)'),
+            cursor: selectedKec === 'all' ? 'not-allowed' : 'pointer', opacity: selectedKec === 'all' ? 0.5 : 1 }}>
+          <MapPin size={12}/>
+          Titik Bangunan
+          {geotagLoading && <Loader2 size={11} style={{ animation:'spin 0.8s linear infinite' }}/>}
+          {!geotagLoading && showGeotag && geotagPoints.length > 0 && (
+            <span style={{ fontSize:9.5, color:'var(--text4)' }}>({geotagPoints.length.toLocaleString('id')})</span>
+          )}
+        </button>
       </div>
       <div style={{ fontSize:9.5, color:'var(--text4)', marginTop:-10 }}>
         {BASEMAP_TILES[basemapMode].sub}
+        {selectedKec === 'all' && ' · Pilih kecamatan dulu utk mengaktifkan titik bangunan'}
       </div>
+      {geotagError && (
+        <div style={{ fontSize:10.5, color:'#f87171', marginTop:-6 }}>
+          Gagal memuat titik bangunan: {geotagError}
+        </div>
+      )}
 
       {/* Peta */}
       <Card style={{ padding:0, position:'relative', width:'100%', height: isMobile ? 380 : 600, overflow:'hidden' }}>
@@ -707,6 +813,9 @@ export function WilayahMapPage() {
               onEachFeature={onEachFeature}
             />
             <AutoFitBounds data={displayData}/>
+            {showGeotag && geotagPoints.length > 0 && (
+              <GeotagPointsLayer points={geotagPoints} visibleSubSls={visibleSubSls}/>
+            )}
           </MapContainer>
         )}
         {displayData && !loading && !error && (

@@ -2353,6 +2353,51 @@ app.get('/api/wilayah/geojson', verifyToken, requireFullAccess, async function(r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Cache titik geotag bangunan — pola & TTL sama dgn wilayahCache di atas ──
+const geotagCache = new Map(); // key: `${kec}||${desa}` -> { data, computedAt }
+
+// GET /api/wilayah/geotag?kec=X&desa=Y — titik geotagging bangunan (overlay
+// peta WilayahMapPage). `kec` WAJIB diisi (bukan "semua kecamatan") — data
+// ini besar (~70rb titik se-kabupaten), query tanpa scope kecamatan bisa
+// berat & respons-nya jadi besar banget. `desa` opsional, mempersempit lagi
+// (kecamatan besar bisa >10rb titik).
+app.get('/api/wilayah/geotag', verifyToken, requireFullAccess, async function(req, res) {
+  try {
+    const fKec  = (req.query.kec  || '').trim();
+    const fDesa = (req.query.desa || '').trim();
+    if (!fKec) {
+      return res.status(400).json({ error: 'Parameter kec wajib diisi utk endpoint ini (data terlalu besar tanpa scope kecamatan).' });
+    }
+    const cacheKey = `${fKec.toLowerCase()}||${fDesa.toLowerCase()}`;
+    const cached = geotagCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && (now - cached.computedAt) < WILAYAH_CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
+
+    const match = { nmkec: { $regex: new RegExp('^' + fKec + '$', 'i') } };
+    if (fDesa) match.nmdesa = { $regex: new RegExp('^' + fDesa + '$', 'i') };
+
+    const docs = await db.collection('geotag_bangunan').find(match, {
+      projection: { _id: 0, _key: 0, updatedAt: 0 },
+    }).toArray();
+
+    const result = {
+      points: docs.map(d => ({
+        lat: d.lat, lng: d.lng,
+        idsubsls: d.idsubsls, kecamatan: d.nmkec, desa: d.nmdesa, sls: d.nmsls,
+        noBang: d.noBang, status: d.status,
+        adaKeluarga: d.adaKeluarga, adaUsaha: d.adaUsaha,
+        namaKK: d.namaKK, namaUsaha: d.namaUsaha,
+        jenisBangunan: d.jenisBangunan, accuracy: d.accuracy,
+      })),
+      meta: { total: docs.length, generatedAt: new Date().toISOString() },
+    };
+    geotagCache.set(cacheKey, { data: result, computedAt: now });
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/wilayah/summary — ringkasan agregat per kecamatan (utk kartu ringkasan/legend)
 app.get('/api/wilayah/summary', verifyToken, requireFullAccess, async function(req, res) {
   try {
