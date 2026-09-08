@@ -378,9 +378,15 @@ function _geotagTooltipHtml(p) {
 // Leaflet) — supaya titik SELALU tampil DI ATAS geometri wilayah, brp pun
 // urutan mount komponennya (kalau cuma andalkan urutan add-to-map, tidak
 // terjamin konsisten).
-function GeotagPointsLayer({ points, visibleSubSls }) {
+function GeotagPointsLayer({ points, visibleSubSls, onPointClick }) {
   const map = useMap();
   const layerRef = useRef(null);
+  // onPointClick baru sbg reference tiap render parent (bukan di-useCallback)
+  // — simpan di ref spy TIDAK perlu masuk dependency array useEffect di
+  // bawah (kalau masuk, layer titik bakal dibongkar-pasang ulang tiap
+  // render parent, mubazir & bisa kedip2 utk puluhan ribu titik)
+  const onPointClickRef = useRef(onPointClick);
+  onPointClickRef.current = onPointClick;
 
   useEffect(() => {
     if (!map.getPane('geotagPane')) {
@@ -400,12 +406,45 @@ function GeotagPointsLayer({ points, visibleSubSls }) {
       marker.bindTooltip(_geotagTooltipHtml(p), {
         direction: 'top', offset: [0, -4], className: 'geotag-tooltip', opacity: 1,
       });
+      // Klik titik JUGA buka panel info petugas sub-SLS-nya (sama spt klik
+      // geometri) — jaminan ekstra, lihat catatan panjang di atas fungsi ini
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e); // jangan sampai klik titik nembus jadi "klik peta kosong" di poligon di bawahnya, kirim SEKALI aja lewat callback
+        onPointClickRef.current?.(p.idsubsls);
+      });
       group.addLayer(marker);
     }
 
     group.addTo(map);
     layerRef.current = group;
-    return () => { group.remove(); layerRef.current = null; };
+
+    // ── FIX PENTING: elemen <canvas> pane titik ini SECARA FISIK menutupi
+    // SELURUH area peta (bukan cuma di titik2-nya) — jadi klik yg TIDAK kena
+    // titik manapun tetap "ketutup" kanvas ini & TIDAK PERNAH nyampe ke
+    // elemen SVG poligon di pane bawahnya (event DOM tidak "tembus" ke
+    // elemen lain di belakangnya cuma krn Leaflet tidak stopPropagation).
+    // Fix: dengerin klik NATIVE di elemen <canvas> ini sendiri, cek pakai
+    // elementsFromPoint() apakah ada elemen poligon Leaflet
+    // (.leaflet-interactive, SVG path) TEPAT di belakang titik klik itu —
+    // kalau ada, trigger klik SINTETIS ke situ, spy panel kanan tetap kebuka
+    // persis spt sebelum ada fitur titik bangunan ini (poligon TETAP bisa
+    // diklik, sama sekali tidak terganggu).
+    const canvasEl = map.getPane('geotagPane')?.querySelector('canvas');
+    const forwardClickToPolygon = (evt) => {
+      const stack = document.elementsFromPoint(evt.clientX, evt.clientY);
+      const polygonEl = stack.find(el => el !== canvasEl && el.classList?.contains('leaflet-interactive'));
+      if (polygonEl) {
+        polygonEl.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true, clientX: evt.clientX, clientY: evt.clientY,
+        }));
+      }
+    };
+    if (canvasEl) canvasEl.addEventListener('click', forwardClickToPolygon);
+
+    return () => {
+      group.remove(); layerRef.current = null;
+      if (canvasEl) canvasEl.removeEventListener('click', forwardClickToPolygon);
+    };
   }, [points, visibleSubSls, map]);
 
   return null;
@@ -552,6 +591,21 @@ export function WilayahMapPage() {
     if (!displayData) return null;
     return new Set(displayData.features.map(f => f.properties.idsubsls));
   }, [displayData]);
+
+  // idsubsls -> feature poligon-nya — dipakai supaya klik TITIK bangunan
+  // JUGA membuka panel info petugas (SubSlsDetailPanel) yg sama persis spt
+  // klik geometrinya langsung, tidak cuma andalkan klik "tembus" ke poligon
+  // di bawahnya (yg secara teknis Leaflet Canvas SEHARUSNYA sudah pass-
+  // through kalau tidak kena titiknya, tapi ini jaminan ekstra spy pasti
+  // selalu bisa — klik titik ATAU geometrinya, dua2nya buka panel yg sama).
+  const subSlsFeatureByIdMap = useMemo(() => {
+    if (!displayData) return new Map();
+    return new Map(displayData.features.map(f => [f.properties.idsubsls, f]));
+  }, [displayData]);
+  const handleGeotagPointClick = (idsubsls) => {
+    const feature = subSlsFeatureByIdMap.get(idsubsls);
+    if (feature) setSelectedFeature(feature);
+  };
 
   const avgProgress = useMemo(() => {
     if (!displayData || !displayData.features.length) return 0;
@@ -860,7 +914,7 @@ export function WilayahMapPage() {
             />
             <AutoFitBounds data={displayData}/>
             {showGeotag && geotagPoints.length > 0 && (
-              <GeotagPointsLayer points={geotagPoints} visibleSubSls={visibleSubSls}/>
+              <GeotagPointsLayer points={geotagPoints} visibleSubSls={visibleSubSls} onPointClick={handleGeotagPointClick}/>
             )}
           </MapContainer>
         )}
