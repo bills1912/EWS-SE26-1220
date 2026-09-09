@@ -377,6 +377,37 @@ function _geotagColor(status) {
 
 // Escape teks sebelum ditempel ke innerHTML tooltip Leaflet (nama KK/usaha
 // dari lapangan bisa berisi karakter aneh — jaga2 drpd nyuntik HTML)
+// Ray-casting standar — cek apakah titik (lat,lng) ada DI DALAM geometri
+// GeoJSON (support Polygon & MultiPolygon, termasuk lubang/hole di
+// dalamnya). Dipakai supaya klik yg ketutup kanvas titik bangunan (lihat
+// catatan panjang di GeotagPointsLayer di bawah) tetap bisa "tembus" nemuin
+// poligon sub-SLS yg benar scr GEOMETRIS — TIDAK lagi mengandalkan trik DOM
+// (elementsFromPoint) yg rapuh & tergantung detail render browser.
+// PENTING: koordinat GeoJSON urutannya [lng, lat] (x, y), BUKAN [lat, lng].
+function _pointInGeoJsonGeometry(lat, lng, geometry) {
+  const testRing = (ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      const intersect = ((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+  const testPolygonCoords = (coords) => {
+    if (!coords.length || !testRing(coords[0])) return false; // ring pertama = batas luar
+    for (let i = 1; i < coords.length; i++) {
+      if (testRing(coords[i])) return false; // ring selanjutnya = lubang — di dalam lubang berarti DI LUAR poligon
+    }
+    return true;
+  };
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon') return testPolygonCoords(geometry.coordinates);
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.some(testPolygonCoords);
+  return false;
+}
+
 function _escHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
@@ -431,24 +462,22 @@ function _geotagTooltipHtml(p) {
 // Leaflet) — supaya titik SELALU tampil DI ATAS geometri wilayah, brp pun
 // urutan mount komponennya (kalau cuma andalkan urutan add-to-map, tidak
 // terjamin konsisten).
-const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibleSubSls, onPointClick }, ref) {
+const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibleSubSls, onPointClick, features }, ref) {
   const map = useMap();
   const layerRef = useRef(null);
   // idsubsls -> [{lat,lng} -> marker] key "lat,lng" -> instance L.CircleMarker
   // — dipakai supaya parent bisa trigger buka tooltip titik TERTENTU secara
   // imperatif (mis. dari tombol "fly to" di panel), bukan cuma via hover.
   const markersByLatLngRef = useRef(new Map());
-  // Marker yg tooltip-nya SEDANG terbuka (klik langsung ATAU fly-to dari
-  // panel) — dilacak spy SELALU ditutup dulu sblm buka tooltip baru, jadi
-  // tidak numpuk banyak tooltip kebuka bersamaan pas pindah2 titik.
+  // Marker yg tooltip-nya SEDANG terbuka — dilacak via event 'tooltipopen'
+  // Leaflet SENDIRI (bukan cuma di-set manual tiap tempat manggil openTooltip)
+  // — ini PENTING spy konsisten dari SEMUA sumber pemicu (hover mouse di
+  // desktop/tablet, klik langsung ke titik, ATAU tombol fly-to di panel).
+  // Kalau cuma di-track manual di 1-2 tempat saja, tooltip yg kebuka via
+  // HOVER (yg Leaflet handle sendiri secara internal) bisa lolos dari
+  // pelacakan & ninggalin tooltip lama kebuka bareng tooltip baru.
   const openMarkerRef = useRef(null);
-  const openOnly = (marker) => {
-    if (openMarkerRef.current && openMarkerRef.current !== marker) {
-      openMarkerRef.current.closeTooltip();
-    }
-    marker.openTooltip();
-    openMarkerRef.current = marker;
-  };
+
   // onPointClick baru sbg reference tiap render parent (bukan di-useCallback)
   // — simpan di ref spy TIDAK perlu masuk dependency array useEffect di
   // bawah (kalau masuk, layer titik bakal dibongkar-pasang ulang tiap
@@ -463,7 +492,7 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
   useImperativeHandle(ref, () => ({
     openTooltipAt(lat, lng) {
       const marker = markersByLatLngRef.current.get(`${lat},${lng}`);
-      if (marker) openOnly(marker);
+      if (marker) marker.openTooltip(); // penutupan tooltip lain ditangani otomatis via listener 'tooltipopen' di bawah
     },
   }), []);
 
@@ -485,21 +514,33 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
         color: '#0008', fillColor: _geotagColor(p.status), fillOpacity: 0.85,
       });
       marker.bindTooltip(_geotagTooltipHtml(p), {
-        // permanent:false (default) = TIDAK tampil otomatis, cuma muncul
-        // saat di-hover (desktop) ATAU dipicu manual via .openTooltip()
-        // (dipakai dari tombol "fly to" di panel — solusi utk HP, yg tidak
-        // punya hover). sticky:true = tooltip ikut kursor selama masih
-        // hover, tidak dipakai di sini krn kita mau posisinya diam di
-        // titiknya, bukan ngikutin mouse.
+        // permanent:false (default) = TIDAK tampil otomatis; muncul saat
+        // HOVER mouse (default Leaflet, jalan otomatis di tablet/desktop yg
+        // py mouse — TIDAK di-nonaktifkan sama sekali di sini) ATAU dipicu
+        // manual via .openTooltip() (klik titik langsung / tombol "fly to"
+        // di panel — solusi utk HP yg tidak punya hover).
         direction: 'top', offset: [0, -4], className: 'geotag-tooltip', opacity: 1,
+      });
+      // Event 'tooltipopen' Leaflet fire utk SEMUA cara tooltip kebuka (hover
+      // MAUPUN .openTooltip() manual) — jadiin SATU TEMPAT utk nutup tooltip
+      // lain yg mungkin msh kebuka, konsisten dari sumber pemicu manapun
+      // (sebelumnya cuma di-handle manual di titik2 tertentu, jadi tooltip
+      // yg kebuka via hover bisa lolos & numpuk bareng tooltip lain).
+      marker.on('tooltipopen', () => {
+        if (openMarkerRef.current && openMarkerRef.current !== marker) {
+          openMarkerRef.current.closeTooltip();
+        }
+        openMarkerRef.current = marker;
+      });
+      marker.on('tooltipclose', () => {
+        if (openMarkerRef.current === marker) openMarkerRef.current = null;
       });
       // Klik titik JUGA buka panel info petugas sub-SLS-nya (sama spt klik
       // geometri) DAN buka tooltip titiknya sendiri (spy tap di HP langsung
-      // kelihatan detail titiknya, tidak perlu hover) — via openOnly() spy
-      // tooltip titik lain yg mungkin lagi kebuka ikut ketutup otomatis.
+      // kelihatan detail titiknya, tidak perlu hover)
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e); // jangan sampai klik titik nembus jadi "klik peta kosong" di poligon di bawahnya, kirim SEKALI aja lewat callback
-        openOnly(marker);
+        marker.openTooltip();
         onPointClickRef.current?.(p.idsubsls);
       });
       group.addLayer(marker);
@@ -511,33 +552,33 @@ const GeotagPointsLayer = forwardRef(function GeotagPointsLayer({ points, visibl
     markersByLatLngRef.current = markersByLatLng;
 
     // ── FIX PENTING: elemen <canvas> pane titik ini SECARA FISIK menutupi
-    // SELURUH area peta (bukan cuma di titik2-nya) — jadi klik yg TIDAK kena
-    // titik manapun tetap "ketutup" kanvas ini & TIDAK PERNAH nyampe ke
-    // elemen SVG poligon di pane bawahnya (event DOM tidak "tembus" ke
-    // elemen lain di belakangnya cuma krn Leaflet tidak stopPropagation).
-    // Fix: dengerin klik NATIVE di elemen <canvas> ini sendiri, cek pakai
-    // elementsFromPoint() apakah ada elemen poligon Leaflet
-    // (.leaflet-interactive, SVG path) TEPAT di belakang titik klik itu —
-    // kalau ada, trigger klik SINTETIS ke situ, spy panel kanan tetap kebuka
-    // persis spt sebelum ada fitur titik bangunan ini (poligon TETAP bisa
-    // diklik, sama sekali tidak terganggu).
-    const canvasEl = map.getPane('geotagPane')?.querySelector('canvas');
-    const forwardClickToPolygon = (evt) => {
-      const stack = document.elementsFromPoint(evt.clientX, evt.clientY);
-      const polygonEl = stack.find(el => el !== canvasEl && el.classList?.contains('leaflet-interactive'));
-      if (polygonEl) {
-        polygonEl.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, cancelable: true, clientX: evt.clientX, clientY: evt.clientY,
-        }));
-      }
+    // SELURUH area peta (bukan cuma di titik2-nya), jadi klik yg TIDAK kena
+    // titik manapun tetap "ketutup" scr DOM & TIDAK PERNAH nyampe scr NATIVE
+    // ke elemen SVG poligon di pane bawahnya (trik DOM elementsFromPoint yg
+    // sebelumnya dipakai TERBUKTI tidak reliable — rapuh, tergantung detail
+    // render browser).
+    //
+    // Fix yg lebih SOLID: Leaflet TETAP fire event 'click' di level MAP (via
+    // bubbling — e.latlng dihitung Leaflet sendiri dari posisi klik) utk
+    // klik yg TIDAK kena marker manapun (Leaflet cuma stopPropagation kalau
+    // ADA shape yg kena, bukan sebaliknya). Jadi di sini kita cek SCR
+    // GEOMETRIS (ray-casting point-in-polygon thd data GeoJSON asli, BUKAN
+    // trik DOM) apakah e.latlng jatuh DI DALAM salah satu poligon sub-SLS
+    // (`features`), dan kalau iya, panggil callback yg SAMA persis spt klik
+    // titik (onPointClick) — reuse logic buka panel yg sudah ada.
+    const handleMapClickFallback = (e) => {
+      if (!features || !features.length) return;
+      const { lat, lng } = e.latlng;
+      const hit = features.find(f => _pointInGeoJsonGeometry(lat, lng, f.geometry));
+      if (hit) onPointClickRef.current?.(hit.properties.idsubsls);
     };
-    if (canvasEl) canvasEl.addEventListener('click', forwardClickToPolygon);
+    map.on('click', handleMapClickFallback);
 
     return () => {
       group.remove(); layerRef.current = null; markersByLatLngRef.current = new Map(); openMarkerRef.current = null;
-      if (canvasEl) canvasEl.removeEventListener('click', forwardClickToPolygon);
+      map.off('click', handleMapClickFallback);
     };
-  }, [points, visibleSubSls, map]);
+  }, [points, visibleSubSls, features, map]);
 
   return null;
 });
@@ -1026,7 +1067,8 @@ export function WilayahMapPage() {
             />
             <AutoFitBounds data={displayData}/>
             {showGeotag && geotagPoints.length > 0 && (
-              <GeotagPointsLayer ref={geotagLayerRef} points={geotagPoints} visibleSubSls={visibleSubSls} onPointClick={handleGeotagPointClick}/>
+              <GeotagPointsLayer ref={geotagLayerRef} points={geotagPoints} visibleSubSls={visibleSubSls}
+                onPointClick={handleGeotagPointClick} features={displayData?.features}/>
             )}
           </MapContainer>
         )}
