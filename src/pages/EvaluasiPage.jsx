@@ -50,6 +50,7 @@ const ALL_COLS_PENCACAH = [
   { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
   { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
   { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
+  { key:'prelistUsahaKeluarga', label:'Penyelesaian Usaha dalam Keluarga', always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'progressPrelistAwal', label:'Progress Prelist Awal', always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
@@ -72,6 +73,7 @@ const ALL_COLS_PENGAWAS = [
   { key:'totalWorked', label:'Total Pekerjaan Dikerjakan', always: false },
   { key:'prelistKeluarga', label:'Penyelesaian Pendataan Keluarga', always: false },
   { key:'prelistUsaha',    label:'Penyelesaian Pendataan Usaha',    always: false },
+  { key:'prelistUsahaKeluarga', label:'Penyelesaian Usaha dalam Keluarga', always: false },
   { key:'progress',  label:'Progress',   always: false },
   { key:'progressPrelistAwal', label:'Progress Prelist Awal', always: false },
   { key:'avgPerDay', label:'Avg/Hari',   always: false },
@@ -458,6 +460,10 @@ const USAHA_BRK_LABELS = {
   ditemukan: 'Ditemukan', tutup: 'Tutup', ganda: 'Ganda',
   tidakDitemukan: 'Tidak Ditemukan', baru: 'Baru',
 };
+const USAHA_KELUARGA_BRK_LABELS = {
+  ditemukan: 'Ditemukan', tutup: 'Tutup', ganda: 'Ganda',
+  tidakDitemukan: 'Tidak Ditemukan', baru: 'Baru', nonrespon: 'Nonrespon',
+};
 
 function BreakdownDetail({ title, breakdown, labels, color }) {
   if (!breakdown) {
@@ -491,6 +497,7 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
   const [open, setOpen] = useState(false);
   const [showKelBrk, setShowKelBrk] = useState(false);
   const [showUsahaBrk, setShowUsahaBrk] = useState(false);
+  const [showUshKelBrk, setShowUshKelBrk] = useState(false);
   const isCompact = useIsCompact();
   const fc = p.progressScore>=50?'#10b981':p.progressScore>=20?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
@@ -573,6 +580,14 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
             <ChevronRight size={10} color="var(--text4)" style={{ transform: showUsahaBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
           </span>
         </td>}
+        {visibleCols.has('prelistUsahaKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f0abfc',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
+            onClick={e=>{ e.stopPropagation(); setShowUshKelBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentUsahaKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaKeluargaTotal||0} ({p.targetUsahaKeluargaTotal>0 ? Math.round((p.assignmentUsahaKeluargaSelesai||0)/p.targetUsahaKeluargaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showUshKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
+        </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
@@ -612,9 +627,9 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
       </tr>
-      {(showKelBrk || showUsahaBrk) && (
+      {(showKelBrk || showUsahaBrk || showUshKelBrk) && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={24} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
+          <td colSpan={25} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
             <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
               {showKelBrk && (
                 <div style={{ flex:'1 1 320px' }}>
@@ -626,6 +641,12 @@ function PencacahRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                 <div style={{ flex:'1 1 320px' }}>
                   <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={p.assignmentUsahaBreakdown}
                     labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+                </div>
+              )}
+              {showUshKelBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Usaha dalam Keluarga" breakdown={p.assignmentUsahaKeluargaBreakdown}
+                    labels={USAHA_KELUARGA_BRK_LABELS} color="#f0abfc"/>
                 </div>
               )}
             </div>
@@ -726,6 +747,7 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
   const [open, setOpen] = useState(false);
   const [showKelBrk, setShowKelBrk] = useState(false);
   const [showUsahaBrk, setShowUsahaBrk] = useState(false);
+  const [showUshKelBrk, setShowUshKelBrk] = useState(false);
   const isCompact = useIsCompact();
   const fc = p.pctApproved>=70?'#10b981':p.pctApproved>=40?'#f59e0b':'#f43f5e';
   const _hlBg    = highlight==='top' ? 'rgba(249,115,22,0.18)'
@@ -791,6 +813,14 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
             <ChevronRight size={10} color="var(--text4)" style={{ transform: showUsahaBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
           </span>
         </td>}
+        {visibleCols.has('prelistUsahaKeluarga') && <td style={{ padding:'9px 8px',fontFamily:'var(--mono)',fontSize:11,color:'#f0abfc',textAlign:'right',verticalAlign:'middle' }}>
+          <span style={{ display:'inline-flex',alignItems:'center',gap:3,cursor:'pointer',verticalAlign:'middle' }}
+            onClick={e=>{ e.stopPropagation(); setShowUshKelBrk(v=>!v); }}
+            title="Klik untuk lihat detail breakdown">
+            {p.assignmentUsahaKeluargaSelesai||0}<span style={{ color:'var(--text4)',fontSize:9.5 }}> / {p.targetUsahaKeluargaTotal||0} ({p.targetUsahaKeluargaTotal>0 ? Math.round((p.assignmentUsahaKeluargaSelesai||0)/p.targetUsahaKeluargaTotal*100) : 0}%)</span>
+            <ChevronRight size={10} color="var(--text4)" style={{ transform: showUshKelBrk?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+          </span>
+        </td>}
         {visibleCols.has('progress') && (
         <td style={{ padding:'9px 8px',minWidth:100 }}>
           <div style={{ display:'flex',alignItems:'center',gap:5 }}>
@@ -830,9 +860,9 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
           {open?<ChevronUp size={11} color="var(--text4)"/>:<ChevronDown size={11} color="var(--text4)"/>}
         </td>
       </tr>
-      {(showKelBrk || showUsahaBrk) && (
+      {(showKelBrk || showUsahaBrk || showUshKelBrk) && (
         <tr style={{ borderBottom:'1px solid var(--border)' }}>
-          <td colSpan={24} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
+          <td colSpan={25} style={{ padding:'8px 10px 8px 40px',background:'rgba(56,189,248,0.03)' }}>
             <div style={{ display:'flex',gap:10,flexWrap:'wrap' }}>
               {showKelBrk && (
                 <div style={{ flex:'1 1 320px' }}>
@@ -844,6 +874,12 @@ function PengawasRow({ p, rank, filterKec, filterDesa, visibleCols = new Set(DEF
                 <div style={{ flex:'1 1 320px' }}>
                   <BreakdownDetail title="Penyelesaian Pendataan Usaha" breakdown={p.assignmentUsahaBreakdown}
                     labels={USAHA_BRK_LABELS} color="#a78bfa"/>
+                </div>
+              )}
+              {showUshKelBrk && (
+                <div style={{ flex:'1 1 320px' }}>
+                  <BreakdownDetail title="Penyelesaian Usaha dalam Keluarga" breakdown={p.assignmentUsahaKeluargaBreakdown}
+                    labels={USAHA_KELUARGA_BRK_LABELS} color="#f0abfc"/>
                 </div>
               )}
             </div>
@@ -1240,6 +1276,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'prelistUsaha', h:'Target Usaha', w:14, key_: p => p.targetUsahaTotal||0, align:'right', color: [167,139,250] },
         { key:'prelistUsaha', h:'Realisasi Usaha', w:14, key_: p => p.assignmentUsahaSelesai||0, align:'right', color: [167,139,250] },
         { key:'prelistUsaha', h:'% Usaha', w:12, key_: p => (p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0)+'%', align:'right', color: [167,139,250] },
+        { key:'prelistUsahaKeluarga', h:'Target Ush.Kel.', w:14, key_: p => p.targetUsahaKeluargaTotal||0, align:'right', color: [240,171,252] },
+        { key:'prelistUsahaKeluarga', h:'Realisasi Ush.Kel.', w:14, key_: p => p.assignmentUsahaKeluargaSelesai||0, align:'right', color: [240,171,252] },
+        { key:'prelistUsahaKeluarga', h:'% Ush.Kel.', w:12, key_: p => (p.targetUsahaKeluargaTotal>0 ? Math.round((p.assignmentUsahaKeluargaSelesai||0)/p.targetUsahaKeluargaTotal*100) : 0)+'%', align:'right', color: [240,171,252] },
         { key:'usahaCount',   h:'Asgn Usaha', w:20, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:18, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:18, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1270,6 +1309,9 @@ async function generatePDF({ activeTab, filtered, summary, effectiveSummary, sel
         { key:'prelistUsaha', h:'Target Usaha', w:13, key_: p => p.targetUsahaTotal||0, align:'right', color: [167,139,250] },
         { key:'prelistUsaha', h:'Realisasi Usaha', w:13, key_: p => p.assignmentUsahaSelesai||0, align:'right', color: [167,139,250] },
         { key:'prelistUsaha', h:'% Usaha', w:11, key_: p => (p.targetUsahaTotal>0 ? Math.round((p.assignmentUsahaSelesai||0)/p.targetUsahaTotal*100) : 0)+'%', align:'right', color: [167,139,250] },
+        { key:'prelistUsahaKeluarga', h:'Target Ush.Kel.', w:13, key_: p => p.targetUsahaKeluargaTotal||0, align:'right', color: [240,171,252] },
+        { key:'prelistUsahaKeluarga', h:'Realisasi Ush.Kel.', w:13, key_: p => p.assignmentUsahaKeluargaSelesai||0, align:'right', color: [240,171,252] },
+        { key:'prelistUsahaKeluarga', h:'% Ush.Kel.', w:11, key_: p => (p.targetUsahaKeluargaTotal>0 ? Math.round((p.assignmentUsahaKeluargaSelesai||0)/p.targetUsahaKeluargaTotal*100) : 0)+'%', align:'right', color: [240,171,252] },
         { key:'usahaCount',   h:'Asgn Usaha', w:18, key_: p => p.usahaAssignmentCount||0, align:'right', color: [167,139,250] },
         { key:'usahaTotal',   h:'Tot Usaha',  w:16, key_: p => p.totalUsahaDitemukan||0,  align:'right', color: [167,139,250] },
         { key:'usahaMax',     h:'Usaha Max',  w:16, key_: p => p.usahaMaxCount||0,        align:'right', color: [167,139,250] },
@@ -1688,6 +1730,13 @@ function generateExcel({ activeTab, filtered, summary, effectiveSummary, isPenga
     // Breakdown detail Usaha — sama filosofinya
     ...Object.entries(USAHA_BRK_LABELS).map(([k, lbl]) => (
       { key:'prelistUsaha', label:`Usaha - ${lbl}`, get:p=>p.assignmentUsahaBreakdown?.[k] ?? 0 }
+    )),
+    { key:'prelistUsahaKeluarga', label:'Target Usaha dalam Keluarga',    get:p=>p.targetUsahaKeluargaTotal||0 },
+    { key:'prelistUsahaKeluarga', label:'Realisasi Usaha dalam Keluarga', get:p=>p.assignmentUsahaKeluargaSelesai||0 },
+    { key:'prelistUsahaKeluarga', label:'% Usaha dalam Keluarga', get:p=>p.targetUsahaKeluargaTotal>0 ? Math.round((p.assignmentUsahaKeluargaSelesai||0)/p.targetUsahaKeluargaTotal*100) : 0 },
+    // Breakdown detail Usaha dalam Keluarga — sama filosofinya (6 kategori termasuk Nonrespon)
+    ...Object.entries(USAHA_KELUARGA_BRK_LABELS).map(([k, lbl]) => (
+      { key:'prelistUsahaKeluarga', label:`Usaha dalam Keluarga - ${lbl}`, get:p=>p.assignmentUsahaKeluargaBreakdown?.[k] ?? 0 }
     )),
     { key:'usahaCount',   label:'Assignment Usaha Ditemukan', get:p=>p.usahaAssignmentCount||0 },
     { key:'usahaTotal',   label:'Total Usaha',    get:p=>p.totalUsahaDitemukan||0 },
@@ -3014,9 +3063,11 @@ export function EvaluasiPage() {
     prelistUsahaTotal:      filtered.reduce((a,p)=>a+(p.prelistUsahaTotal||0),      0),
     targetKeluargaTotal: filtered.reduce((a,p)=>a+(p.targetKeluargaTotal||0), 0),
     targetUsahaTotal:    filtered.reduce((a,p)=>a+(p.targetUsahaTotal||0),    0),
+    targetUsahaKeluargaTotal: filtered.reduce((a,p)=>a+(p.targetUsahaKeluargaTotal||0), 0),
     prelistUsahaSelesai:    filtered.reduce((a,p)=>a+(p.prelistUsahaSelesai||0),    0),
     assignmentKeluargaSelesai: filtered.reduce((a,p)=>a+(p.assignmentKeluargaSelesai||0), 0),
     assignmentUsahaSelesai:    filtered.reduce((a,p)=>a+(p.assignmentUsahaSelesai||0),    0),
+    assignmentUsahaKeluargaSelesai: filtered.reduce((a,p)=>a+(p.assignmentUsahaKeluargaSelesai||0), 0),
     count:    filtered.length,
   } : null;
 
@@ -3064,6 +3115,7 @@ export function EvaluasiPage() {
     if (sortBy==='totalWorked') return d*((b.totalWorked??0)-(a.totalWorked??0));
     if (sortBy==='prelistKeluargaSelesai') return d*((b.assignmentKeluargaSelesai??0)-(a.assignmentKeluargaSelesai??0));
     if (sortBy==='prelistUsahaSelesai') return d*((b.assignmentUsahaSelesai??0)-(a.assignmentUsahaSelesai??0));
+    if (sortBy==='prelistUsahaKeluargaSelesai') return d*((b.assignmentUsahaKeluargaSelesai??0)-(a.assignmentUsahaKeluargaSelesai??0));
     if (sortBy==='pct')       return d*((b.progressScore!=null?b.progressScore:b.pctApproved||0)-(a.progressScore!=null?a.progressScore:a.pctApproved||0));
     if (sortBy==='progressPrelistAwalPct') return d*((b.progressPrelistAwalPct??0)-(a.progressPrelistAwalPct??0));
     if (sortBy==='avgPerDay') return d*((b.avgPerDay?.total??0)-(a.avgPerDay?.total??0));
@@ -3509,6 +3561,7 @@ export function EvaluasiPage() {
               <span><strong style={{ color:'var(--orange3)' }}>Total Pekerjaan Dikerjakan</strong> = submit+approved+reject (assignment yang sudah disentuh, bukan sekadar Open)</span>
               <span><strong style={{ color:'#38bdf8' }}>Penyelesaian Pendataan Keluarga*</strong> = realisasi (Export Progres Pemutakhiran Keluarga, sheet KELUARGA, sum Ditemukan+Keluarga Baru+Meninggal+Tidak Eligible+Tidak Dapat Ditemui Sampai Akhir Pendataan+Tidak Ditemukan) / target (kolom "Prelist Awal", sheet &amp; file yang sama) — per sub-SLS</span>
               <span><strong style={{ color:'#a78bfa' }}>Penyelesaian Pendataan Usaha*</strong> = realisasi (Export Progres Pendataan, sheet USAHA PERUSAHAAN, sum Ditemukan+Tutup+Ganda+Tidak Ditemukan+Baru) / target (kolom "Jumlah Prelist Usaha", sheet &amp; file yang sama) — per sub-SLS</span>
+              <span><strong style={{ color:'#f0abfc' }}>Penyelesaian Usaha dalam Keluarga*</strong> = realisasi (Export Progres Pendataan, sheet USAHA KELUARGA, sum Ditemukan+Tutup+Ganda+Tidak Ditemukan+Baru+Nonrespon) / target (kolom "Jumlah Prelist Usaha Keluarga (ST2023 + UMKM)", sheet &amp; file yang sama) — per sub-SLS</span>
               <span><strong style={{ color:'#14b8a6' }}>Progress Prelist Awal**</strong> = realisasi / target (kolom "Target (Prelist Awal)", file Daftar Rekap SubSLS, gabungan Keluarga+Usaha, TETAP tidak berubah selama fieldwork). Realisasi Pencacah = submit+approved+reject+completed admin+rejected admin+revoked admin+edited admin. Realisasi Pengawas = sama tanpa submit.</span>
               <span><strong style={{ color:'#fbbf24' }}>Delta Progress</strong> = (approved+submit+reject+draft) hari snapshot − hari sebelumnya. Berdasarkan tanggal TERAKHIR record disentuh (bukan jaminan event submit/approve terjadi persis di hari itu — lihat catatan). Kosong (—) saat filter kecamatan/desa aktif krn tidak bisa di-scope per desa. Hari snapshot bisa tampak rendah/negatif kalau data ditarik sebelum hari berakhir (belum penuh 1 hari).</span>
               <span><strong style={{ color:'#a78bfa' }}>Assignment Usaha Ditemukan</strong> = jml assignment dgn usaha ditemukan (data7&gt;=1)</span>
@@ -3573,6 +3626,7 @@ export function EvaluasiPage() {
                 {visibleCols.has('totalWorked') && <H label="Total Pekerjaan Dikerjakan" col="totalWorked" right/>}
                 {visibleCols.has('prelistKeluarga') && <H label="Penyelesaian Pendataan Keluarga*" col="prelistKeluargaSelesai" right/>}
                 {visibleCols.has('prelistUsaha') && <H label="Penyelesaian Pendataan Usaha*" col="prelistUsahaSelesai" right/>}
+                {visibleCols.has('prelistUsahaKeluarga') && <H label="Penyelesaian Usaha dalam Keluarga*" col="prelistUsahaKeluargaSelesai" right/>}
                 {visibleCols.has('progress') && <H label="Progress" col="pct"/>}
                 {visibleCols.has('progressPrelistAwal') && <H label="Progress Prelist Awal**" col="progressPrelistAwalPct"/>}
                 {visibleCols.has('avgPerDay')&& <H label="Avg/Hari" col="avgPerDay" right/>}
